@@ -4,8 +4,8 @@ import { Progress } from '@/components/ui/progress';
 import { Brain, Sparkles } from 'lucide-react';
 
 export const AiExplanation: React.FC = () => {
-  const { selectedIncident } = useAoSoc();
-  const exp = selectedIncident?.ai_explanation;
+  const { selectedIncident, selectedExplanation } = useAoSoc();
+  const exp = selectedExplanation ?? selectedIncident?.ai_explanation;
 
   if (!exp) {
     return (

@@ -41,6 +41,16 @@ export interface AiExplanation {
   recommendation: string;
 }
 
+export interface PersistedAiExplanation extends AiExplanation {
+  id: number;
+  incident_id: string;
+  version: string;
+  created_at: string;
+  updated_at: string;
+  evidence: Evidence[];
+  recommended_actions: RecommendedAction[];
+}
+
 export interface Incident {
   id: string;
   title: string;

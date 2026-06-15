@@ -14,6 +14,7 @@ import {
   summary,
   jitterHealth
 } from './mockData.js';
+import { getExplanationByIncidentId } from './explanationStore.js';
 
 const app = express();
 app.use(cors());
@@ -54,6 +55,12 @@ app.get('/api/mitre', (_req, res) => {
 });
 
 app.get('/api/system/health', (_req, res) => res.json(jitterHealth()));
+
+app.get('/api/incidents/:id/explanations', (req, res) => {
+  const explanation = getExplanationByIncidentId(req.params.id);
+  if (!explanation) return res.status(404).json({ error: 'explanation not found' });
+  res.json(explanation);
+});
 
 // Simulate a SOAR action acknowledgement
 app.post('/api/incidents/:id/actions/:actionId/execute', (req, res) => {
