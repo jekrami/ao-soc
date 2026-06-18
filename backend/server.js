@@ -5,16 +5,16 @@
 import express from 'express';
 import cors from 'cors';
 import {
-  incidents,
   highRiskUsers,
   highRiskHosts,
   highRiskIps,
   mitreHeatmap,
   mitreTactics,
-  summary,
   jitterHealth
 } from './mockData.js';
 import { getExplanationByIncidentId } from './explanationStore.js';
+import { isBrokerIncident, mitigateBrokerIncident } from './alertStore.js';
+import { buildSummary, getIncident, listIncidents } from './incidents.js';
 
 const app = express();
 app.use(cors());
@@ -22,7 +22,6 @@ app.use(express.json());
 
 const port = process.env.PORT || 4317;
 
-// Tiny request log
 app.use((req, _res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
   next();
@@ -32,16 +31,18 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true, service: 'ao-soc-mock-api', version: '1.0.0' });
 });
 
-app.get('/api/summary', (_req, res) => res.json(summary));
-
-app.get('/api/incidents', (req, res) => {
-  const severity = (req.query.severity || '').toUpperCase();
-  const filtered = severity ? incidents.filter(i => i.severity === severity) : incidents;
-  res.json({ count: filtered.length, items: filtered });
+app.get('/api/summary', async (_req, res) => {
+  res.json(await buildSummary());
 });
 
-app.get('/api/incidents/:id', (req, res) => {
-  const inc = incidents.find(i => i.id === req.params.id);
+app.get('/api/incidents', async (req, res) => {
+  const severity = (req.query.severity || '').toUpperCase();
+  const items = await listIncidents(severity);
+  res.json({ count: items.length, items });
+});
+
+app.get('/api/incidents/:id', async (req, res) => {
+  const inc = await getIncident(req.params.id);
   if (!inc) return res.status(404).json({ error: 'incident not found' });
   res.json(inc);
 });
@@ -56,15 +57,23 @@ app.get('/api/mitre', (_req, res) => {
 
 app.get('/api/system/health', (_req, res) => res.json(jitterHealth()));
 
-app.get('/api/incidents/:id/explanations', (req, res) => {
-  const explanation = getExplanationByIncidentId(req.params.id);
+app.get('/api/incidents/:id/explanations', async (req, res) => {
+  const explanation = await getExplanationByIncidentId(req.params.id);
   if (!explanation) return res.status(404).json({ error: 'explanation not found' });
   res.json(explanation);
 });
 
-// Simulate a SOAR action acknowledgement
-app.post('/api/incidents/:id/actions/:actionId/execute', (req, res) => {
-  const inc = incidents.find(i => i.id === req.params.id);
+app.post('/api/incidents/:id/mitigate', async (req, res) => {
+  if (!(await isBrokerIncident(req.params.id))) {
+    return res.status(404).json({ error: 'broker incident not found' });
+  }
+  const updated = await mitigateBrokerIncident(req.params.id);
+  if (!updated) return res.status(404).json({ error: 'broker incident not found' });
+  res.json(updated);
+});
+
+app.post('/api/incidents/:id/actions/:actionId/execute', async (req, res) => {
+  const inc = await getIncident(req.params.id);
   if (!inc) return res.status(404).json({ error: 'incident not found' });
   const action = (inc.recommended_actions || []).find(a => a.id === req.params.actionId);
   if (!action) return res.status(404).json({ error: 'action not found' });

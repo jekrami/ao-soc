@@ -67,6 +67,8 @@ export interface Incident {
   mitre_techniques: MitreTechnique[];
   recommended_actions: RecommendedAction[];
   ai_explanation: AiExplanation;
+  /** Present when ingested via Aegis-Link broker (Splunk → SQLite) */
+  source?: 'broker' | 'mock';
 }
 
 export interface Entity {
@@ -91,6 +93,8 @@ export interface Summary {
   mttr_minutes: number;
   total_correlated_incidents: number;
   automation_success_rate: number;
+  /** Count of live broker-ingested alerts merged into the queue */
+  broker_live_alerts?: number;
 }
 
 export interface MitreCell {

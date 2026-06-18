@@ -96,6 +96,50 @@ npm run dev        # http://localhost:5173
 
 The frontend's Vite dev server proxies `/api/*` to the backend on port 4317.
 
+**Manual broker test (coding phase):**
+
+```bash
+# Terminal 1 — broker
+cd orchestrator && python -m uvicorn soc_orchestrator:app --host 0.0.0.0 --port 8500
+```
+
+**Trigger alert — Windows (PowerShell):** use a JSON file or `Invoke-RestMethod` (plain `curl` mangles JSON on Windows):
+
+```powershell
+cd orchestrator
+.\trigger-alert.ps1
+```
+
+Or:
+
+```powershell
+Invoke-RestMethod -Uri http://127.0.0.1:8500/splunk-alert -Method POST -ContentType "application/json" -Body (Get-Content -Raw .\sample-splunk-alert.json)
+```
+
+Or with real curl.exe:
+
+```powershell
+curl.exe -X POST http://127.0.0.1:8500/splunk-alert -H "Content-Type: application/json" -d "@sample-splunk-alert.json"
+```
+
+**Linux/macOS:**
+
+```bash
+curl -X POST http://127.0.0.1:8500/splunk-alert \
+  -H "Content-Type: application/json" \
+  -d @sample-splunk-alert.json
+```
+
+Offline demo (no Ollama): `python seed_demo_alert.py`
+
+```bash
+# Terminal 2 — UI API + dashboard
+cd backend && npm start
+cd frontend && npm run dev
+```
+
+Broker alerts appear in the dashboard incident queue with a **LIVE** badge.
+
 ### 3. Orchestrator v2
 
 ```
