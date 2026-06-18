@@ -1,0 +1,20 @@
+---
+alwaysApply: true
+---
+
+# AO-SOC / Aegis-Link
+
+AI-augmented SOC dashboard: Splunk → Python broker (:8500) → Ollama → SQLite → Node API (:4317) → React UI (:5173).
+
+**Version:** 1.6.0 on branch `feat/aegis-link-broker-orchestrator`.
+
+## Commit signing (required for GitHub "Verified")
+
+Commits are SSH-signed locally. GitHub shows **Unverified** until your public key is registered as a **Signing key** (not just Authentication):
+
+1. Open https://github.com/settings/ssh/new
+2. Key type: **Signing key**
+3. Paste the contents of `C:\Users\Ekrami\.ssh\id_rsa.pub`
+4. Save — existing commits become Verified without re-push
+
+Run `.\scripts\show-signing-key.ps1` to print the key and open GitHub settings.
