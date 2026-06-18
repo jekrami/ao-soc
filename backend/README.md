@@ -10,6 +10,8 @@ npm start          # http://localhost:4317
 npm run dev        # auto-restart on file change
 ```
 
+Set `BROKER_URL=http://127.0.0.1:8500` (default) so the API can merge live broker alerts into `/api/incidents`.
+
 ## Endpoints
 
 | Method | Path                                                    | Description                          |
@@ -23,7 +25,9 @@ npm run dev        # auto-restart on file change
 | GET    | `/api/entities/ips`                                     | High-risk IPs                        |
 | GET    | `/api/mitre`                                            | MITRE ATT&CK heatmap payload         |
 | GET    | `/api/system/health`                                    | Live system telemetry (jitters)      |
-| POST   | `/api/incidents/:id/actions/:actionId/execute`          | Trigger a SOAR playbook              |
+| GET    | `/api/incidents/:id/explanations`                      | Persisted AI explanation (v2 table)    |
+| POST   | `/api/incidents/:id/mitigate`                          | Mark broker alert CONTAINED          |
 
-The `system/health` endpoint mutates on every call to simulate live ingest,
-correlation, and inference metrics from the real backend.
+Broker alerts from the orchestrator are merged into `/api/incidents` with `source: "broker"`. Mock seed incidents remain as fallback demos.
+
+The `system/health` endpoint mutates on every call to simulate live ingest, correlation, and inference metrics from the real backend.

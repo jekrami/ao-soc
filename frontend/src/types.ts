@@ -34,11 +34,27 @@ export interface RecommendedAction {
   impact: string;
 }
 
+export interface ContainmentStep {
+  step_id: string;
+  description: string;
+  completed: boolean;
+}
+
 export interface AiExplanation {
   summary: string;
   bullets: string[];
   likelihood: number;
   recommendation: string;
+}
+
+export interface PersistedAiExplanation extends AiExplanation {
+  id: number;
+  incident_id: string;
+  version: string;
+  created_at: string;
+  updated_at: string;
+  evidence: Evidence[];
+  recommended_actions: RecommendedAction[];
 }
 
 export interface Incident {
@@ -57,6 +73,10 @@ export interface Incident {
   mitre_techniques: MitreTechnique[];
   recommended_actions: RecommendedAction[];
   ai_explanation: AiExplanation;
+  /** Present when ingested via Aegis-Link broker (Splunk → SQLite) */
+  source?: 'broker' | 'mock';
+  /** Broker containment checklist (from recommended_containment_steps) */
+  containment_steps?: ContainmentStep[];
 }
 
 export interface Entity {
@@ -81,6 +101,14 @@ export interface Summary {
   mttr_minutes: number;
   total_correlated_incidents: number;
   automation_success_rate: number;
+  /** Count of live broker-ingested alerts merged into the queue */
+  broker_live_alerts?: number;
+  broker_pending_alerts?: number;
+  broker_contained_alerts?: number;
+  /** Demo incidents excluded from live posture when broker is active */
+  demo_incidents?: number;
+  /** Whether summary reflects live broker data, blended, or demo-only */
+  posture_mode?: 'live' | 'blended' | 'demo';
 }
 
 export interface MitreCell {

@@ -1,39 +1,41 @@
 import { create } from 'zustand';
 import { api } from '@/lib/api';
-import type { Incident, Summary, MitrePayload, SystemHealth, Entity } from '@/types';
+import type { Incident, Summary, MitrePayload, SystemHealth, Entity, PersistedAiExplanation } from '@/types';
 
 type SystemState = 'splunk' | 'broker' | 'llm' | 'soar';
 
 interface AoSocState {
-  // Data
   summary: Summary | null;
   incidents: Incident[];
   selectedIncidentId: string | null;
   selectedIncident: Incident | null;
+  selectedExplanation: PersistedAiExplanation | null;
   mitre: MitrePayload | null;
   systemHealth: SystemHealth | null;
   highRiskUsers: Entity[];
   highRiskHosts: Entity[];
   highRiskIps: Entity[];
 
-  // Connection / system liveness (derived)
   systemStatus: Record<SystemState, 'ONLINE' | 'DEGRADED' | 'OFFLINE' | 'UNKNOWN'>;
 
-  // Loading flags
   loading: {
     summary: boolean;
     incidents: boolean;
     incident: boolean;
+    incidentExplanation: boolean;
     mitre: boolean;
     health: boolean;
     entities: boolean;
+    mitigate: boolean;
   };
   error: string | null;
 
-  // Actions
   loadAll: () => Promise<void>;
+  loadIncidents: (includeDemo?: boolean) => Promise<void>;
   refreshHealth: () => Promise<void>;
+  refreshIncidents: () => Promise<void>;
   selectIncident: (id: string) => Promise<void>;
+  mitigateIncident: (id: string) => Promise<boolean>;
   executeAction: (incidentId: string, actionId: string) => Promise<{ execution_id: string; status: string } | null>;
 }
 
@@ -42,6 +44,7 @@ export const useAoSoc = create<AoSocState>((set, get) => ({
   incidents: [],
   selectedIncidentId: null,
   selectedIncident: null,
+  selectedExplanation: null,
   mitre: null,
   systemHealth: null,
   highRiskUsers: [],
@@ -51,7 +54,8 @@ export const useAoSoc = create<AoSocState>((set, get) => ({
   systemStatus: { splunk: 'UNKNOWN', broker: 'UNKNOWN', llm: 'UNKNOWN', soar: 'UNKNOWN' },
 
   loading: {
-    summary: false, incidents: false, incident: false, mitre: false, health: false, entities: false
+    summary: false, incidents: false, incident: false, incidentExplanation: false,
+    mitre: false, health: false, entities: false, mitigate: false,
   },
   error: null,
 
@@ -72,8 +76,15 @@ export const useAoSoc = create<AoSocState>((set, get) => ({
       const items = incidentsRes.items;
       const firstId = items[0]?.id || null;
       let selected: Incident | null = null;
+      let explanation: PersistedAiExplanation | null = null;
       if (firstId) {
-        try { selected = await api<Incident>(`/api/incidents/${firstId}`); } catch { /* ignore */ }
+        try {
+          selected = await api<Incident>(`/api/incidents/${firstId}`);
+          explanation = await api<PersistedAiExplanation>(`/api/incidents/${firstId}/explanations`).catch(() => null);
+        } catch {
+          selected = null;
+          explanation = null;
+        }
       }
 
       set({
@@ -81,6 +92,7 @@ export const useAoSoc = create<AoSocState>((set, get) => ({
         incidents: items,
         selectedIncidentId: firstId,
         selectedIncident: selected,
+        selectedExplanation: explanation,
         mitre,
         systemHealth: health,
         highRiskUsers: users.items,
@@ -92,6 +104,47 @@ export const useAoSoc = create<AoSocState>((set, get) => ({
       set({ error: (e as Error).message });
     } finally {
       set(s => ({ loading: { ...s.loading, summary: false, incidents: false, mitre: false, entities: false, health: false } }));
+    }
+  },
+
+  async loadIncidents(includeDemo = false) {
+    set(s => ({ loading: { ...s.loading, incidents: true } }));
+    try {
+      const path = includeDemo ? '/api/incidents?include=demo' : '/api/incidents';
+      const incidentsRes = await api<{ items: Incident[] }>(path);
+      set({ incidents: incidentsRes.items });
+    } catch (e) {
+      set({ error: (e as Error).message });
+    } finally {
+      set(s => ({ loading: { ...s.loading, incidents: false } }));
+    }
+  },
+
+  async refreshIncidents() {
+    set(s => ({ loading: { ...s.loading, summary: true, incidents: true, mitre: true } }));
+    try {
+      const [summary, incidentsRes, mitre] = await Promise.all([
+        api<Summary>('/api/summary'),
+        api<{ items: Incident[] }>('/api/incidents'),
+        api<MitrePayload>('/api/mitre'),
+      ]);
+      const items = incidentsRes.items;
+      const { selectedIncidentId } = get();
+      const selected = selectedIncidentId
+        ? items.find(i => i.id === selectedIncidentId) ?? null
+        : null;
+
+      set({
+        summary,
+        incidents: items,
+        mitre,
+        selectedIncident: selected,
+        selectedIncidentId: selected ? selected.id : selectedIncidentId,
+      });
+    } catch (e) {
+      set({ error: (e as Error).message });
+    } finally {
+      set(s => ({ loading: { ...s.loading, summary: false, incidents: false, mitre: false } }));
     }
   },
 
@@ -108,14 +161,50 @@ export const useAoSoc = create<AoSocState>((set, get) => ({
   },
 
   async selectIncident(id: string) {
-    set(s => ({ loading: { ...s.loading, incident: true }, selectedIncidentId: id }));
+    set(s => ({
+      loading: { ...s.loading, incident: true, incidentExplanation: true },
+      selectedIncidentId: id,
+      selectedIncident: null,
+      selectedExplanation: null,
+    }));
     try {
-      const inc = await api<Incident>(`/api/incidents/${id}`);
-      set({ selectedIncident: inc });
+      const [inc, explanation] = await Promise.all([
+        api<Incident>(`/api/incidents/${id}`),
+        api<PersistedAiExplanation>(`/api/incidents/${id}/explanations`).catch(() => null)
+      ]);
+      set({ selectedIncident: inc, selectedExplanation: explanation });
+    } catch (e) {
+      set({
+        error: (e as Error).message,
+        selectedIncidentId: null,
+        selectedIncident: null,
+        selectedExplanation: null,
+      });
+    } finally {
+      set(s => ({ loading: { ...s.loading, incident: false, incidentExplanation: false } }));
+    }
+  },
+
+  async mitigateIncident(id: string) {
+    set(s => ({ loading: { ...s.loading, mitigate: true }, error: null }));
+    try {
+      const updated = await api<Incident>(`/api/incidents/${id}/mitigate`, { method: 'POST' });
+      const [summary, mitre] = await Promise.all([
+        api<Summary>('/api/summary'),
+        api<MitrePayload>('/api/mitre'),
+      ]);
+      set(s => ({
+        summary,
+        mitre,
+        incidents: s.incidents.map(i => (i.id === id ? updated : i)),
+        selectedIncident: s.selectedIncidentId === id ? updated : s.selectedIncident,
+      }));
+      return true;
     } catch (e) {
       set({ error: (e as Error).message });
+      return false;
     } finally {
-      set(s => ({ loading: { ...s.loading, incident: false } }));
+      set(s => ({ loading: { ...s.loading, mitigate: false } }));
     }
   },
 
@@ -136,7 +225,7 @@ function deriveStatus(h: SystemHealth | null): Record<SystemState, 'ONLINE' | 'D
   if (!h) return { splunk: 'UNKNOWN', broker: 'UNKNOWN', llm: 'UNKNOWN', soar: 'UNKNOWN' };
   const derive = (s: string, queueDepth: number) => {
     if (s === 'OFFLINE') return 'OFFLINE' as const;
-    if (queueDepth > 50) return 'DEGRADED' as const;
+    if (s === 'DEGRADED' || queueDepth > 50) return 'DEGRADED' as const;
     return 'ONLINE' as const;
   };
   return {

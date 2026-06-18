@@ -1,0 +1,13 @@
+---
+alwaysApply: true
+---
+
+# AO-SOC / Aegis-Link
+
+AI-augmented SOC dashboard: Splunk → Python broker (:8500) → Ollama → SQLite → Node API (:4317) → React UI (:5173).
+
+**Version:** 1.6.0 on branch `feat/aegis-link-broker-orchestrator`.
+
+## Commit signing
+
+Commits are SSH-signed with `~/.ssh/id_rsa.pub`. GitHub branch: `feat/aegis-link-broker-orchestrator` (not merged to `main` yet).

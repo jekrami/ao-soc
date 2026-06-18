@@ -1,9 +1,10 @@
 import { Card, CardHeader, CardTitle, CardSubtitle, CardBody } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { SeverityChip, StatusPill, RiskBadge } from '@/components/ui/chip';
 import { useAoSoc } from '@/store/useAoSoc';
 import { cn, riskColor } from '@/lib/utils';
 import {
-  GitBranch, Clock, Cpu, Network, FileWarning, Server, KeyRound, Database, Upload, Activity
+  GitBranch, Clock, Cpu, Network, FileWarning, Server, KeyRound, Database, Upload, Activity, ShieldCheck, Loader2
 } from 'lucide-react';
 import type { TimelineEvent } from '@/types';
 
@@ -21,8 +22,9 @@ const iconFor = (label: string) => {
 };
 
 export const AttackStoryboard: React.FC = () => {
-  const { selectedIncident, selectIncident, incidents, loading } = useAoSoc();
+  const { selectedIncident, selectIncident, incidents, loading, mitigateIncident } = useAoSoc();
   const inc = selectedIncident;
+  const canMitigate = inc?.source === 'broker' && inc.status !== 'CONTAINED';
 
   if (loading.incident && !inc) {
     return (
@@ -57,6 +59,17 @@ export const AttackStoryboard: React.FC = () => {
           <CardSubtitle>Attack storyboard · {inc.timeline.length} stages</CardSubtitle>
         </div>
         <div className="flex items-center gap-2">
+          {canMitigate && (
+            <Button
+              size="sm"
+              variant="danger"
+              disabled={loading.mitigate}
+              onClick={() => { void mitigateIncident(inc.id); }}
+            >
+              {loading.mitigate ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+              Mitigate Attack
+            </Button>
+          )}
           {incidents.map(i => {
             const active = i.id === inc.id;
             return (

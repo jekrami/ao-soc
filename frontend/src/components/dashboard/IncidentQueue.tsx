@@ -35,7 +35,19 @@ export const IncidentQueue: React.FC = () => {
               )}
             >
               <div className="flex items-center justify-between mb-2">
-                <SeverityChip severity={inc.severity} />
+                <div className="flex items-center gap-1.5">
+                  <SeverityChip severity={inc.severity} />
+                  {inc.source === 'broker' && (
+                    <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold tracking-wide bg-info/15 text-info border border-info/30">
+                      LIVE
+                    </span>
+                  )}
+                  {inc.source === 'mock' && (
+                    <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold tracking-wide bg-muted/15 text-muted border border-border">
+                      DEMO
+                    </span>
+                  )}
+                </div>
                 <div className="flex items-center gap-2">
                   <span className="font-mono text-[11px] text-muted">{inc.id}</span>
                   <StatusPill status={inc.status} />

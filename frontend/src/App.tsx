@@ -5,6 +5,8 @@ import { IncidentsListPage } from '@/pages/IncidentsListPage';
 import { IncidentDetailsPage } from '@/pages/IncidentDetailsPage';
 import { EntityRiskPage } from '@/pages/EntityRiskPage';
 import { SystemHealthPage } from '@/pages/SystemHealthPage';
+import { AlertsPage } from '@/pages/AlertsPage';
+import { APP_VERSION } from '@/version';
 
 export default function App() {
   return (
@@ -14,6 +16,7 @@ export default function App() {
         <Routes>
           <Route path="/"                        element={<DashboardPage />} />
           <Route path="/incidents"               element={<IncidentsListPage />} />
+          <Route path="/alerts"                 element={<AlertsPage />} />
           <Route path="/incidents/:id"           element={<IncidentDetailsPage />} />
           <Route path="/entities"                element={<EntityRiskPage />} />
           <Route path="/health"                  element={<SystemHealthPage />} />
@@ -21,7 +24,7 @@ export default function App() {
         </Routes>
       </main>
       <footer className="border-t border-border py-3 px-4 lg:px-6 text-[11px] text-muted flex items-center justify-between">
-        <span>AO-SOC Command Center · v1.0.0</span>
+        <span>AO-SOC Command Center · v{APP_VERSION}</span>
         <span className="font-mono">Splunk → AI Broker → Local LLM (Qwen) → SOAR</span>
       </footer>
     </div>

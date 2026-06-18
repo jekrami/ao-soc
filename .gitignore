@@ -1,0 +1,7 @@
+# Runtime SQLite (broker DB belongs under orchestrator/, not repo root)
+soc_matrix.db
+*.db
+
+# Cursor — keep project rules, ignore local state
+.cursor/*
+!.cursor/rules/

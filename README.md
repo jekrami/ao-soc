@@ -23,6 +23,8 @@ Local LLM (Qwen via Ollama)
     ↓
 Response Layer / SOAR
     ↓
+Python Orchestrator v2 + SQLite AI explanation DB
+    ↓
 Human Analyst
 ```
 
@@ -33,6 +35,7 @@ turns it into a clean command center for the human on shift.
 
 - **Frontend**: React 18, TypeScript, Vite, TailwindCSS, ShadCN-style primitives, Recharts, Zustand, react-router-dom, lucide-react
 - **Backend (mock)**: Node.js, Express
+- **Orchestrator v2**: Python FastAPI + SQLite for AI explanation persistence
 - **Theme**: dark, minimalist, no flashy animation. Tailored for 1920×1080 SOC monitors, 3440×1440 ultrawide, and 4K wallboards
 
 ## Project Layout
@@ -43,6 +46,12 @@ ao-soc/
 │   ├── server.js               All endpoints
 │   ├── mockData.js             Realistic seed data + jittering health
 │   ├── package.json
+│   └── README.md
+├── orchestrator/               Python v2 AI orchestrator + SQLite persistence
+│   ├── soc_orchestrator.py      FastAPI service for explanation storage
+│   ├── db.py                   SQLite schema and persistence helpers
+│   ├── models.py               Pydantic payload models
+│   ├── requirements.txt
 │   └── README.md
 └── frontend/                   Vite + React app (port 5173)
     ├── src/
@@ -87,11 +96,78 @@ npm run dev        # http://localhost:5173
 
 The frontend's Vite dev server proxies `/api/*` to the backend on port 4317.
 
+**Manual broker test (coding phase):**
+
+```bash
+# Terminal 1 — broker
+cd orchestrator && python -m uvicorn soc_orchestrator:app --host 0.0.0.0 --port 8500
+```
+
+**Trigger alert — Windows (PowerShell):** use a JSON file or `Invoke-RestMethod` (plain `curl` mangles JSON on Windows):
+
+```powershell
+cd orchestrator
+.\trigger-alert.ps1
+```
+
+Or:
+
+```powershell
+Invoke-RestMethod -Uri http://127.0.0.1:8500/splunk-alert -Method POST -ContentType "application/json" -Body (Get-Content -Raw .\sample-splunk-alert.json)
+```
+
+Or with real curl.exe:
+
+```powershell
+curl.exe -X POST http://127.0.0.1:8500/splunk-alert -H "Content-Type: application/json" -d "@sample-splunk-alert.json"
+```
+
+**Linux/macOS:**
+
+```bash
+curl -X POST http://127.0.0.1:8500/splunk-alert \
+  -H "Content-Type: application/json" \
+  -d @sample-splunk-alert.json
+```
+
+Offline demo (no Ollama): `python seed_demo_alert.py`
+
+```bash
+# Terminal 2 — UI API + dashboard
+cd backend && npm start
+cd frontend && npm run dev
+```
+
+Broker alerts appear in the dashboard incident queue with a **LIVE** badge.
+
+### 3. Orchestrator v2
+
+```
+cd orchestrator
+python -m pip install -r requirements.txt
+uvicorn soc_orchestrator:app --host 0.0.0.0 --port 8500 --reload
+```
+
+The **Aegis-Link broker** listens on port **8500** and stores Splunk alerts + AI containment steps in `orchestrator/soc_matrix.db`.
+
+**Splunk webhook:** `POST http://127.0.0.1:8500/splunk-alert`
+
+**Dashboard API:**
+
+- `GET /health`
+- `GET /api/alerts` — alert log + severity/mitigation metrics
+- `POST /api/alerts/{id}/mitigate`
+- `POST /v2/explanations`
+- `POST /v2/explanations/generate`
+- `GET /v2/explanations/{incident_id}`
+- `GET /v2/explanations`
+
 ## Pages
 
 | Route             | Purpose                                                           |
 | ----------------- | ----------------------------------------------------------------- |
 | `/`               | Command Center — all six rows in one view                         |
+| `/alerts`         | Live broker alert log + interactive playbook panel                |
 | `/incidents`      | Full incident list with severity, risk, and confidence            |
 | `/incidents/:id`  | Incident details: storyboard, evidence, MITRE, AI actions         |
 | `/entities`       | High-risk users / hosts / IPs with search                         |
@@ -109,6 +185,7 @@ The frontend's Vite dev server proxies `/api/*` to the backend on port 4317.
 | GET    | `/api/mitre`                                        | MITRE ATT&CK heatmap payload         |
 | GET    | `/api/system/health`                                | Live system telemetry (jitters)      |
 | POST   | `/api/incidents/:id/actions/:actionId/execute`      | Trigger a SOAR playbook              |
+| GET    | `/api/incidents/:id/explanations`                  | Retrieve persisted AI explanation     |
 
 ## Design Notes
 
@@ -134,3 +211,19 @@ Replace the contents of `backend/mockData.js` with real adapters:
 
 The frontend is data-driven and will pick up the new shape as long as the JSON
 matches the types in `frontend/src/types.ts`.
+
+## New Features
+
+- `orchestrator/` stores AI explanations (assessments, evidence, recommended actions) in SQLite.
+- New backend adapter exposes persisted explanations at `/api/incidents/:id/explanations`.
+- The dashboard can now retrieve both in-memory incident details and persisted explanation records.
+- **v1.3.0** — Broker live metrics (LIVE / PENDING / CONTAINED), auto-refresh every 15s, and **Mitigate Attack** for broker incidents.
+- **v1.4.0** — Rich LLM enrichment: attack timeline, MITRE techniques, structured evidence, and SOAR actions persisted in SQLite.
+- **v1.5.0** — Dedicated `/alerts` page: live metrics grid, alert log table, interactive containment checklist, and mitigate action.
+- **v1.6.0** — Posture fusion: broker MITRE heatmap, live executive summary, real broker health in pipeline status, demo incidents filtered when broker is active.
+
+## Authorship
+
+**Version:** 1.6.0 (see `VERSION` — increment on each release commit)
+
+Written by J.Ekrami, co-written with GitHub Copilot and Composer (Cursor AI).

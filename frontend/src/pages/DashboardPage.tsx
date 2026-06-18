@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useAoSoc } from '@/store/useAoSoc';
 import { ExecutiveSummary }      from '@/components/dashboard/ExecutiveSummary';
+import { BrokerLiveMetrics }   from '@/components/dashboard/BrokerLiveMetrics';
 import { IncidentQueue }         from '@/components/dashboard/IncidentQueue';
 import { AttackStoryboard }      from '@/components/dashboard/AttackStoryboard';
 import { RecommendedActions }    from '@/components/dashboard/RecommendedActions';
@@ -10,9 +11,14 @@ import { AiExplanation }         from '@/components/dashboard/AiExplanation';
 import { SystemHealthPanel }     from '@/components/dashboard/SystemHealthPanel';
 
 export const DashboardPage: React.FC = () => {
-  const { loadAll, error, loading } = useAoSoc();
+  const { loadAll, refreshIncidents, error, loading } = useAoSoc();
 
   useEffect(() => { void loadAll(); }, [loadAll]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => { void refreshIncidents(); }, 15_000);
+    return () => window.clearInterval(timer);
+  }, [refreshIncidents]);
 
   return (
     <div className="space-y-4">
@@ -25,7 +31,10 @@ export const DashboardPage: React.FC = () => {
       {/* ROW 1 */}
       <section aria-label="Executive Summary">
         <SectionHeader title="Executive Summary" subtitle="What the security posture looks like right now" />
-        <ExecutiveSummary />
+        <BrokerLiveMetrics />
+        <div className="mt-3">
+          <ExecutiveSummary />
+        </div>
       </section>
 
       {/* ROW 2 */}

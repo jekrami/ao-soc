@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
-import { Shield, Activity, Server, Users, Network, Cpu, FileWarning } from 'lucide-react';
+import { Shield, Activity, Server, Users, Network, Cpu, FileWarning, Radio } from 'lucide-react';
 import { useAoSoc } from '@/store/useAoSoc';
 import { StatusDot } from '@/components/ui/status-dot';
 import { cn, fmtClock, fmtDate } from '@/lib/utils';
 
 const navItems = [
   { to: '/',          label: 'Command Center', icon: Shield        },
+  { to: '/alerts',    label: 'Live Alerts',    icon: Radio         },
   { to: '/incidents', label: 'Incidents',      icon: FileWarning   },
   { to: '/entities',  label: 'Entity Risk',    icon: Users         },
   { to: '/health',    label: 'System Health',  icon: Activity      }
