@@ -8,13 +8,6 @@ AI-augmented SOC dashboard: Splunk → Python broker (:8500) → Ollama → SQLi
 
 **Version:** 1.6.0 on branch `feat/aegis-link-broker-orchestrator`.
 
-## Commit signing (required for GitHub "Verified")
+## Commit signing
 
-Commits are SSH-signed locally. GitHub shows **Unverified** until your public key is registered as a **Signing key** (not just Authentication):
-
-1. Open https://github.com/settings/ssh/new
-2. Key type: **Signing key**
-3. Paste the contents of `C:\Users\Ekrami\.ssh\id_rsa.pub`
-4. Save — existing commits become Verified without re-push
-
-Run `.\scripts\show-signing-key.ps1` to print the key and open GitHub settings.
+Commits are SSH-signed with `~/.ssh/id_rsa.pub`. GitHub branch: `feat/aegis-link-broker-orchestrator` (not merged to `main` yet).
