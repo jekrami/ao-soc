@@ -5,9 +5,11 @@ if (-not (Test-Path $keyPath)) {
     exit 1
 }
 
-Write-Host "`nAdd this key on GitHub as Key type: Signing key`n" -ForegroundColor Cyan
+Write-Host "`nGit signs commits with: $keyPath" -ForegroundColor Cyan
+Write-Host "`nOn GitHub you MUST add this key with Key type: Signing key" -ForegroundColor Yellow
+Write-Host "(Authentication keys do NOT verify commits — upload the same key again as Signing key)`n" -ForegroundColor Yellow
 Get-Content $keyPath
-Write-Host "`nFingerprint:" -ForegroundColor Cyan
+Write-Host "`nFingerprint — must match on GitHub:" -ForegroundColor Cyan
 ssh-keygen -lf $keyPath
 
 try {
