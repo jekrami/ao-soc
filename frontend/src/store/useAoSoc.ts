@@ -31,6 +31,7 @@ interface AoSocState {
   error: string | null;
 
   loadAll: () => Promise<void>;
+  loadIncidents: (includeDemo?: boolean) => Promise<void>;
   refreshHealth: () => Promise<void>;
   refreshIncidents: () => Promise<void>;
   selectIncident: (id: string) => Promise<void>;
@@ -106,12 +107,26 @@ export const useAoSoc = create<AoSocState>((set, get) => ({
     }
   },
 
-  async refreshIncidents() {
-    set(s => ({ loading: { ...s.loading, summary: true, incidents: true } }));
+  async loadIncidents(includeDemo = false) {
+    set(s => ({ loading: { ...s.loading, incidents: true } }));
     try {
-      const [summary, incidentsRes] = await Promise.all([
+      const path = includeDemo ? '/api/incidents?include=demo' : '/api/incidents';
+      const incidentsRes = await api<{ items: Incident[] }>(path);
+      set({ incidents: incidentsRes.items });
+    } catch (e) {
+      set({ error: (e as Error).message });
+    } finally {
+      set(s => ({ loading: { ...s.loading, incidents: false } }));
+    }
+  },
+
+  async refreshIncidents() {
+    set(s => ({ loading: { ...s.loading, summary: true, incidents: true, mitre: true } }));
+    try {
+      const [summary, incidentsRes, mitre] = await Promise.all([
         api<Summary>('/api/summary'),
         api<{ items: Incident[] }>('/api/incidents'),
+        api<MitrePayload>('/api/mitre'),
       ]);
       const items = incidentsRes.items;
       const { selectedIncidentId } = get();
@@ -122,13 +137,14 @@ export const useAoSoc = create<AoSocState>((set, get) => ({
       set({
         summary,
         incidents: items,
+        mitre,
         selectedIncident: selected,
         selectedIncidentId: selected ? selected.id : selectedIncidentId,
       });
     } catch (e) {
       set({ error: (e as Error).message });
     } finally {
-      set(s => ({ loading: { ...s.loading, summary: false, incidents: false } }));
+      set(s => ({ loading: { ...s.loading, summary: false, incidents: false, mitre: false } }));
     }
   },
 
@@ -173,9 +189,13 @@ export const useAoSoc = create<AoSocState>((set, get) => ({
     set(s => ({ loading: { ...s.loading, mitigate: true }, error: null }));
     try {
       const updated = await api<Incident>(`/api/incidents/${id}/mitigate`, { method: 'POST' });
-      const summary = await api<Summary>('/api/summary');
+      const [summary, mitre] = await Promise.all([
+        api<Summary>('/api/summary'),
+        api<MitrePayload>('/api/mitre'),
+      ]);
       set(s => ({
         summary,
+        mitre,
         incidents: s.incidents.map(i => (i.id === id ? updated : i)),
         selectedIncident: s.selectedIncidentId === id ? updated : s.selectedIncident,
       }));
@@ -205,7 +225,7 @@ function deriveStatus(h: SystemHealth | null): Record<SystemState, 'ONLINE' | 'D
   if (!h) return { splunk: 'UNKNOWN', broker: 'UNKNOWN', llm: 'UNKNOWN', soar: 'UNKNOWN' };
   const derive = (s: string, queueDepth: number) => {
     if (s === 'OFFLINE') return 'OFFLINE' as const;
-    if (queueDepth > 50) return 'DEGRADED' as const;
+    if (s === 'DEGRADED' || queueDepth > 50) return 'DEGRADED' as const;
     return 'ONLINE' as const;
   };
   return {

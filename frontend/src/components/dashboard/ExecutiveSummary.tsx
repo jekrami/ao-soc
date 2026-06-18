@@ -66,7 +66,9 @@ export const ExecutiveSummary: React.FC = () => {
       <MetricCard label="AI Confidence"   value={`${summary.ai_confidence_avg}%`}  icon={Brain}        tone="info" />
       <MetricCard label="MTTD"            value={`${summary.mttd_minutes}m`}       icon={Timer}        tone="info" />
       <MetricCard label="MTTR"            value={`${summary.mttr_minutes}m`}       icon={TimerReset}   tone="info" />
-      <MetricCard label="Correlated"      value={fmtNumber(summary.total_correlated_incidents)} icon={Layers} tone="info" />
+      <MetricCard label="Correlated"      value={fmtNumber(summary.total_correlated_incidents)} icon={Layers} tone="info"
+        hint={summary.posture_mode === 'live' ? 'Live posture' : summary.posture_mode === 'blended' ? `${summary.demo_incidents ?? 0} demo hidden` : undefined}
+      />
       <MetricCard
         label="Automation"
         value={`${summary.automation_success_rate}%`}
@@ -79,7 +81,9 @@ export const ExecutiveSummary: React.FC = () => {
         value={summary.overall_risk_label}
         icon={Gauge}
         tone={riskTone}
-        hint={summary.overall_risk_score >= 80 ? 'Immediate review' : summary.overall_risk_score >= 60 ? 'Heightened' : 'Within bounds'}
+        hint={summary.posture_mode === 'live'
+          ? 'Broker-driven'
+          : summary.overall_risk_score >= 80 ? 'Immediate review' : summary.overall_risk_score >= 60 ? 'Heightened' : 'Within bounds'}
       />
     </div>
   );

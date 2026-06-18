@@ -105,6 +105,10 @@ export interface Summary {
   broker_live_alerts?: number;
   broker_pending_alerts?: number;
   broker_contained_alerts?: number;
+  /** Demo incidents excluded from live posture when broker is active */
+  demo_incidents?: number;
+  /** Whether summary reflects live broker data, blended, or demo-only */
+  posture_mode?: 'live' | 'blended' | 'demo';
 }
 
 export interface MitreCell {

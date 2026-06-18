@@ -11,13 +11,11 @@ import {
   highRiskUsers,
   highRiskHosts,
   highRiskIps,
-  mitreHeatmap,
-  mitreTactics,
-  jitterHealth
 } from './mockData.js';
 import { getExplanationByIncidentId } from './explanationStore.js';
 import { isBrokerIncident, mitigateBrokerIncident } from './alertStore.js';
-import { buildSummary, getIncident, listIncidents } from './incidents.js';
+import { buildSummary, buildMitre, getIncident, listIncidents } from './incidents.js';
+import { buildSystemHealth } from './systemHealth.js';
 
 const app = express();
 app.use(cors());
@@ -42,7 +40,8 @@ app.get('/api/summary', async (_req, res) => {
 
 app.get('/api/incidents', async (req, res) => {
   const severity = (req.query.severity || '').toUpperCase();
-  const items = await listIncidents(severity);
+  const includeDemo = req.query.include === 'demo';
+  const items = await listIncidents(severity, { includeDemo });
   res.json({ count: items.length, items });
 });
 
@@ -56,11 +55,13 @@ app.get('/api/entities/users', (_req, res) => res.json({ count: highRiskUsers.le
 app.get('/api/entities/hosts', (_req, res) => res.json({ count: highRiskHosts.length, items: highRiskHosts }));
 app.get('/api/entities/ips',   (_req, res) => res.json({ count: highRiskIps.length,   items: highRiskIps }));
 
-app.get('/api/mitre', (_req, res) => {
-  res.json({ tactics: mitreTactics, heatmap: mitreHeatmap });
+app.get('/api/mitre', async (_req, res) => {
+  res.json(await buildMitre());
 });
 
-app.get('/api/system/health', (_req, res) => res.json(jitterHealth()));
+app.get('/api/system/health', async (_req, res) => {
+  res.json(await buildSystemHealth());
+});
 
 app.get('/api/incidents/:id/explanations', async (req, res) => {
   const explanation = await getExplanationByIncidentId(req.params.id);

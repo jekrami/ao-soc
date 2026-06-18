@@ -220,9 +220,10 @@ matches the types in `frontend/src/types.ts`.
 - **v1.3.0** — Broker live metrics (LIVE / PENDING / CONTAINED), auto-refresh every 15s, and **Mitigate Attack** for broker incidents.
 - **v1.4.0** — Rich LLM enrichment: attack timeline, MITRE techniques, structured evidence, and SOAR actions persisted in SQLite.
 - **v1.5.0** — Dedicated `/alerts` page: live metrics grid, alert log table, interactive containment checklist, and mitigate action.
+- **v1.6.0** — Posture fusion: broker MITRE heatmap, live executive summary, real broker health in pipeline status, demo incidents filtered when broker is active.
 
 ## Authorship
 
-**Version:** 1.5.0 (see `VERSION` — increment on each release commit)
+**Version:** 1.6.0 (see `VERSION` — increment on each release commit)
 
 Written by J.Ekrami, co-written with GitHub Copilot and Composer (Cursor AI).

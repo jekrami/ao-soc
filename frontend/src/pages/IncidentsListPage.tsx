@@ -6,9 +6,9 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, AlertOctagon } from 'lucide-react';
 
 export const IncidentsListPage: React.FC = () => {
-  const { incidents, loadAll } = useAoSoc();
+  const { incidents, loadIncidents, summary } = useAoSoc();
 
-  useEffect(() => { void loadAll(); }, [loadAll]);
+  useEffect(() => { void loadIncidents(true); }, [loadIncidents]);
 
   return (
     <div className="space-y-3">
@@ -23,7 +23,7 @@ export const IncidentsListPage: React.FC = () => {
             <AlertOctagon className="h-4 w-4 text-info" />
             <CardTitle>Incident Queue</CardTitle>
           </div>
-          <CardSubtitle>{incidents.length} total</CardSubtitle>
+          <CardSubtitle>{incidents.length} total{summary?.demo_incidents ? ` · ${summary.demo_incidents} demo` : ''}</CardSubtitle>
         </CardHeader>
         <CardBody className="p-0">
           <div className="grid grid-cols-12 px-4 py-2 text-[11px] uppercase tracking-wider text-muted border-b border-border">
@@ -41,7 +41,15 @@ export const IncidentsListPage: React.FC = () => {
                   to={`/incidents/${inc.id}`}
                   className="grid grid-cols-12 items-center gap-3 px-4 py-3 hover:bg-surface2/50 transition-colors"
                 >
-                  <div className="col-span-2"><SeverityChip severity={inc.severity} /></div>
+                  <div className="col-span-2 flex items-center gap-1.5">
+                    <SeverityChip severity={inc.severity} />
+                    {inc.source === 'broker' && (
+                      <span className="rounded px-1 py-0.5 text-[9px] font-semibold bg-info/15 text-info border border-info/30">LIVE</span>
+                    )}
+                    {inc.source === 'mock' && (
+                      <span className="rounded px-1 py-0.5 text-[9px] font-semibold bg-muted/15 text-muted border border-border">DEMO</span>
+                    )}
+                  </div>
                   <div className="col-span-2"><StatusPill status={inc.status} /></div>
                   <div className="col-span-5 text-sm text-fg truncate">
                     <span className="font-mono text-[11px] text-muted mr-2">{inc.id}</span>

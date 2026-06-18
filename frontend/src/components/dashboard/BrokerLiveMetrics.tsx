@@ -23,6 +23,9 @@ export const BrokerLiveMetrics: React.FC = () => {
         <MetricPill label="LIVE" value={live} tone="info" />
         <MetricPill label="PENDING" value={pending} tone="high" icon={ShieldAlert} />
         <MetricPill label="CONTAINED" value={contained} tone="low" icon={ShieldCheck} />
+        {summary?.posture_mode === 'live' && (
+          <span className="text-[10px] uppercase tracking-wider text-muted">Live posture · demo hidden</span>
+        )}
       </div>
       <Button
         size="sm"
