@@ -5,6 +5,7 @@ import { IncidentsListPage } from '@/pages/IncidentsListPage';
 import { IncidentDetailsPage } from '@/pages/IncidentDetailsPage';
 import { EntityRiskPage } from '@/pages/EntityRiskPage';
 import { SystemHealthPage } from '@/pages/SystemHealthPage';
+import { AlertsPage } from '@/pages/AlertsPage';
 import { APP_VERSION } from '@/version';
 
 export default function App() {
@@ -15,6 +16,7 @@ export default function App() {
         <Routes>
           <Route path="/"                        element={<DashboardPage />} />
           <Route path="/incidents"               element={<IncidentsListPage />} />
+          <Route path="/alerts"                 element={<AlertsPage />} />
           <Route path="/incidents/:id"           element={<IncidentDetailsPage />} />
           <Route path="/entities"                element={<EntityRiskPage />} />
           <Route path="/health"                  element={<SystemHealthPage />} />

@@ -167,6 +167,7 @@ The **Aegis-Link broker** listens on port **8500** and stores Splunk alerts + AI
 | Route             | Purpose                                                           |
 | ----------------- | ----------------------------------------------------------------- |
 | `/`               | Command Center — all six rows in one view                         |
+| `/alerts`         | Live broker alert log + interactive playbook panel                |
 | `/incidents`      | Full incident list with severity, risk, and confidence            |
 | `/incidents/:id`  | Incident details: storyboard, evidence, MITRE, AI actions         |
 | `/entities`       | High-risk users / hosts / IPs with search                         |
@@ -218,9 +219,10 @@ matches the types in `frontend/src/types.ts`.
 - The dashboard can now retrieve both in-memory incident details and persisted explanation records.
 - **v1.3.0** — Broker live metrics (LIVE / PENDING / CONTAINED), auto-refresh every 15s, and **Mitigate Attack** for broker incidents.
 - **v1.4.0** — Rich LLM enrichment: attack timeline, MITRE techniques, structured evidence, and SOAR actions persisted in SQLite.
+- **v1.5.0** — Dedicated `/alerts` page: live metrics grid, alert log table, interactive containment checklist, and mitigate action.
 
 ## Authorship
 
-**Version:** 1.4.0 (see `VERSION` — increment on each release commit)
+**Version:** 1.5.0 (see `VERSION` — increment on each release commit)
 
 Written by J.Ekrami, co-written with GitHub Copilot and Composer (Cursor AI).

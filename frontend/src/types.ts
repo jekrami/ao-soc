@@ -34,6 +34,12 @@ export interface RecommendedAction {
   impact: string;
 }
 
+export interface ContainmentStep {
+  step_id: string;
+  description: string;
+  completed: boolean;
+}
+
 export interface AiExplanation {
   summary: string;
   bullets: string[];
@@ -69,6 +75,8 @@ export interface Incident {
   ai_explanation: AiExplanation;
   /** Present when ingested via Aegis-Link broker (Splunk → SQLite) */
   source?: 'broker' | 'mock';
+  /** Broker containment checklist (from recommended_containment_steps) */
+  containment_steps?: ContainmentStep[];
 }
 
 export interface Entity {

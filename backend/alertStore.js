@@ -118,6 +118,12 @@ export function mapAlertToIncident(alert) {
     ? alert.bullets
     : steps.map(s => s.description);
 
+  const containment_steps = steps.map(s => ({
+    step_id: s.step_id,
+    description: s.description,
+    completed: Boolean(s.completed),
+  }));
+
   return {
     id: alert.id,
     source: 'broker',
@@ -134,6 +140,7 @@ export function mapAlertToIncident(alert) {
     evidence,
     mitre_techniques: mitre,
     recommended_actions: actions,
+    containment_steps,
     ai_explanation: {
       summary: alert.incident_analysis,
       bullets,
