@@ -1,10 +1,11 @@
 import os
 import uuid
+import json
 from datetime import datetime, timezone
 from typing import List, Optional
 
 from sqlalchemy import (Boolean, Column, DateTime, Float, ForeignKey, Integer,
-                        MetaData, String, Table, func, select, update)
+                        MetaData, String, Table, func, select, text, update)
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -28,6 +29,7 @@ security_events = Table(
     Column('incident_analysis', String, nullable=False, default=''),
     Column('mitigation_status', String(16), nullable=False, default='PENDING'),
     Column('raw_payload', String, nullable=True),
+    Column('enrichment_json', String, nullable=True),
     Column('created_at', DateTime, nullable=False),
     Column('updated_at', DateTime, nullable=False),
 )
@@ -95,6 +97,13 @@ def _utcnow() -> datetime:
 async def init_db() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(metadata.create_all)
+        await conn.run_sync(_migrate_security_events)
+
+
+def _migrate_security_events(conn) -> None:
+    cols = {row[1] for row in conn.execute(text('PRAGMA table_info(security_events)')).fetchall()}
+    if 'enrichment_json' not in cols:
+        conn.execute(text('ALTER TABLE security_events ADD COLUMN enrichment_json TEXT'))
 
 
 def _normalize_steps(steps: List) -> List[dict]:
@@ -133,8 +142,19 @@ async def _load_containment_steps(session: AsyncSession, event_id: int) -> List[
     ]
 
 
+def _parse_enrichment(row) -> dict:
+    raw = row.get('enrichment_json') if isinstance(row, dict) else row['enrichment_json']
+    if not raw:
+        return {}
+    try:
+        return json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return {}
+
+
 def _serialize_event(row, steps: List[dict]) -> dict:
-    return {
+    enrichment = _parse_enrichment(row)
+    payload = {
         'id': row['alert_id'],
         'db_id': row['id'],
         'timestamp': row['timestamp'].isoformat() if row['timestamp'] else None,
@@ -148,6 +168,12 @@ def _serialize_event(row, steps: List[dict]) -> dict:
         'created_at': row['created_at'].isoformat() if row['created_at'] else None,
         'updated_at': row['updated_at'].isoformat() if row['updated_at'] else None,
     }
+    if enrichment:
+        payload['enrichment'] = enrichment
+        for key in ('timeline', 'evidence', 'mitre_techniques', 'recommended_actions', 'bullets', 'likelihood', 'recommendation'):
+            if enrichment.get(key) is not None:
+                payload[key] = enrichment[key]
+    return payload
 
 
 async def create_security_event(
@@ -161,10 +187,12 @@ async def create_security_event(
     containment_steps: List,
     raw_payload: Optional[str] = None,
     alert_id: Optional[str] = None,
+    enrichment: Optional[dict] = None,
 ) -> dict:
     now = _utcnow()
     alert_id = alert_id or f'ALT-{uuid.uuid4().hex[:12].upper()}'
     steps = _normalize_steps(containment_steps)
+    enrichment_json = json.dumps(enrichment) if enrichment else None
 
     async with async_session() as session:
         insert_stmt = security_events.insert().values(
@@ -177,6 +205,7 @@ async def create_security_event(
             incident_analysis=incident_analysis,
             mitigation_status='PENDING',
             raw_payload=raw_payload,
+            enrichment_json=enrichment_json,
             created_at=now,
             updated_at=now,
         )

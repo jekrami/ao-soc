@@ -2,7 +2,6 @@ import { brokerAvailable, brokerFetch } from './brokerClient.js';
 
 const SEVERITY_RISK = { CRITICAL: 97, HIGH: 78, MEDIUM: 62, LOW: 35 };
 const SEVERITY_CONFIDENCE = { CRITICAL: 94, HIGH: 88, MEDIUM: 71, LOW: 55 };
-const SEVERITY_LIKELIHOOD = SEVERITY_CONFIDENCE;
 
 function formatTime(value) {
   if (!value) return '--:--';
@@ -52,15 +51,72 @@ function mapStepsToActions(steps, alert) {
   }));
 }
 
+function fallbackTimeline(alert, steps) {
+  const ts = formatTime(alert.timestamp);
+  return [
+    {
+      time: ts,
+      label: 'IDS Alert',
+      detail: `${alert.signature} · ${alert.source_ip} → ${alert.dest_ip}`,
+      mitre: 'T1071.001',
+    },
+    ...steps.map((step, index) => ({
+      time: ts,
+      label: `Containment ${index + 1}`,
+      detail: step.description,
+      mitre: 'T1562',
+    })),
+  ];
+}
+
+function fallbackEvidence(alert) {
+  return [
+    {
+      id: `EV-${alert.id}-NET-SRC`,
+      type: 'network',
+      src: alert.source_ip,
+      signal: alert.signature || 'Suricata IDS match',
+      weight: 0.88,
+    },
+    {
+      id: `EV-${alert.id}-NET-DST`,
+      type: 'network',
+      src: alert.dest_ip,
+      signal: `Flow involving ${alert.dest_ip}`,
+      weight: 0.76,
+    },
+  ];
+}
+
+function mapSoarActions(rawActions, steps, alert) {
+  if (Array.isArray(rawActions) && rawActions.length) {
+    return rawActions.map(a => ({
+      id: a.id,
+      action: a.action,
+      target: a.target,
+      reason: a.reason,
+      confidence: a.confidence ?? 85,
+      impact: a.impact ?? 'Pending analyst execution',
+    }));
+  }
+  return mapStepsToActions(steps, alert);
+}
+
 export function mapAlertToIncident(alert) {
   const steps = alert.recommended_containment_steps || [];
   const severity = String(alert.threat_severity || 'MEDIUM').toUpperCase();
   const riskScore = SEVERITY_RISK[severity] ?? 62;
-  const confidence = SEVERITY_CONFIDENCE[severity] ?? 71;
-  const likelihood = SEVERITY_LIKELIHOOD[severity] ?? 71;
-  const actions = mapStepsToActions(steps, alert);
-  const ts = formatTime(alert.timestamp);
-  const bulletSteps = steps.map(s => s.description);
+  const confidence = alert.likelihood ?? SEVERITY_CONFIDENCE[severity] ?? 71;
+  const likelihood = alert.likelihood ?? confidence;
+  const timeline = alert.timeline?.length ? alert.timeline : fallbackTimeline(alert, steps);
+  const evidence = alert.evidence?.length ? alert.evidence : fallbackEvidence(alert);
+  const mitre = alert.mitre_techniques?.length
+    ? alert.mitre_techniques
+    : [{ id: 'T1071.001', tactic: 'Command and Control', name: 'Application Layer Protocol' }];
+  const actions = mapSoarActions(alert.recommended_actions, steps, alert);
+  const bullets = alert.bullets?.length
+    ? alert.bullets
+    : steps.map(s => s.description);
 
   return {
     id: alert.id,
@@ -74,50 +130,16 @@ export function mapAlertToIncident(alert) {
     owner: 'aegis-link-broker',
     first_seen: formatTime(alert.created_at || alert.timestamp),
     last_seen: formatTime(alert.updated_at || alert.timestamp),
-    timeline: [
-      {
-        time: ts,
-        label: 'IDS Alert',
-        detail: `${alert.signature} · ${alert.source_ip} → ${alert.dest_ip}`,
-        mitre: 'T1071.001',
-      },
-      ...steps.map((step, index) => ({
-        time: ts,
-        label: `Containment ${index + 1}`,
-        detail: step.description,
-        mitre: 'T1562',
-      })),
-    ],
-    evidence: [
-      {
-        id: `EV-${alert.id}-NET-SRC`,
-        type: 'network',
-        src: alert.source_ip,
-        signal: alert.signature || 'Suricata IDS match',
-        weight: 0.88,
-      },
-      {
-        id: `EV-${alert.id}-NET-DST`,
-        type: 'network',
-        src: alert.dest_ip,
-        signal: `Flow involving ${alert.dest_ip}`,
-        weight: 0.76,
-      },
-    ],
-    mitre_techniques: [
-      { id: 'T1071.001', tactic: 'Command and Control', name: 'Application Layer Protocol' },
-      { id: 'T1562', tactic: 'Defense Evasion', name: 'Impair Defenses' },
-    ],
+    timeline,
+    evidence,
+    mitre_techniques: mitre,
     recommended_actions: actions,
     ai_explanation: {
       summary: alert.incident_analysis,
-      bullets: bulletSteps.length
-        ? bulletSteps
-        : [`Suricata signature: ${alert.signature}`, `Source: ${alert.source_ip}`, `Destination: ${alert.dest_ip}`],
+      bullets,
       likelihood,
-      recommendation: actions[0]
-        ? `${actions[0].action} on ${actions[0].target}: ${actions[0].reason}`
-        : 'Review alert and initiate containment.',
+      recommendation: alert.recommendation
+        || (actions[0] ? `${actions[0].action} on ${actions[0].target}: ${actions[0].reason}` : 'Review alert and initiate containment.'),
     },
   };
 }

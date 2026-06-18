@@ -1,5 +1,6 @@
 import json
 import os
+import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -21,6 +22,7 @@ from db import (
     list_explanations as list_explanations_db,
     mitigate_alert,
 )
+from enrichment import build_enrichment
 from llm import MODEL_NAME, OLLAMA_ENDPOINT, call_ollama, parse_json_response
 from models import AiExplanationPayload, GenerateExplanationRequest, SplunkAlertPayload
 
@@ -111,12 +113,20 @@ def _extract_alert_fields(body: Dict[str, Any]) -> Dict[str, Any]:
 
 def build_splunk_analysis_prompt(fields: Dict[str, Any]) -> str:
     raw = fields['raw']
+    ts = fields['timestamp'].strftime('%H:%M') if fields['timestamp'] else 'unknown'
     return '\n'.join([
         'You are a senior SOC analyst reviewing a Suricata IDS alert from Splunk.',
-        'Return a JSON object with exactly these keys:',
-        '  threat_severity (one of: CRITICAL, HIGH, MEDIUM, LOW)',
-        '  incident_analysis (concise narrative of what happened and why it matters)',
-        '  recommended_containment_steps (array of actionable strings for the analyst checklist)',
+        'Return a JSON object with these keys:',
+        '  threat_severity (CRITICAL | HIGH | MEDIUM | LOW)',
+        '  incident_analysis (concise narrative)',
+        '  likelihood (0-100 integer)',
+        '  recommended_containment_steps (array of checklist strings)',
+        '  attack_timeline (array of {time, label, detail, mitre} objects describing attack stages)',
+        '  evidence (array of {id, type, src, signal, weight} where type is process|network|auth|file|cloud|registry)',
+        '  mitre_techniques (array of {id, tactic, name})',
+        '  recommended_actions (array of {id, action, target, reason, confidence, impact} SOAR playbooks)',
+        '  bullets (array of evidence summary strings for the analyst)',
+        '  recommendation (single primary remediation sentence)',
         'Return valid JSON only. No markdown fences or commentary.',
         '',
         f"Source IP: {fields['source_ip']}",
@@ -127,12 +137,32 @@ def build_splunk_analysis_prompt(fields: Dict[str, Any]) -> str:
         'Additional alert fields:',
         json.dumps(raw, default=str)[:4000],
         '',
-        'Example:',
-        '{"threat_severity":"HIGH","incident_analysis":"...","recommended_containment_steps":["Block source IP","Isolate affected host"]}',
+        'Example shape:',
+        json.dumps({
+            'threat_severity': 'HIGH',
+            'incident_analysis': 'C2 beacon from internal host to known malicious IP.',
+            'likelihood': 88,
+            'recommended_containment_steps': ['Block egress to C2 IP', 'Isolate source host'],
+            'attack_timeline': [
+                {'time': ts, 'label': 'IDS Alert', 'detail': 'Suricata signature match', 'mitre': 'T1071.001'},
+                {'time': ts, 'label': 'C2 Beacon', 'detail': 'Outbound TLS to threat IP', 'mitre': 'T1071.001'},
+            ],
+            'evidence': [
+                {'id': 'EV-1', 'type': 'network', 'src': fields['source_ip'], 'signal': 'TLS to known C2', 'weight': 0.9},
+            ],
+            'mitre_techniques': [
+                {'id': 'T1071.001', 'tactic': 'Command and Control', 'name': 'Application Layer Protocol'},
+            ],
+            'recommended_actions': [
+                {'id': 'A1', 'action': 'Block IP', 'target': fields['dest_ip'], 'reason': 'Known C2', 'confidence': 96, 'impact': 'Stops egress'},
+            ],
+            'bullets': ['Outbound TLS to known C2 ASN', 'Internal host initiating connection'],
+            'recommendation': 'Block C2 IP and isolate the source host immediately.',
+        }, indent=2),
     ])
 
 
-def normalize_threat_analysis(data: Dict[str, Any]) -> Dict[str, Any]:
+def normalize_threat_analysis(data: Dict[str, Any], fields: Dict[str, Any], alert_id: str) -> Dict[str, Any]:
     severity = str(data.get('threat_severity', 'MEDIUM')).upper().strip()
     if severity not in {'CRITICAL', 'HIGH', 'MEDIUM', 'LOW'}:
         severity = 'MEDIUM'
@@ -141,14 +171,32 @@ def normalize_threat_analysis(data: Dict[str, Any]) -> Dict[str, Any]:
     steps = data.get('recommended_containment_steps') or data.get('containment_steps') or []
     if isinstance(steps, str):
         steps = [line.strip() for line in steps.splitlines() if line.strip()]
+    else:
+        steps = [str(s).strip() for s in steps if str(s).strip()]
 
     if not analysis:
         analysis = 'AI analysis unavailable — manual triage required.'
+
+    fallback_time = fields['timestamp'].strftime('%H:%M') if fields['timestamp'] else '--:--'
+    enrichment = build_enrichment(
+        data,
+        alert_id=alert_id,
+        source_ip=fields['source_ip'],
+        dest_ip=fields['dest_ip'],
+        signature=fields['signature'],
+        fallback_time=fallback_time,
+        containment_steps=steps,
+    )
+
+    severity_likelihood = {'CRITICAL': 94, 'HIGH': 88, 'MEDIUM': 71, 'LOW': 55}
+    if enrichment.get('likelihood') is None:
+        enrichment['likelihood'] = severity_likelihood.get(severity, 71)
 
     return {
         'threat_severity': severity,
         'incident_analysis': analysis,
         'recommended_containment_steps': steps,
+        'enrichment': enrichment,
     }
 
 
@@ -248,10 +296,12 @@ async def splunk_alert(request: Request) -> dict:
         raise HTTPException(status_code=400, detail='Expected JSON object')
 
     fields = _extract_alert_fields(body)
+    alert_id = f'ALT-{uuid.uuid4().hex[:12].upper()}'
 
     try:
         raw_output = await call_ollama(build_splunk_analysis_prompt(fields))
-        analysis = normalize_threat_analysis(parse_json_response(raw_output))
+        parsed = parse_json_response(raw_output)
+        analysis = normalize_threat_analysis(parsed, fields, alert_id)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f'LLM inference failed: {exc}')
 
@@ -264,6 +314,8 @@ async def splunk_alert(request: Request) -> dict:
         incident_analysis=analysis['incident_analysis'],
         containment_steps=analysis['recommended_containment_steps'],
         raw_payload=json.dumps(body, default=str),
+        alert_id=alert_id,
+        enrichment=analysis['enrichment'],
     )
     return event
 

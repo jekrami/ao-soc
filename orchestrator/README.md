@@ -50,7 +50,7 @@ Example Suricata payload:
 }
 ```
 
-The broker calls Ollama, parses `threat_severity`, `incident_analysis`, and `recommended_containment_steps`, then commits everything to SQLite.
+The broker calls Ollama and parses a full enrichment payload: `threat_severity`, `incident_analysis`, `attack_timeline`, `evidence`, `mitre_techniques`, `recommended_actions`, and `recommended_containment_steps` — all persisted to SQLite.
 
 ## API
 

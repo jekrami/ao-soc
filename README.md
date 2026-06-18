@@ -217,9 +217,10 @@ matches the types in `frontend/src/types.ts`.
 - New backend adapter exposes persisted explanations at `/api/incidents/:id/explanations`.
 - The dashboard can now retrieve both in-memory incident details and persisted explanation records.
 - **v1.3.0** — Broker live metrics (LIVE / PENDING / CONTAINED), auto-refresh every 15s, and **Mitigate Attack** for broker incidents.
+- **v1.4.0** — Rich LLM enrichment: attack timeline, MITRE techniques, structured evidence, and SOAR actions persisted in SQLite.
 
 ## Authorship
 
-**Version:** 1.3.0 (see `VERSION` — increment on each release commit)
+**Version:** 1.4.0 (see `VERSION` — increment on each release commit)
 
 Written by J.Ekrami, co-written with GitHub Copilot and Composer (Cursor AI).
