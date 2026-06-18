@@ -216,7 +216,10 @@ matches the types in `frontend/src/types.ts`.
 - `orchestrator/` stores AI explanations (assessments, evidence, recommended actions) in SQLite.
 - New backend adapter exposes persisted explanations at `/api/incidents/:id/explanations`.
 - The dashboard can now retrieve both in-memory incident details and persisted explanation records.
+- **v1.3.0** — Broker live metrics (LIVE / PENDING / CONTAINED), auto-refresh every 15s, and **Mitigate Attack** for broker incidents.
 
 ## Authorship
 
-Written by J.Ekrami and co-written with GitHub Copilot.
+**Version:** 1.3.0 (see `VERSION` — increment on each release commit)
+
+Written by J.Ekrami, co-written with GitHub Copilot and Composer (Cursor AI).

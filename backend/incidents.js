@@ -39,7 +39,10 @@ export async function buildSummary(incidentList = null) {
     if (counts[inc.severity] !== undefined) counts[inc.severity] += 1;
   }
 
-  const brokerCount = incidents.filter(i => i.source === 'broker').length;
+  const brokerIncidents = incidents.filter(i => i.source === 'broker');
+  const brokerCount = brokerIncidents.length;
+  const brokerPending = brokerIncidents.filter(i => i.status !== 'CONTAINED').length;
+  const brokerContained = brokerIncidents.filter(i => i.status === 'CONTAINED').length;
   const avgConfidence = incidents.length
     ? Math.round(incidents.reduce((sum, i) => sum + i.confidence, 0) / incidents.length)
     : mockSummary.ai_confidence_avg;
@@ -58,5 +61,7 @@ export async function buildSummary(incidentList = null) {
     total_correlated_incidents: incidents.length,
     ai_confidence_avg: avgConfidence,
     broker_live_alerts: brokerCount,
+    broker_pending_alerts: brokerPending,
+    broker_contained_alerts: brokerContained,
   };
 }

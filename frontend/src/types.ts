@@ -95,6 +95,8 @@ export interface Summary {
   automation_success_rate: number;
   /** Count of live broker-ingested alerts merged into the queue */
   broker_live_alerts?: number;
+  broker_pending_alerts?: number;
+  broker_contained_alerts?: number;
 }
 
 export interface MitreCell {

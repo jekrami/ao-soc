@@ -4,6 +4,9 @@
 
 import express from 'express';
 import cors from 'cors';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import {
   highRiskUsers,
   highRiskHosts,
@@ -21,6 +24,8 @@ app.use(cors());
 app.use(express.json());
 
 const port = process.env.PORT || 4317;
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const appVersion = fs.readFileSync(path.resolve(__dirname, '../VERSION'), 'utf8').trim();
 
 app.use((req, _res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
@@ -28,7 +33,7 @@ app.use((req, _res, next) => {
 });
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, service: 'ao-soc-mock-api', version: '1.0.0' });
+  res.json({ ok: true, service: 'ao-soc-mock-api', version: appVersion });
 });
 
 app.get('/api/summary', async (_req, res) => {
