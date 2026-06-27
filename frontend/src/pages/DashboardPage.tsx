@@ -6,6 +6,7 @@ import { BrokerLiveMetrics }   from '@/components/dashboard/BrokerLiveMetrics';
 import { IncidentQueue }         from '@/components/dashboard/IncidentQueue';
 import { AttackStoryboard }      from '@/components/dashboard/AttackStoryboard';
 import { RecommendedActions }    from '@/components/dashboard/RecommendedActions';
+import { Tier2DecisionPanel }    from '@/components/dashboard/Tier2DecisionPanel';
 import { RiskAnalytics }         from '@/components/dashboard/RiskAnalytics';
 import { MitreHeatmap }          from '@/components/dashboard/MitreHeatmap';
 import { AiExplanation }         from '@/components/dashboard/AiExplanation';
@@ -47,7 +48,8 @@ export const DashboardPage: React.FC = () => {
           <div className="lg:col-span-6">
             <AttackStoryboard />
           </div>
-          <div className="lg:col-span-3">
+          <div className="lg:col-span-3 space-y-3">
+            <Tier2DecisionPanel />
             <RecommendedActions />
           </div>
         </div>

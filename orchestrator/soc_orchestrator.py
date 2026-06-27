@@ -24,7 +24,20 @@ from db import (
 )
 from enrichment import build_enrichment
 from llm import MODEL_NAME, OLLAMA_ENDPOINT, call_ollama, parse_json_response
-from models import AiExplanationPayload, GenerateExplanationRequest, SplunkAlertPayload
+from models import (
+    AiExplanationPayload,
+    ApproveDecisionRequest,
+    GenerateExplanationRequest,
+    RejectDecisionRequest,
+    SplunkAlertPayload,
+)
+from tier2 import (
+    approve_tier2_decision,
+    create_tier2_decision_for_alert,
+    ensure_tier2_decision,
+    list_alert_actions,
+    reject_tier2_decision,
+)
 
 WORKSTATION_IP = os.getenv('WORKSTATION_IP', '192.168.100.111')
 BROKER_PORT = int(os.getenv('BROKER_PORT', '8500'))
@@ -317,6 +330,8 @@ async def splunk_alert(request: Request) -> dict:
         alert_id=alert_id,
         enrichment=analysis['enrichment'],
     )
+    tier2_decision = await create_tier2_decision_for_alert(event)
+    event['tier2_decision'] = tier2_decision
     return event
 
 
@@ -341,6 +356,40 @@ async def api_mitigate_alert(alert_id: str) -> dict:
     if alert is None:
         raise HTTPException(status_code=404, detail='Alert not found')
     return alert
+
+
+@app.get('/api/alerts/{alert_id}/decision')
+async def api_get_tier2_decision(alert_id: str) -> dict:
+    decision = await ensure_tier2_decision(alert_id)
+    if decision is None:
+        raise HTTPException(status_code=404, detail='Alert not found')
+    return decision
+
+
+@app.post('/api/alerts/{alert_id}/decision/approve', status_code=202)
+async def api_approve_tier2_decision(alert_id: str, body: ApproveDecisionRequest) -> dict:
+    decision = await approve_tier2_decision(alert_id, approved_by=body.approved_by)
+    if decision is None:
+        raise HTTPException(status_code=404, detail='Alert not found')
+    return decision
+
+
+@app.post('/api/alerts/{alert_id}/decision/reject')
+async def api_reject_tier2_decision(alert_id: str, body: RejectDecisionRequest) -> dict:
+    decision = await reject_tier2_decision(
+        alert_id,
+        rejected_by=body.rejected_by,
+        note=body.note,
+    )
+    if decision is None:
+        raise HTTPException(status_code=404, detail='Alert not found')
+    return decision
+
+
+@app.get('/api/alerts/{alert_id}/actions')
+async def api_list_alert_actions(alert_id: str) -> dict:
+    actions = await list_alert_actions(alert_id)
+    return {'count': len(actions), 'items': actions}
 
 
 # --- Dashboard v2 explanation API (kept for React adapter) ---

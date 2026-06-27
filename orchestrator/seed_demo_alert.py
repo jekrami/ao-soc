@@ -24,6 +24,8 @@ async def reset_demo_data() -> None:
     await broker.init_db()
     async with db.engine.begin() as conn:
         for table in (
+            db.alert_soar_actions,
+            db.tier2_decisions,
             db.recommended_containment_steps,
             db.ai_evidence,
             db.recommended_actions,

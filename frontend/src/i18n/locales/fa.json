@@ -48,6 +48,7 @@
     "signature": "امضا",
     "title": "عنوان",
     "open": "باز کردن",
+    "cancel": "انصراف",
     "stages": "مرحله",
     "entities": "موجودیت",
     "matched": "منطبق",
@@ -235,5 +236,28 @@
     "brokerQueue": "صف کارگزار",
     "gpuTemperature": "دمای GPU",
     "playbooksRunning": "راهنماهای در حال اجرا"
+  },
+  "tier2": {
+    "title": "تصمیم سطح ۲ هوش مصنوعی",
+    "subtitle": "یک‌بار بررسی کنید — SOAR کل برنامه را خودکار اجرا می‌کند",
+    "loading": "در حال بارگذاری تصمیم سطح ۲…",
+    "unavailable": "تصمیم سطح ۲ برای این هشدار موجود نیست",
+    "rationale": "استدلال",
+    "riskOfAction": "ریسک در صورت اجرا",
+    "actionPlan": "برنامه اقدام یکپارچه",
+    "approvePlan": "تأیید برنامه",
+    "rejectPlan": "رد",
+    "rejectNote": "یادداشت رد (اختیاری)",
+    "rejectPlaceholder": "چرا این برنامه رد می‌شود؟",
+    "executionComplete": "اجرای SOAR تکمیل شد — رخداد مهار شد",
+    "useApprovePlan": "برنامه سطح ۲ بالا را تأیید کنید تا اجرای خودکار انجام شود",
+    "status": {
+      "PENDING": "در انتظار تأیید",
+      "APPROVED": "تأیید شده",
+      "REJECTED": "رد شده",
+      "EXECUTING": "در حال اجرا",
+      "DONE": "تکمیل",
+      "FAILED": "ناموفق"
+    }
   }
 }

@@ -48,6 +48,7 @@
     "signature": "Signature",
     "title": "Title",
     "open": "Open",
+    "cancel": "Cancel",
     "stages": "stages",
     "entities": "entities",
     "matched": "matched",
@@ -235,5 +236,28 @@
     "brokerQueue": "Broker Queue",
     "gpuTemperature": "GPU Temperature",
     "playbooksRunning": "Playbooks Running"
+  },
+  "tier2": {
+    "title": "AI Tier-2 Decision",
+    "subtitle": "Review once — SOAR runs the full plan automatically",
+    "loading": "Loading Tier-2 decision…",
+    "unavailable": "No Tier-2 decision for this alert",
+    "rationale": "Rationale",
+    "riskOfAction": "Risk if executed",
+    "actionPlan": "Bundled action plan",
+    "approvePlan": "Approve plan",
+    "rejectPlan": "Reject",
+    "rejectNote": "Rejection note (optional)",
+    "rejectPlaceholder": "Why is this plan being rejected?",
+    "executionComplete": "SOAR execution complete — incident contained",
+    "useApprovePlan": "Approve the Tier-2 plan above to auto-execute",
+    "status": {
+      "PENDING": "Pending approval",
+      "APPROVED": "Approved",
+      "REJECTED": "Rejected",
+      "EXECUTING": "Executing",
+      "DONE": "Complete",
+      "FAILED": "Failed"
+    }
   }
 }

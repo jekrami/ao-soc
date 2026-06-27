@@ -45,6 +45,42 @@ recommended_containment_steps = Table(
     Column('completed', Boolean, nullable=False, default=False),
 )
 
+# --- Stage 2: AI Tier-2 decision + SOAR action execution ---
+
+tier2_decisions = Table(
+    'tier2_decisions',
+    metadata,
+    Column('id', Integer, primary_key=True, autoincrement=True),
+    Column('alert_id', String(64), nullable=False, unique=True, index=True),
+    Column('decision_type', String(32), nullable=False),
+    Column('confidence', Integer, nullable=False, default=0),
+    Column('rationale', String, nullable=False, default=''),
+    Column('risk_of_action', String, nullable=True),
+    Column('approval_status', String(32), nullable=False, default='PENDING'),
+    Column('approved_by', String(128), nullable=True),
+    Column('rejected_by', String(128), nullable=True),
+    Column('rejection_note', String, nullable=True),
+    Column('created_at', DateTime, nullable=False),
+    Column('approved_at', DateTime, nullable=True),
+    Column('completed_at', DateTime, nullable=True),
+)
+
+alert_soar_actions = Table(
+    'alert_soar_actions',
+    metadata,
+    Column('id', Integer, primary_key=True, autoincrement=True),
+    Column('alert_id', String(64), nullable=False, index=True),
+    Column('decision_id', Integer, ForeignKey('tier2_decisions.id', ondelete='CASCADE'), nullable=False, index=True),
+    Column('action_id', String(64), nullable=False),
+    Column('action_type', String(128), nullable=False),
+    Column('target', String(128), nullable=False),
+    Column('reason', String, nullable=False, default=''),
+    Column('status', String(32), nullable=False, default='PENDING'),
+    Column('result_json', String, nullable=True),
+    Column('created_at', DateTime, nullable=False),
+    Column('completed_at', DateTime, nullable=True),
+)
+
 # --- Dashboard v2 explanation tables ---
 
 ai_explanations = Table(

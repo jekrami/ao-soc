@@ -103,3 +103,40 @@ class AiExplanationResponse(BaseModel):
     version: str
     created_at: datetime
     updated_at: datetime
+
+
+class Tier2ActionPlanItem(BaseModel):
+    id: str
+    action: str
+    target: str
+    reason: str = ''
+    status: str = 'PENDING'
+    result: Optional[Dict[str, Any]] = None
+    created_at: Optional[str] = None
+    completed_at: Optional[str] = None
+
+
+class Tier2DecisionResponse(BaseModel):
+    alert_id: str
+    decision: str
+    confidence: int = Field(..., ge=0, le=100)
+    rationale: str
+    risk_of_action: Optional[str] = None
+    approval_status: str
+    human_approval_required: bool = True
+    approved_by: Optional[str] = None
+    rejected_by: Optional[str] = None
+    rejection_note: Optional[str] = None
+    required_actions: List[Tier2ActionPlanItem] = Field(default_factory=list)
+    created_at: Optional[str] = None
+    approved_at: Optional[str] = None
+    completed_at: Optional[str] = None
+
+
+class ApproveDecisionRequest(BaseModel):
+    approved_by: str = 'analyst'
+
+
+class RejectDecisionRequest(BaseModel):
+    rejected_by: str = 'analyst'
+    note: Optional[str] = None

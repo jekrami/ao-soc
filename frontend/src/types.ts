@@ -57,6 +57,43 @@ export interface PersistedAiExplanation extends AiExplanation {
   recommended_actions: RecommendedAction[];
 }
 
+export interface Tier2ActionStatus {
+  id: string;
+  action: string;
+  target: string;
+  reason: string;
+  status: 'PENDING' | 'QUEUED' | 'EXECUTING' | 'DONE' | 'FAILED' | 'BLOCKED';
+  result?: { execution_id?: string; status?: string; error?: string } | null;
+  created_at?: string | null;
+  completed_at?: string | null;
+}
+
+export type Tier2DecisionType = 'IGNORE' | 'MONITOR' | 'INVESTIGATE' | 'CONTAIN' | 'ESCALATE';
+export type Tier2ApprovalStatus =
+  | 'PENDING'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'EXECUTING'
+  | 'DONE'
+  | 'FAILED';
+
+export interface Tier2Decision {
+  alert_id: string;
+  decision: Tier2DecisionType;
+  confidence: number;
+  rationale: string;
+  risk_of_action?: string | null;
+  approval_status: Tier2ApprovalStatus;
+  human_approval_required: boolean;
+  approved_by?: string | null;
+  rejected_by?: string | null;
+  rejection_note?: string | null;
+  required_actions: Tier2ActionStatus[];
+  created_at?: string | null;
+  approved_at?: string | null;
+  completed_at?: string | null;
+}
+
 export interface Incident {
   id: string;
   title: string;

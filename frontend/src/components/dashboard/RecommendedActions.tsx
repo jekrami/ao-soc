@@ -21,6 +21,7 @@ const iconFor = (action: string) => {
 export const RecommendedActions: React.FC = () => {
   const { t } = useTranslation();
   const { selectedIncident, executeAction } = useAoSoc();
+  const isBroker = selectedIncident?.source === 'broker';
   const [busy, setBusy] = useState<string | null>(null);
   const [done, setDone] = useState<Record<string, string>>({});
 
@@ -88,7 +89,9 @@ export const RecommendedActions: React.FC = () => {
               </div>
 
               <div className="mt-3 flex items-center justify-end">
-                {executionId ? (
+                {isBroker ? (
+                  <span className="text-[11px] text-muted">{t('tier2.useApprovePlan')}</span>
+                ) : executionId ? (
                   <span className="inline-flex items-center gap-1.5 text-[11px] text-low">
                     <CheckCircle2 className="h-3.5 w-3.5" />
                     {t('common.queued')} · <span className="font-mono">{executionId}</span>

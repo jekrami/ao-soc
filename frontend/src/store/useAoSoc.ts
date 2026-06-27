@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { api } from '@/lib/api';
-import type { Incident, Summary, MitrePayload, SystemHealth, Entity, PersistedAiExplanation } from '@/types';
+import type { Incident, Summary, MitrePayload, SystemHealth, Entity, PersistedAiExplanation, Tier2Decision } from '@/types';
 
 type SystemState = 'splunk' | 'broker' | 'llm' | 'soar';
 
@@ -10,6 +10,7 @@ interface AoSocState {
   selectedIncidentId: string | null;
   selectedIncident: Incident | null;
   selectedExplanation: PersistedAiExplanation | null;
+  selectedTier2Decision: Tier2Decision | null;
   mitre: MitrePayload | null;
   systemHealth: SystemHealth | null;
   highRiskUsers: Entity[];
@@ -27,6 +28,7 @@ interface AoSocState {
     health: boolean;
     entities: boolean;
     mitigate: boolean;
+    tier2Decision: boolean;
   };
   error: string | null;
 
@@ -37,6 +39,9 @@ interface AoSocState {
   selectIncident: (id: string) => Promise<void>;
   mitigateIncident: (id: string) => Promise<boolean>;
   executeAction: (incidentId: string, actionId: string) => Promise<{ execution_id: string; status: string } | null>;
+  refreshTier2Decision: (id: string) => Promise<void>;
+  approveTier2Decision: (id: string) => Promise<boolean>;
+  rejectTier2Decision: (id: string, note?: string) => Promise<boolean>;
 }
 
 export const useAoSoc = create<AoSocState>((set, get) => ({
@@ -45,6 +50,7 @@ export const useAoSoc = create<AoSocState>((set, get) => ({
   selectedIncidentId: null,
   selectedIncident: null,
   selectedExplanation: null,
+  selectedTier2Decision: null,
   mitre: null,
   systemHealth: null,
   highRiskUsers: [],
@@ -55,7 +61,7 @@ export const useAoSoc = create<AoSocState>((set, get) => ({
 
   loading: {
     summary: false, incidents: false, incident: false, incidentExplanation: false,
-    mitre: false, health: false, entities: false, mitigate: false,
+    mitre: false, health: false, entities: false, mitigate: false, tier2Decision: false,
   },
   error: null,
 
@@ -77,10 +83,14 @@ export const useAoSoc = create<AoSocState>((set, get) => ({
       const firstId = items[0]?.id || null;
       let selected: Incident | null = null;
       let explanation: PersistedAiExplanation | null = null;
+      let tier2: Tier2Decision | null = null;
       if (firstId) {
         try {
           selected = await api<Incident>(`/api/incidents/${firstId}`);
           explanation = await api<PersistedAiExplanation>(`/api/incidents/${firstId}/explanations`).catch(() => null);
+          if (selected?.source === 'broker') {
+            tier2 = await api<Tier2Decision>(`/api/incidents/${firstId}/decision`).catch(() => null);
+          }
         } catch {
           selected = null;
           explanation = null;
@@ -93,6 +103,7 @@ export const useAoSoc = create<AoSocState>((set, get) => ({
         selectedIncidentId: firstId,
         selectedIncident: selected,
         selectedExplanation: explanation,
+        selectedTier2Decision: tier2,
         mitre,
         systemHealth: health,
         highRiskUsers: users.items,
@@ -141,6 +152,9 @@ export const useAoSoc = create<AoSocState>((set, get) => ({
         selectedIncident: selected,
         selectedIncidentId: selected ? selected.id : selectedIncidentId,
       });
+      if (selected?.source === 'broker' && selectedIncidentId) {
+        void get().refreshTier2Decision(selectedIncidentId);
+      }
     } catch (e) {
       set({ error: (e as Error).message });
     } finally {
@@ -166,19 +180,25 @@ export const useAoSoc = create<AoSocState>((set, get) => ({
       selectedIncidentId: id,
       selectedIncident: null,
       selectedExplanation: null,
+      selectedTier2Decision: null,
     }));
     try {
       const [inc, explanation] = await Promise.all([
         api<Incident>(`/api/incidents/${id}`),
         api<PersistedAiExplanation>(`/api/incidents/${id}/explanations`).catch(() => null)
       ]);
-      set({ selectedIncident: inc, selectedExplanation: explanation });
+      let tier2: Tier2Decision | null = null;
+      if (inc.source === 'broker') {
+        tier2 = await api<Tier2Decision>(`/api/incidents/${id}/decision`).catch(() => null);
+      }
+      set({ selectedIncident: inc, selectedExplanation: explanation, selectedTier2Decision: tier2 });
     } catch (e) {
       set({
         error: (e as Error).message,
         selectedIncidentId: null,
         selectedIncident: null,
         selectedExplanation: null,
+        selectedTier2Decision: null,
       });
     } finally {
       set(s => ({ loading: { ...s.loading, incident: false, incidentExplanation: false } }));
@@ -218,7 +238,58 @@ export const useAoSoc = create<AoSocState>((set, get) => ({
       set({ error: (e as Error).message });
       return null;
     }
-  }
+  },
+
+  async refreshTier2Decision(id: string) {
+    try {
+      const tier2 = await api<Tier2Decision>(`/api/incidents/${id}/decision`);
+      set({ selectedTier2Decision: tier2 });
+    } catch {
+      /* broker decision may not exist yet */
+    }
+  },
+
+  async approveTier2Decision(id: string) {
+    set(s => ({ loading: { ...s.loading, tier2Decision: true }, error: null }));
+    try {
+      const [decision, updated, summary, mitre] = await Promise.all([
+        api<Tier2Decision>(`/api/incidents/${id}/decision/approve`, { method: 'POST', body: JSON.stringify({ approved_by: 'analyst' }) }),
+        api<Incident>(`/api/incidents/${id}`),
+        api<Summary>('/api/summary'),
+        api<MitrePayload>('/api/mitre'),
+      ]);
+      set(s => ({
+        selectedTier2Decision: decision,
+        summary,
+        mitre,
+        incidents: s.incidents.map(i => (i.id === id ? updated : i)),
+        selectedIncident: s.selectedIncidentId === id ? updated : s.selectedIncident,
+      }));
+      return true;
+    } catch (e) {
+      set({ error: (e as Error).message });
+      return false;
+    } finally {
+      set(s => ({ loading: { ...s.loading, tier2Decision: false } }));
+    }
+  },
+
+  async rejectTier2Decision(id: string, note?: string) {
+    set(s => ({ loading: { ...s.loading, tier2Decision: true }, error: null }));
+    try {
+      const decision = await api<Tier2Decision>(`/api/incidents/${id}/decision/reject`, {
+        method: 'POST',
+        body: JSON.stringify({ rejected_by: 'analyst', note: note || undefined }),
+      });
+      set({ selectedTier2Decision: decision });
+      return true;
+    } catch (e) {
+      set({ error: (e as Error).message });
+      return false;
+    } finally {
+      set(s => ({ loading: { ...s.loading, tier2Decision: false } }));
+    }
+  },
 }));
 
 function deriveStatus(h: SystemHealth | null): Record<SystemState, 'ONLINE' | 'DEGRADED' | 'OFFLINE' | 'UNKNOWN'> {
