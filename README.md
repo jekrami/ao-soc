@@ -78,7 +78,7 @@ ao-soc/
 
 ## Run It
 
-**Version:** 1.9.0 — see `VERSION` at repo root (bump on every release).
+**Version:** 1.9.1 — see `VERSION` at repo root (bump on every release).
 
 One-time setup (each machine):
 
@@ -94,7 +94,44 @@ cd ../frontend && npm install
 
 Use for local dashboard demos, recordings, and smoke tests. Demo scripts **reset** prior broker alerts on each run (pass `--keep` to append instead).
 
-#### Option A — Live simulation (recommended)
+#### Quick start (automated)
+
+**Windows (PowerShell):**
+
+```powershell
+.\scripts\start-demo.ps1
+```
+
+**Linux / macOS:**
+
+```bash
+chmod +x scripts/start-demo.sh scripts/stop-demo.sh
+./scripts/start-demo.sh
+```
+
+**Live trickle simulation** (alerts appear over ~2 minutes):
+
+```powershell
+.\scripts\start-demo.ps1 -Live
+```
+
+```bash
+./scripts/start-demo.sh --live
+```
+
+**Stop all demo services:**
+
+```powershell
+.\scripts\stop-demo.ps1
+```
+
+```bash
+./scripts/stop-demo.sh
+```
+
+Flags: `-SkipInstall` / `--skip-install`, `-Count` / `--count`, `-Seed` / `--seed`. Logs on Linux: `scripts/logs/`. See script headers for full options.
+
+#### Option A — Live simulation (manual)
 
 Alerts trickle in over time (~1–2 every 10s) so the dashboard shows incidents appearing live. The dashboard auto-refreshes every 15s.
 
@@ -262,9 +299,10 @@ matches the types in `frontend/src/types.ts`.
 - **v1.7.0** — Demo tooling: batch seeder (`seed_demo_alert.py`), real-time simulator (`simulate_alerts.py`), auto-reset on each demo run, README demo vs production runbooks.
 - **v1.8.0** — English/Farsi (Persian) UI with RTL layout and dashboard language switcher (EN | FA).
 - **v1.9.0** — Grafana-style Executive Summary (radial gauges, severity donut, risk histogram, response-time bullet bars), full mobile-responsive layout (stacked-card tables, adaptive nav), and **live MTTD/MTTR** computed from broker alert timestamps during demos.
+- **v1.9.1** — One-command demo startup/stop scripts for Windows (`start-demo.ps1` / `stop-demo.ps1`) and Linux/macOS (`start-demo.sh` / `stop-demo.sh`).
 
 ## Authorship
 
-**Version:** 1.9.0 (see `VERSION` — increment on each release commit)
+**Version:** 1.9.1 (see `VERSION` — increment on each release commit)
 
 Written by J.Ekrami, co-written with GitHub Copilot and Composer (Cursor AI).
