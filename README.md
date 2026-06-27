@@ -78,45 +78,79 @@ ao-soc/
 
 ## Run It
 
-### 1. Backend (mock API)
+**Version:** 1.7.0 — see `VERSION` at repo root (bump on every release).
 
-```
-cd backend
-npm install
-npm start          # http://localhost:4317
-```
-
-### 2. Frontend
-
-```
-cd frontend
-npm install
-npm run dev        # http://localhost:5173
-```
-
-The frontend's Vite dev server proxies `/api/*` to the backend on port 4317.
-
-**Manual broker test (coding phase):**
+One-time setup (each machine):
 
 ```bash
-# Terminal 1 — broker
-cd orchestrator && python -m uvicorn soc_orchestrator:app --host 0.0.0.0 --port 8500
+cd orchestrator && python -m pip install -r requirements.txt
+cd ../backend && npm install
+cd ../frontend && npm install
 ```
 
-**Trigger alert — Windows (PowerShell):** use a JSON file or `Invoke-RestMethod` (plain `curl` mangles JSON on Windows):
+---
+
+### Demo usage (no Ollama, no Splunk)
+
+Use for local dashboard demos, recordings, and smoke tests. Demo scripts **reset** prior broker alerts on each run (pass `--keep` to append instead).
+
+#### Option A — Live simulation (recommended)
+
+Alerts trickle in over time (~1–2 every 10s) so the dashboard shows incidents appearing live. The dashboard auto-refreshes every 15s.
+
+| Terminal | Service | Command |
+| -------- | ------- | ------- |
+| **1** | Broker | `cd orchestrator`<br>`python -m uvicorn soc_orchestrator:app --host 0.0.0.0 --port 8500` |
+| **2** | UI API | `cd backend`<br>`npm start` |
+| **3** | Dashboard | `cd frontend`<br>`npm run dev` → http://localhost:5173 |
+| **4** | Simulation | `cd orchestrator`<br>`python simulate_alerts.py --interval 10 --duration 120` |
+
+Simulation flags: `--interval 10`, `--duration 120`, `--min-per-tick` / `--max-per-tick`, `--contain-chance 0.2`, `--seed 42`.
+
+#### Option B — Fixed batch (instant queue)
+
+Pre-loads 12 varied alerts before you open the dashboard.
+
+| Terminal | Service | Command |
+| -------- | ------- | ------- |
+| **1** | Broker + seed | `cd orchestrator`<br>`python seed_demo_alert.py --count 12`<br>`python -m uvicorn soc_orchestrator:app --host 0.0.0.0 --port 8500` |
+| **2** | UI API | `cd backend`<br>`npm start` |
+| **3** | Dashboard | `cd frontend`<br>`npm run dev` → http://localhost:5173 |
+
+Seed flags: `--count 12`, `--seed 42` (reproducible), `--keep` (append without reset).
+
+**What you should see:** broker incidents with a **LIVE** badge on Command Center and `/alerts`. Mock seed incidents are hidden while the broker is up.
+
+**Note:** `GET /v2/explanations/{id}` may return **404** for broker alerts — that is normal. Enrichment comes from `/api/alerts/{id}`; the frontend ignores the 404.
+
+---
+
+### Production usage (Splunk + Ollama)
+
+Use on shift with real ingestion. **Do not** run `seed_demo_alert.py` or `simulate_alerts.py`.
+
+**Prerequisites**
+
+- Ollama reachable (default: `http://192.168.100.111:11434`, model `qwen3.5:latest`)
+- Splunk `| sendalert` or scheduled search POSTing to the broker webhook
+- Env vars as needed (see `orchestrator/README.md`): `WORKSTATION_IP`, `OLLAMA_ENDPOINT`, `MODEL_NAME`, `ORCHESTRATOR_DB_FILE`, `BROKER_PORT`
+
+| Terminal | Service | Command |
+| -------- | ------- | ------- |
+| **1** | Broker | `cd orchestrator`<br>`python -m uvicorn soc_orchestrator:app --host 0.0.0.0 --port 8500` |
+| **2** | UI API | `cd backend`<br>`npm start` |
+| **3** | Dashboard | `cd frontend`<br>`npm run dev` (or production build behind nginx) |
+
+**Splunk webhook:** `POST http://<broker-host>:8500/splunk-alert`
+
+**Manual single alert (smoke test, Windows PowerShell):**
 
 ```powershell
 cd orchestrator
 .\trigger-alert.ps1
 ```
 
-Or:
-
-```powershell
-Invoke-RestMethod -Uri http://127.0.0.1:8500/splunk-alert -Method POST -ContentType "application/json" -Body (Get-Content -Raw .\sample-splunk-alert.json)
-```
-
-Or with real curl.exe:
+Or with `curl.exe` (plain `curl` mangles JSON on Windows):
 
 ```powershell
 curl.exe -X POST http://127.0.0.1:8500/splunk-alert -H "Content-Type: application/json" -d "@sample-splunk-alert.json"
@@ -127,20 +161,24 @@ curl.exe -X POST http://127.0.0.1:8500/splunk-alert -H "Content-Type: applicatio
 ```bash
 curl -X POST http://127.0.0.1:8500/splunk-alert \
   -H "Content-Type: application/json" \
-  -d @sample-splunk-alert.json
+  -d @orchestrator/sample-splunk-alert.json
 ```
 
-Offline demo (no Ollama): `python seed_demo_alert.py`
+Verify broker health: `GET http://127.0.0.1:8500/health` (DB + Ollama status).
 
-```bash
-# Terminal 2 — UI API + dashboard
-cd backend && npm start
-cd frontend && npm run dev
-```
+---
 
-Broker alerts appear in the dashboard incident queue with a **LIVE** badge.
+### Service ports
 
-### 3. Orchestrator v2
+| Service | Port | URL |
+| ------- | ---- | --- |
+| Broker (Aegis-Link) | 8500 | http://localhost:8500 |
+| UI API (Express) | 4317 | http://localhost:4317 |
+| Dashboard (Vite dev) | 5173 | http://localhost:5173 |
+
+The frontend dev server proxies `/api/*` to the backend on port 4317. The backend merges live broker alerts from `BROKER_URL` (default `http://127.0.0.1:8500`).
+
+### Orchestrator reference
 
 ```
 cd orchestrator
@@ -148,11 +186,9 @@ python -m pip install -r requirements.txt
 uvicorn soc_orchestrator:app --host 0.0.0.0 --port 8500 --reload
 ```
 
-The **Aegis-Link broker** listens on port **8500** and stores Splunk alerts + AI containment steps in `orchestrator/soc_matrix.db`.
+The **Aegis-Link broker** stores Splunk alerts + AI containment steps in `orchestrator/soc_matrix.db`.
 
-**Splunk webhook:** `POST http://127.0.0.1:8500/splunk-alert`
-
-**Dashboard API:**
+**Broker API:**
 
 - `GET /health`
 - `GET /api/alerts` — alert log + severity/mitigation metrics
@@ -161,6 +197,8 @@ The **Aegis-Link broker** listens on port **8500** and stores Splunk alerts + AI
 - `POST /v2/explanations/generate`
 - `GET /v2/explanations/{incident_id}`
 - `GET /v2/explanations`
+
+See `orchestrator/README.md` for Splunk field mapping and environment variables.
 
 ## Pages
 
@@ -221,9 +259,10 @@ matches the types in `frontend/src/types.ts`.
 - **v1.4.0** — Rich LLM enrichment: attack timeline, MITRE techniques, structured evidence, and SOAR actions persisted in SQLite.
 - **v1.5.0** — Dedicated `/alerts` page: live metrics grid, alert log table, interactive containment checklist, and mitigate action.
 - **v1.6.0** — Posture fusion: broker MITRE heatmap, live executive summary, real broker health in pipeline status, demo incidents filtered when broker is active.
+- **v1.7.0** — Demo tooling: batch seeder (`seed_demo_alert.py`), real-time simulator (`simulate_alerts.py`), auto-reset on each demo run, README demo vs production runbooks.
 
 ## Authorship
 
-**Version:** 1.6.0 (see `VERSION` — increment on each release commit)
+**Version:** 1.7.0 (see `VERSION` — increment on each release commit)
 
 Written by J.Ekrami, co-written with GitHub Copilot and Composer (Cursor AI).
