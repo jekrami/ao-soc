@@ -19,6 +19,64 @@ function severityCounts(incidentList) {
   return counts;
 }
 
+/** Parse ISO or numeric timestamp to epoch ms, or null if invalid. */
+function parseTime(value) {
+  if (value == null || value === '') return null;
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value < 10_000_000_000 ? value * 1000 : value;
+  }
+  const text = String(value).trim();
+  if (!text) return null;
+  if (/^\d+$/.test(text)) {
+    const ts = Number(text);
+    return ts < 10_000_000_000 ? ts * 1000 : ts;
+  }
+  const date = new Date(text);
+  const ms = date.getTime();
+  return Number.isNaN(ms) ? null : ms;
+}
+
+function median(values) {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? (sorted[mid - 1] + sorted[mid]) / 2
+    : sorted[mid];
+}
+
+function minutesBetween(startMs, endMs) {
+  if (startMs == null || endMs == null || endMs < startMs) return null;
+  const minutes = (endMs - startMs) / 60_000;
+  return Math.max(1, Math.round(minutes));
+}
+
+function computeLiveMttdMinutes(liveIncidents) {
+  const deltas = [];
+  for (const inc of liveIncidents) {
+    const eventAt = parseTime(inc.timestamp ?? inc.ingested_at);
+    const enrichedAt = parseTime(inc.created_at ?? inc.ingested_at);
+    if (eventAt == null || enrichedAt == null) continue;
+    const minutes = minutesBetween(eventAt, enrichedAt);
+    if (minutes != null) deltas.push(minutes);
+  }
+  const med = median(deltas);
+  return med != null ? Math.round(med) : null;
+}
+
+function computeLiveMttrMinutes(containedIncidents) {
+  const deltas = [];
+  for (const inc of containedIncidents) {
+    const created = parseTime(inc.created_at ?? inc.ingested_at);
+    const mitigated = parseTime(inc.mitigated_at ?? inc.updated_at);
+    if (created == null || mitigated == null) continue;
+    const minutes = minutesBetween(created, mitigated);
+    if (minutes != null) deltas.push(minutes);
+  }
+  const med = median(deltas);
+  return med != null ? Math.round(med) : null;
+}
+
 export async function listIncidents(severityFilter = '', { includeDemo = null } = {}) {
   const broker = await listBrokerIncidents();
   const brokerIds = new Set(broker.map(i => i.id));
@@ -70,6 +128,10 @@ export async function buildSummary(incidentList = null) {
     ? Math.round((brokerContained / liveIncidents.length) * 100)
     : mockSummary.automation_success_rate;
 
+  const containedLive = liveIncidents.filter(i => i.status === 'CONTAINED');
+  const liveMttd = computeLiveMttdMinutes(liveIncidents);
+  const liveMttr = computeLiveMttrMinutes(containedLive);
+
   return {
     ...mockSummary,
     overall_risk_score: maxRisk,
@@ -86,6 +148,8 @@ export async function buildSummary(incidentList = null) {
     demo_incidents: demoIncidents.length,
     posture_mode,
     automation_success_rate: automationRate,
+    mttd_minutes: liveIncidents.length && liveMttd != null ? liveMttd : mockSummary.mttd_minutes,
+    mttr_minutes: containedLive.length && liveMttr != null ? liveMttr : mockSummary.mttr_minutes,
   };
 }
 

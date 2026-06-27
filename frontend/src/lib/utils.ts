@@ -22,8 +22,8 @@ export function riskColor(score: number) {
   return 'text-low';
 }
 
-export function fmtNumber(n: number) {
-  return new Intl.NumberFormat('en-US').format(n);
+export function fmtNumber(n: number, locale = 'en-US') {
+  return new Intl.NumberFormat(locale).format(n);
 }
 
 export function pad2(n: number) { return n.toString().padStart(2, '0'); }
@@ -32,6 +32,6 @@ export function fmtClock(d: Date) {
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
 }
 
-export function fmtDate(d: Date) {
-  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit' });
+export function fmtDate(d: Date, locale = 'en-US') {
+  return d.toLocaleDateString(locale, { year: 'numeric', month: 'short', day: '2-digit' });
 }

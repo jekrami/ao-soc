@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Card, CardHeader, CardTitle, CardSubtitle, CardBody } from '@/components/ui/card';
 import { SeverityChip, StatusPill, RiskBadge } from '@/components/ui/chip';
 import { Progress } from '@/components/ui/progress';
@@ -6,6 +7,7 @@ import { cn, riskColor } from '@/lib/utils';
 import { Server, ListChecks } from 'lucide-react';
 
 export const IncidentQueue: React.FC = () => {
+  const { t } = useTranslation();
   const { incidents, selectedIncidentId, selectIncident } = useAoSoc();
 
   return (
@@ -13,13 +15,13 @@ export const IncidentQueue: React.FC = () => {
       <CardHeader>
         <div className="flex items-center gap-2">
           <ListChecks className="h-4 w-4 text-info" />
-          <CardTitle>AI Incident Queue</CardTitle>
+          <CardTitle>{t('dashboard.incidentQueue')}</CardTitle>
         </div>
-        <CardSubtitle>{incidents.length} active</CardSubtitle>
+        <CardSubtitle>{incidents.length} {t('common.active')}</CardSubtitle>
       </CardHeader>
       <CardBody className="flex-1 overflow-auto p-2 space-y-2">
         {incidents.length === 0 && (
-          <div className="text-center text-muted text-sm py-12">No active incidents</div>
+          <div className="text-center text-muted text-sm py-12">{t('dashboard.noActiveIncidents')}</div>
         )}
         {incidents.map(inc => {
           const isSelected = inc.id === selectedIncidentId;
@@ -28,7 +30,7 @@ export const IncidentQueue: React.FC = () => {
               key={inc.id}
               onClick={() => { void selectIncident(inc.id); }}
               className={cn(
-                'w-full text-left rounded-md p-3 border transition-colors',
+                'w-full text-start rounded-md p-3 border transition-colors',
                 isSelected
                   ? 'border-info/50 bg-info/5'
                   : 'border-border bg-surface2/40 hover:bg-surface2'
@@ -39,12 +41,12 @@ export const IncidentQueue: React.FC = () => {
                   <SeverityChip severity={inc.severity} />
                   {inc.source === 'broker' && (
                     <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold tracking-wide bg-info/15 text-info border border-info/30">
-                      LIVE
+                      {t('common.live')}
                     </span>
                   )}
                   {inc.source === 'mock' && (
                     <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold tracking-wide bg-muted/15 text-muted border border-border">
-                      DEMO
+                      {t('common.demo')}
                     </span>
                   )}
                 </div>
@@ -59,17 +61,17 @@ export const IncidentQueue: React.FC = () => {
 
               <div className="grid grid-cols-3 gap-2 text-[11px] text-muted">
                 <div>
-                  <div className="label">Risk</div>
+                  <div className="label">{t('common.risk')}</div>
                   <div className={cn('font-mono text-sm font-semibold', riskColor(inc.risk_score))}>
                     <RiskBadge score={inc.risk_score} />
                   </div>
                 </div>
                 <div>
-                  <div className="label">Confidence</div>
+                  <div className="label">{t('common.confidence')}</div>
                   <div className="font-mono text-sm text-fg">{inc.confidence}%</div>
                 </div>
                 <div>
-                  <div className="label">Assets</div>
+                  <div className="label">{t('common.assets')}</div>
                   <div className="text-fg flex items-center gap-1">
                     <Server className="h-3 w-3" />
                     {inc.affected_assets.length}
