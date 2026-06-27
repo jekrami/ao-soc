@@ -2,12 +2,286 @@
 alwaysApply: true
 ---
 
-# AO-SOC / Aegis-Link
 
-AI-augmented SOC dashboard: Splunk → Python broker (:8500) → Ollama → SQLite → Node API (:4317) → React UI (:5173).
+# ────────────────────────────────────────────────────────────
+# 1. PROJECT IDENTITY
+# ────────────────────────────────────────────────────────────
 
-**Version:** 1.6.0 on branch `feat/aegis-link-broker-orchestrator`.
+You are an AI pair programmer working on AO-SOC (AI-Operated Security
+Operations Center), codenamed Aegis-Link. This is a production-oriented,
+AI-augmented SOC dashboard targeting security analysts. The product surface
+is: what needs attention, how serious it is, why the AI thinks so, what to
+do next, and overall posture.
 
-## Commit signing
+The active feature branch is: feat/aegis-link-broker-orchestrator
+Current version: 1.6.0
 
-Commits are SSH-signed with `~/.ssh/id_rsa.pub`. GitHub branch: `feat/aegis-link-broker-orchestrator` (not merged to `main` yet).
+Never suggest patterns that work "well enough in demos." Every decision
+should be defensible in a production SOC environment.
+
+
+# ────────────────────────────────────────────────────────────
+# 2. MONOREPO LAYER MAP — know which layer you are in
+# ────────────────────────────────────────────────────────────
+
+orchestrator/   → Aegis-Link Python broker (FastAPI, port 8500)
+                  Owns: alert ingestion, Ollama LLM enrichment,
+                        SQLite persistence (soc_matrix.db),
+                        containment/mitigate logic, SOAR stubs
+                  Key file: soc_orchestrator.py
+                  DB: soc_matrix.db (lives inside orchestrator/, NOT root)
+
+backend/        → Express "UI API" (Node/JS, port 4317)
+                  Owns: merging broker alerts + demo data, posture/MITRE/
+                        summary computation, proxying LLM explanations
+                  Never put business logic here that belongs in the broker.
+
+frontend/       → React + TypeScript command center (Vite, port 5173)
+                  Owns: Command Center, Live Alerts, Incidents, Entities,
+                        Health pages
+                  State: React Query for server state, local useState for UI
+                  No raw fetch calls outside of dedicated service modules.
+
+Never collapse these layers. Do not put SQLite queries in the Express layer.
+Do not call the broker directly from React — always go through the backend proxy.
+
+
+# ────────────────────────────────────────────────────────────
+# 3. PYTHON / ORCHESTRATOR CONVENTIONS (FastAPI)
+# ────────────────────────────────────────────────────────────
+
+- Python 3.11+. Use type hints on all function signatures.
+- FastAPI dependency injection for DB sessions and shared clients.
+- Pydantic v2 models for all request/response schemas. No raw dicts
+  crossing endpoint boundaries.
+- SQLite via aiosqlite or sqlite3 in thread pool — never blocking the
+  event loop.
+- All DB writes go through explicit transactions; roll back on exception.
+- Ollama calls must be wrapped in try/except with a structured fallback
+  enrichment object so the alert is never lost if the LLM is unavailable.
+- soc_matrix.db must live at orchestrator/soc_matrix.db — never the repo
+  root. Enforce with os.path relative to __file__.
+- Logging: use Python's logging module with a structured format
+  (timestamp, level, module, message). No bare print() in production paths.
+- New endpoints follow the existing REST pattern:
+    GET  /api/<resource>         → list
+    GET  /api/<resource>/{id}    → detail
+    POST /api/<resource>         → create / ingest
+    POST /api/<resource>/{id}/action → trigger side effect
+- Health endpoint: GET /health must always return broker status, DB
+  reachability, and Ollama reachability as separate boolean fields.
+
+SOAR (Step 6):
+When wiring real SOAR execution, add an actions table to SQLite:
+  id, alert_id, action_type, status (QUEUED/EXECUTING/DONE/FAILED),
+  created_at, completed_at, result_json
+Surface execution status back via GET /api/alerts/{id}/actions.
+
+
+# ────────────────────────────────────────────────────────────
+# 4. NODE / BACKEND CONVENTIONS (Express)
+# ────────────────────────────────────────────────────────────
+
+- ES modules (import/export). No CommonJS require() in new files.
+- All broker calls go through a single brokerClient module with a
+  configurable BROKER_URL from environment. Never hardcode localhost:8500.
+- Demo data is only injected when the broker is unreachable OR when
+  DEMO_MODE=true is explicitly set. Always annotate demo records with
+  source: "demo" so the frontend can badge them correctly.
+- Error responses follow { error: string, code: string } shape.
+- Middleware: request logging (morgan), JSON body parser, CORS restricted
+  to FRONTEND_ORIGIN env var.
+- No business logic in route handlers — extract to service functions.
+- When adding MTTD/MTTR (Step 8): compute from SQLite alert timestamps
+  (first_seen, mitigated_at) via broker endpoint, not hardcoded values.
+
+
+# ────────────────────────────────────────────────────────────
+# 5. REACT / FRONTEND CONVENTIONS (TypeScript + Vite)
+# ────────────────────────────────────────────────────────────
+
+- Strict TypeScript. No `any`. If a type is truly unknown, use `unknown`
+  and narrow it explicitly.
+- All API calls live in src/services/. One file per resource domain
+  (alertsService.ts, entitiesService.ts, postureService.ts, etc.).
+- React Query (TanStack Query) for all server state. No manual fetch in
+  components.
+- Component files: PascalCase. Utility/hook files: camelCase.
+- Keep components under 200 lines. Extract sub-components or custom hooks
+  when a component grows beyond this.
+- LIVE badge: any alert sourced from the broker (source === "broker") must
+  display the LIVE badge. This must be enforced at the component level, not
+  just the data layer.
+- mockData.js: Do NOT add new mock data to this file. New features must
+  source data from the backend API. Mark TODO comments when a field is
+  still mock so it is easy to grep during Step 7 (entity risk).
+- MITRE heatmap: driven by broker data when broker is alive. Never
+  overwrite live heatmap with demo values.
+- Accessibility: all interactive elements must have aria-labels. Color is
+  never the sole differentiator of status (use icons + color together).
+
+Entity Risk (Step 7):
+When implementing real entity risk, derive users/hosts/IPs from
+alert.affected_assets, alert.source_ip, alert.user fields in SQLite.
+New broker endpoint: GET /api/entities (returns aggregated risk scores).
+Remove corresponding mockData.js entries once the endpoint is live.
+
+
+# ────────────────────────────────────────────────────────────
+# 6. DATA MODEL CONTRACTS
+# ────────────────────────────────────────────────────────────
+
+Alert (canonical shape — broker owns this):
+{
+  id: string,
+  title: string,
+  severity: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW",
+  status: "LIVE" | "PENDING" | "CONTAINED",
+  source: "broker" | "demo",
+  first_seen: ISO8601 string,
+  mitigated_at: ISO8601 string | null,
+  mitre_tactics: string[],       // e.g. ["TA0001", "TA0003"]
+  mitre_techniques: string[],    // e.g. ["T1078", "T1190"]
+  affected_assets: string[],
+  source_ip: string | null,
+  user: string | null,
+  enrichment: {
+    timeline: string[],
+    evidence: string[],
+    soar_actions: string[],
+    llm_assessment: string,
+  } | null,
+  containment_steps: string[],
+}
+
+When adding new fields to the alert schema, update:
+  1. orchestrator/ Pydantic model
+  2. backend/ merge/adapter logic
+  3. frontend/ TypeScript interface in src/types/alert.ts
+All three simultaneously — no partial migrations.
+
+
+# ────────────────────────────────────────────────────────────
+# 7. ENVIRONMENT & CONFIGURATION
+# ────────────────────────────────────────────────────────────
+
+- All environment-specific values go in .env files. Never hardcode URLs,
+  ports, model names, or DB paths in source code.
+- Required env vars (document in .env.example):
+    orchestrator: OLLAMA_MODEL, DB_PATH, BROKER_PORT
+    backend:      BROKER_URL, FRONTEND_ORIGIN, DEMO_MODE, PORT
+    frontend:     VITE_API_BASE_URL
+- .env files are gitignored. .env.example is committed and kept current.
+- soc_matrix.db is gitignored at the root level. Only
+  orchestrator/soc_matrix.db is the canonical location.
+
+
+# ────────────────────────────────────────────────────────────
+# 8. TESTING CONVENTIONS
+# ────────────────────────────────────────────────────────────
+
+- Orchestrator: pytest. Test file: orchestrator/test_broker.py.
+  Cover: alert ingestion, enrichment fallback (Ollama down), containment
+  state transitions, SOAR action persistence.
+- Backend: Jest or Vitest. Cover broker merge logic, demo data fallback,
+  posture computation.
+- Frontend: Vitest + React Testing Library. Cover: LIVE badge rendering,
+  MITRE heatmap data binding, alert status transitions.
+- CI (Step 9): GitHub Actions pipeline runs broker tests, Node build,
+  frontend build in sequence. No merge to main without green CI.
+
+When writing tests:
+- Use real SQLite in-memory (`:memory:`) for broker tests, not mocks.
+- Mock Ollama at the HTTP boundary (httpx mock or pytest-httpx).
+- Frontend tests mock the API layer (src/services/*), not fetch directly.
+
+
+# ────────────────────────────────────────────────────────────
+# 9. SECURITY & HARDENING CONVENTIONS
+# ────────────────────────────────────────────────────────────
+
+- Never log raw alert payloads at INFO level — they may contain PII or
+  sensitive host data. Use DEBUG level with a flag guard.
+- Input validation on all broker endpoints via Pydantic. Reject unknown
+  fields (model_config = ConfigDict(extra="forbid") where appropriate).
+- CORS: restrict to known origins via env var. No wildcard (*) in
+  production config.
+- SQLite: parameterized queries only. No f-string SQL construction.
+- Docker Compose (Step 9): broker and API containers must run as non-root
+  users. Ollama container should have GPU passthrough only if available,
+  fall back to CPU gracefully.
+- Secrets: no API keys, tokens, or passwords in source or .env.example.
+  Use placeholder values like YOUR_API_KEY_HERE with inline comments.
+
+
+# ────────────────────────────────────────────────────────────
+# 10. GIT & BRANCH CONVENTIONS
+# ────────────────────────────────────────────────────────────
+
+- Active development: feat/aegis-link-broker-orchestrator
+- Main is the stable branch. PRs require a passing smoke test checklist:
+    [ ] broker starts and /health returns all-green
+    [ ] trigger-alert.ps1 produces a LIVE incident on the dashboard
+    [ ] MITRE heatmap reflects broker data
+    [ ] Mitigate flow transitions status correctly
+    [ ] /alerts page shows live alert log
+- Commit message format: <type>(<scope>): <description>
+    type: feat | fix | chore | refactor | test | docs
+    scope: orchestrator | backend | frontend | ci | infra
+  Example: feat(orchestrator): add SOAR action persistence to SQLite
+- Commits must be GPG/SSH signed. Signing key must be registered on GitHub
+  under Settings → SSH keys → Signing key.
+- Do not commit soc_matrix.db under any circumstances.
+
+
+# ────────────────────────────────────────────────────────────
+# 11. ROADMAP AWARENESS (Steps 6–10)
+# ────────────────────────────────────────────────────────────
+
+When suggesting code for the following areas, apply these specific rules:
+
+Step 6 — Real SOAR wiring:
+  Target integrations: Shuffle, Cortex XSOAR, or generic webhook.
+  Pattern: broker receives callback, updates actions table, frontend polls
+  GET /api/alerts/{id}/actions. Never block the ingestion path on SOAR.
+
+Step 7 — Live entity risk:
+  Source: SQLite aggregations over alert.affected_assets, source_ip, user.
+  Risk score formula TBD — suggest a weighted frequency × severity model
+  as a starting point, but flag it as configurable.
+  Remove mockData.js entity entries only after the endpoint is verified.
+
+Step 8 — Operational metrics:
+  MTTD = enrichment_completed_at - first_seen (per alert, median over window)
+  MTTR = mitigated_at - first_seen (per alert, median over window)
+  Expose via broker GET /api/metrics. Never compute in the frontend.
+
+Step 9 — Production hardening:
+  Docker Compose services: ollama, broker, api, frontend (nginx).
+  Health checks on all services. Restart policy: unless-stopped.
+  CI: GitHub Actions, ubuntu-latest, Python 3.11, Node 20.
+
+Step 10 — Splunk integration:
+  Alert webhook target: POST :8500/splunk-alert
+  Document field mapping in orchestrator/README.md.
+  Provide a Splunk alert action XML template in orchestrator/splunk/.
+
+
+# ────────────────────────────────────────────────────────────
+# 12. WHAT NOT TO DO
+# ────────────────────────────────────────────────────────────
+
+- Do NOT add new mock data to mockData.js for features that should be live.
+- Do NOT call the broker directly from React components.
+- Do NOT put soc_matrix.db in the repo root.
+- Do NOT use `any` in TypeScript without an explicit justification comment.
+- Do NOT hardcode BROKER_URL, ports, or model names in source code.
+- Do NOT return 200 OK for SOAR actions that are merely queued — use 202.
+- Do NOT merge to main without a passing smoke test.
+- Do NOT collapse the three-layer architecture for the sake of brevity.
+- Do NOT use print() for logging in the orchestrator; use the logging module.
+- Do NOT expose raw SQLite errors to API consumers; wrap in structured errors.
+
+# ============================================================
+# END OF .cursorrules
+# ============================================================
