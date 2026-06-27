@@ -1,49 +1,54 @@
 import { useEffect, useState } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
-import { Shield, Activity, Server, Users, Network, Cpu, FileWarning, Radio } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { Shield, Activity, Server, Users, FileWarning, Radio } from 'lucide-react';
 import { useAoSoc } from '@/store/useAoSoc';
 import { StatusDot } from '@/components/ui/status-dot';
+import { LanguageSwitcher } from '@/components/layout/LanguageSwitcher';
+import { useRiskLabel } from '@/components/ui/chip';
 import { cn, fmtClock, fmtDate } from '@/lib/utils';
 
-const navItems = [
-  { to: '/',          label: 'Command Center', icon: Shield        },
-  { to: '/alerts',    label: 'Live Alerts',    icon: Radio         },
-  { to: '/incidents', label: 'Incidents',      icon: FileWarning   },
-  { to: '/entities',  label: 'Entity Risk',    icon: Users         },
-  { to: '/health',    label: 'System Health',  icon: Activity      }
-];
-
 export const TopNav: React.FC = () => {
+  const { t, i18n } = useTranslation();
   const { systemStatus, refreshHealth, summary } = useAoSoc();
   const location = useLocation();
   const [now, setNow] = useState(new Date());
+  const riskLabel = useRiskLabel(summary?.overall_risk_label ?? '');
+
+  const navItems = [
+    { to: '/',          label: t('nav.commandCenter'), icon: Shield        },
+    { to: '/alerts',    label: t('nav.liveAlerts'),    icon: Radio         },
+    { to: '/incidents', label: t('nav.incidents'),     icon: FileWarning   },
+    { to: '/entities',  label: t('nav.entityRisk'),    icon: Users         },
+    { to: '/health',    label: t('nav.systemHealth'),  icon: Activity      },
+  ];
+
+  const dateLocale = i18n.language === 'fa' ? 'fa-IR' : 'en-US';
 
   useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(t);
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
   }, []);
 
   useEffect(() => {
-    const t = setInterval(() => { void refreshHealth(); }, 5000);
-    return () => clearInterval(t);
+    const timer = setInterval(() => { void refreshHealth(); }, 5000);
+    return () => clearInterval(timer);
   }, [refreshHealth]);
 
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-bg/85 backdrop-blur">
       <div className="flex items-center gap-4 px-4 lg:px-6 h-14">
-        {/* Brand */}
-        <Link to="/" className="flex items-center gap-2 mr-2">
+        <Link to="/" className="flex items-center gap-2 me-2">
           <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-info/15 border border-info/30">
             <Shield className="h-4 w-4 text-info" />
           </span>
           <div className="leading-tight">
             <div className="text-sm font-semibold tracking-wide">AO-SOC</div>
-            <div className="text-[10px] uppercase tracking-[0.2em] text-muted">Command Center</div>
+            <div className="text-[10px] uppercase tracking-[0.2em] text-muted">{t('nav.commandCenter')}</div>
           </div>
         </Link>
 
-        {/* Nav */}
-        <nav className="hidden md:flex items-center gap-1 ml-2">
+        <nav className="hidden md:flex items-center gap-1 ms-2">
           {navItems.map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
@@ -64,14 +69,12 @@ export const TopNav: React.FC = () => {
           ))}
         </nav>
 
-        <div className="ml-auto flex items-center gap-3 lg:gap-5">
-          {/* Pipeline status */}
+        <div className="ms-auto flex items-center gap-3 lg:gap-5">
           <PipelineStatus />
 
-          {/* Risk badge */}
           {summary && (
-            <div className="hidden lg:flex items-center gap-2 pl-4 border-l border-border">
-              <span className="label">Posture</span>
+            <div className="hidden lg:flex items-center gap-2 ps-4 border-s border-border">
+              <span className="label">{t('nav.posture')}</span>
               <span
                 className={cn(
                   'font-semibold text-sm',
@@ -80,23 +83,23 @@ export const TopNav: React.FC = () => {
                   summary.overall_risk_score >= 40 ? 'text-medium'   : 'text-low'
                 )}
               >
-                {summary.overall_risk_label}
+                {riskLabel}
               </span>
               <span className="font-mono text-xs text-muted">({summary.overall_risk_score})</span>
             </div>
           )}
 
-          {/* Clock */}
-          <div className="flex flex-col items-end leading-tight pl-4 border-l border-border">
+          <LanguageSwitcher />
+
+          <div className="flex flex-col items-end leading-tight ps-2 sm:ps-4 border-s border-border shrink-0">
             <span className="font-mono text-sm text-fg">{fmtClock(now)}</span>
-            <span className="text-[10px] uppercase tracking-wider text-muted">
-              {fmtDate(now)} · {now.toLocaleTimeString('en-US', { timeZoneName: 'short' }).split(' ').pop()}
+            <span className="hidden sm:block text-[10px] uppercase tracking-wider text-muted">
+              {fmtDate(now, dateLocale)} · {now.toLocaleTimeString(dateLocale, { timeZoneName: 'short' }).split(' ').pop()}
             </span>
           </div>
         </div>
       </div>
 
-      {/* Mobile nav */}
       <div className="md:hidden flex items-center gap-1 px-3 pb-2 overflow-x-auto">
         {navItems.map(({ to, label }) => (
           <NavLink
@@ -113,19 +116,20 @@ export const TopNav: React.FC = () => {
             {label}
           </NavLink>
         ))}
-        {location.pathname === '/' && <span className="ml-auto"><PipelineStatus compact /></span>}
+        {location.pathname === '/' && <span className="ms-auto"><PipelineStatus compact /></span>}
       </div>
     </header>
   );
 };
 
 const PipelineStatus: React.FC<{ compact?: boolean }> = ({ compact }) => {
+  const { t } = useTranslation();
   const { systemStatus } = useAoSoc();
   const items = [
-    { key: 'splunk', label: 'Splunk' },
-    { key: 'broker', label: 'AI Broker' },
-    { key: 'llm',    label: 'LLM' },
-    { key: 'soar',   label: 'SOAR' }
+    { key: 'splunk', label: t('nav.splunk') },
+    { key: 'broker', label: t('nav.aiBroker') },
+    { key: 'llm',    label: t('nav.llm') },
+    { key: 'soar',   label: t('nav.soar') },
   ] as const;
 
   if (compact) {

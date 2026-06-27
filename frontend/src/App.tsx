@@ -1,4 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { TopNav } from '@/components/layout/TopNav';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { IncidentsListPage } from '@/pages/IncidentsListPage';
@@ -9,6 +10,8 @@ import { AlertsPage } from '@/pages/AlertsPage';
 import { APP_VERSION } from '@/version';
 
 export default function App() {
+  const { t } = useTranslation();
+
   return (
     <div className="min-h-screen flex flex-col bg-bg text-fg">
       <TopNav />
@@ -24,8 +27,8 @@ export default function App() {
         </Routes>
       </main>
       <footer className="border-t border-border py-3 px-4 lg:px-6 text-[11px] text-muted flex items-center justify-between">
-        <span>AO-SOC Command Center · v{APP_VERSION}</span>
-        <span className="font-mono">Splunk → AI Broker → Local LLM (Qwen) → SOAR</span>
+        <span>{t('footer.title')} · v{APP_VERSION}</span>
+        <span className="font-mono">{t('footer.pipeline')}</span>
       </footer>
     </div>
   );

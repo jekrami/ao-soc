@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Card, CardHeader, CardTitle, CardSubtitle, CardBody } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useAoSoc } from '@/store/useAoSoc';
@@ -18,6 +19,7 @@ const iconFor = (action: string) => {
 };
 
 export const RecommendedActions: React.FC = () => {
+  const { t } = useTranslation();
   const { selectedIncident, executeAction } = useAoSoc();
   const [busy, setBusy] = useState<string | null>(null);
   const [done, setDone] = useState<Record<string, string>>({});
@@ -26,7 +28,7 @@ export const RecommendedActions: React.FC = () => {
     return (
       <Card className="h-full">
         <CardBody>
-          <div className="text-center text-muted py-12 text-sm">No incident selected</div>
+          <div className="text-center text-muted py-12 text-sm">{t('common.noIncidentSelected')}</div>
         </CardBody>
       </Card>
     );
@@ -44,9 +46,9 @@ export const RecommendedActions: React.FC = () => {
       <CardHeader>
         <div className="flex items-center gap-2">
           <Power className="h-4 w-4 text-info" />
-          <CardTitle>AI Recommended Actions</CardTitle>
+          <CardTitle>{t('dashboard.aiRecommendedActions')}</CardTitle>
         </div>
-        <CardSubtitle>{selectedIncident.recommended_actions.length} actions</CardSubtitle>
+        <CardSubtitle>{selectedIncident.recommended_actions.length} {t('common.actions')}</CardSubtitle>
       </CardHeader>
       <CardBody className="flex-1 overflow-auto p-3 space-y-2">
         {selectedIncident.recommended_actions.map(a => {
@@ -65,22 +67,22 @@ export const RecommendedActions: React.FC = () => {
                     <span className="font-mono text-[11px] text-muted">{a.id}</span>
                   </div>
                   <div className="text-[11px] text-muted mt-0.5">
-                    Target: <span className="font-mono text-fg">{a.target}</span>
+                    {t('common.target')}: <span className="font-mono text-fg">{a.target}</span>
                   </div>
                 </div>
               </div>
 
               <div className="mt-2 grid grid-cols-1 gap-1.5 text-[11px]">
                 <div className="flex gap-2">
-                  <span className="text-muted w-20 shrink-0">Reason</span>
+                  <span className="text-muted w-20 shrink-0">{t('common.reason')}</span>
                   <span className="text-fg/90">{a.reason}</span>
                 </div>
                 <div className="flex gap-2">
-                  <span className="text-muted w-20 shrink-0">Impact</span>
+                  <span className="text-muted w-20 shrink-0">{t('common.impact')}</span>
                   <span className="text-fg/90">{a.impact}</span>
                 </div>
                 <div className="flex gap-2 items-center">
-                  <span className="text-muted w-20 shrink-0">Confidence</span>
+                  <span className="text-muted w-20 shrink-0">{t('common.confidence')}</span>
                   <span className="font-mono text-fg">{a.confidence}%</span>
                 </div>
               </div>
@@ -89,12 +91,12 @@ export const RecommendedActions: React.FC = () => {
                 {executionId ? (
                   <span className="inline-flex items-center gap-1.5 text-[11px] text-low">
                     <CheckCircle2 className="h-3.5 w-3.5" />
-                    Queued · <span className="font-mono">{executionId}</span>
+                    {t('common.queued')} · <span className="font-mono">{executionId}</span>
                   </span>
                 ) : (
                   <Button size="sm" variant="outline" onClick={() => { void trigger(a); }} disabled={isBusy}>
                     {isBusy && <Loader2 className="h-3 w-3 animate-spin" />}
-                    Execute
+                    {t('common.execute')}
                   </Button>
                 )}
               </div>

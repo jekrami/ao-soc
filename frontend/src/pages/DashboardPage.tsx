@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAoSoc } from '@/store/useAoSoc';
 import { ExecutiveSummary }      from '@/components/dashboard/ExecutiveSummary';
 import { BrokerLiveMetrics }   from '@/components/dashboard/BrokerLiveMetrics';
@@ -11,6 +12,7 @@ import { AiExplanation }         from '@/components/dashboard/AiExplanation';
 import { SystemHealthPanel }     from '@/components/dashboard/SystemHealthPanel';
 
 export const DashboardPage: React.FC = () => {
+  const { t } = useTranslation();
   const { loadAll, refreshIncidents, error, loading } = useAoSoc();
 
   useEffect(() => { void loadAll(); }, [loadAll]);
@@ -24,22 +26,20 @@ export const DashboardPage: React.FC = () => {
     <div className="space-y-4">
       {error && (
         <div className="rounded-md border border-critical/40 bg-critical/10 text-critical px-3 py-2 text-sm">
-          Failed to load dashboard: {error}. Make sure the mock API is running on port 4317.
+          {t('dashboard.loadError', { error })}
         </div>
       )}
 
-      {/* ROW 1 */}
-      <section aria-label="Executive Summary">
-        <SectionHeader title="Executive Summary" subtitle="What the security posture looks like right now" />
+      <section aria-label={t('dashboard.executiveSummary')}>
+        <SectionHeader title={t('dashboard.executiveSummary')} subtitle={t('dashboard.executiveSubtitle')} />
         <BrokerLiveMetrics />
         <div className="mt-3">
           <ExecutiveSummary />
         </div>
       </section>
 
-      {/* ROW 2 */}
-      <section aria-label="Main Operations">
-        <SectionHeader title="Main Operations" subtitle="Triage · Storyboard · Response" />
+      <section aria-label={t('dashboard.mainOperations')}>
+        <SectionHeader title={t('dashboard.mainOperations')} subtitle={t('dashboard.mainOperationsSubtitle')} />
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
           <div className="lg:col-span-3">
             <IncidentQueue />
@@ -53,32 +53,28 @@ export const DashboardPage: React.FC = () => {
         </div>
       </section>
 
-      {/* ROW 3 */}
-      <section aria-label="Risk Analytics">
-        <SectionHeader title="Risk Analytics" subtitle="High-risk entities driving the current posture" />
+      <section aria-label={t('dashboard.riskAnalytics')}>
+        <SectionHeader title={t('dashboard.riskAnalytics')} subtitle={t('dashboard.riskAnalyticsSubtitle')} />
         <RiskAnalytics />
       </section>
 
-      {/* ROW 4 */}
-      <section aria-label="MITRE ATT&CK">
-        <SectionHeader title="MITRE ATT&CK" subtitle="Tactic coverage based on correlated evidence" />
+      <section aria-label={t('dashboard.mitre')}>
+        <SectionHeader title={t('dashboard.mitre')} subtitle={t('dashboard.mitreSubtitle')} />
         <MitreHeatmap />
       </section>
 
-      {/* ROW 5 */}
-      <section aria-label="AI Explanation">
-        <SectionHeader title="AI Explanation" subtitle="LLM-generated reasoning for the selected incident" />
+      <section aria-label={t('dashboard.aiExplanation')}>
+        <SectionHeader title={t('dashboard.aiExplanation')} subtitle={t('dashboard.aiExplanationSubtitle')} />
         <AiExplanation />
       </section>
 
-      {/* ROW 6 */}
-      <section aria-label="System Health">
-        <SectionHeader title="System Health" subtitle="Pipeline liveness and resource utilization" />
+      <section aria-label={t('dashboard.systemHealth')}>
+        <SectionHeader title={t('dashboard.systemHealth')} subtitle={t('dashboard.systemHealthSubtitle')} />
         <SystemHealthPanel />
       </section>
 
       {loading.summary && (
-        <div className="text-center text-xs text-muted py-3">Refreshing data…</div>
+        <div className="text-center text-xs text-muted py-3">{t('common.loading')}</div>
       )}
     </div>
   );

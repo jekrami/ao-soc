@@ -14,7 +14,7 @@ is: what needs attention, how serious it is, why the AI thinks so, what to
 do next, and overall posture.
 
 The active feature branch is: feat/aegis-link-broker-orchestrator
-Current version: 1.7.0
+Current version: 1.9.0
 
 Never suggest patterns that work "well enough in demos." Every decision
 should be defensible in a production SOC environment.

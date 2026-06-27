@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Card, CardHeader, CardTitle, CardSubtitle, CardBody } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { SeverityChip, StatusPill, RiskBadge } from '@/components/ui/chip';
@@ -22,6 +23,7 @@ const iconFor = (label: string) => {
 };
 
 export const AttackStoryboard: React.FC = () => {
+  const { t } = useTranslation();
   const { selectedIncident, selectIncident, incidents, loading, mitigateIncident } = useAoSoc();
   const inc = selectedIncident;
   const canMitigate = inc?.source === 'broker' && inc.status !== 'CONTAINED';
@@ -40,7 +42,7 @@ export const AttackStoryboard: React.FC = () => {
     return (
       <Card className="h-full">
         <CardBody>
-          <div className="text-center text-muted py-16">Select an incident to view its storyboard</div>
+          <div className="text-center text-muted py-16">{t('common.selectIncident')}</div>
         </CardBody>
       </Card>
     );
@@ -48,17 +50,17 @@ export const AttackStoryboard: React.FC = () => {
 
   return (
     <Card className="flex flex-col h-full">
-      <CardHeader>
-        <div>
-          <div className="flex items-center gap-2 mb-1">
+      <CardHeader className="flex-col sm:flex-row gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
             <SeverityChip severity={inc.severity} />
             <StatusPill status={inc.status} />
             <span className="font-mono text-[11px] text-muted">{inc.id}</span>
           </div>
           <CardTitle className="text-base leading-tight">{inc.title}</CardTitle>
-          <CardSubtitle>Attack storyboard · {inc.timeline.length} stages</CardSubtitle>
+          <CardSubtitle>{t('dashboard.attackStoryboard')} · {inc.timeline.length} {t('common.stages')}</CardSubtitle>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
           {canMitigate && (
             <Button
               size="sm"
@@ -67,49 +69,48 @@ export const AttackStoryboard: React.FC = () => {
               onClick={() => { void mitigateIncident(inc.id); }}
             >
               {loading.mitigate ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
-              Mitigate Attack
+              {t('common.mitigateAttack')}
             </Button>
           )}
-          {incidents.map(i => {
-            const active = i.id === inc.id;
-            return (
-              <button
-                key={i.id}
-                onClick={() => { void selectIncident(i.id); }}
-                title={`${i.id} · ${i.severity}`}
-                className={cn(
-                  'h-2.5 w-6 rounded-full transition-all border',
-                  active ? 'border-transparent' : 'border-border bg-border'
-                )}
-                style={active ? { backgroundColor: currentColor(i.severity) } : undefined}
-              />
-            );
-          })}
+          <div className="flex flex-wrap items-center gap-1.5 max-w-full">
+            {incidents.map(i => {
+              const active = i.id === inc.id;
+              return (
+                <button
+                  key={i.id}
+                  onClick={() => { void selectIncident(i.id); }}
+                  title={`${i.id} · ${i.severity}`}
+                  className={cn(
+                    'h-2.5 w-6 rounded-full transition-all border shrink-0',
+                    active ? 'border-transparent' : 'border-border bg-border'
+                  )}
+                  style={active ? { backgroundColor: currentColor(i.severity) } : undefined}
+                />
+              );
+            })}
+          </div>
         </div>
       </CardHeader>
 
       <CardBody className="flex-1 overflow-auto">
-        {/* Header strip */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-          <Strip label="Risk Score"  value={<RiskBadge score={inc.risk_score} />} />
-          <Strip label="Confidence"  value={<span className="font-mono text-fg text-sm">{inc.confidence}%</span>} />
-          <Strip label="First Seen"  value={<span className="font-mono text-fg text-sm">{inc.first_seen}</span>} />
-          <Strip label="Last Seen"   value={<span className="font-mono text-fg text-sm">{inc.last_seen}</span>} />
+          <Strip label={t('dashboard.riskScore')}  value={<RiskBadge score={inc.risk_score} />} />
+          <Strip label={t('common.confidence')}  value={<span className="font-mono text-fg text-sm">{inc.confidence}%</span>} />
+          <Strip label={t('dashboard.firstSeen')}  value={<span className="font-mono text-fg text-sm">{inc.first_seen}</span>} />
+          <Strip label={t('dashboard.lastSeen')}   value={<span className="font-mono text-fg text-sm">{inc.last_seen}</span>} />
         </div>
 
-        <div className="text-[11px] uppercase tracking-wider text-muted mb-2">Attack Chain</div>
+        <div className="text-[11px] uppercase tracking-wider text-muted mb-2">{t('dashboard.attackChain')}</div>
 
-        {/* Timeline */}
-        <ol className="relative ml-2">
-          <span className="absolute left-3 top-2 bottom-2 w-px bg-border" aria-hidden="true" />
+        <ol className="relative ms-2">
+          <span className="absolute start-3 top-2 bottom-2 w-px bg-border" aria-hidden="true" />
           {inc.timeline.map((step, idx) => (
-            <TimelineRow key={idx} step={step} isLast={idx === inc.timeline.length - 1} />
+            <TimelineRow key={idx} step={step} />
           ))}
         </ol>
 
-        {/* Evidence */}
         <div className="mt-6">
-          <div className="text-[11px] uppercase tracking-wider text-muted mb-2">Evidence Linked</div>
+          <div className="text-[11px] uppercase tracking-wider text-muted mb-2">{t('dashboard.evidenceLinked')}</div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
             {inc.evidence.map(e => (
               <div key={e.id} className="rounded-md border border-border bg-surface2/50 p-3">
@@ -123,7 +124,7 @@ export const AttackStoryboard: React.FC = () => {
                   </span>
                 </div>
                 <div className="text-sm text-fg mt-1">{e.signal}</div>
-                <div className="text-[11px] text-muted mt-0.5">src: {e.src}</div>
+                <div className="text-[11px] text-muted mt-0.5">{t('common.src')}: {e.src}</div>
               </div>
             ))}
           </div>
@@ -140,11 +141,11 @@ const Strip: React.FC<{ label: string; value: React.ReactNode }> = ({ label, val
   </div>
 );
 
-const TimelineRow: React.FC<{ step: TimelineEvent; isLast: boolean }> = ({ step }) => {
+const TimelineRow: React.FC<{ step: TimelineEvent }> = ({ step }) => {
   const Icon = iconFor(step.label);
   return (
-    <li className="relative pl-9 pr-1 py-2.5">
-      <span className="absolute left-0 top-2.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-info/15 border border-info/40 text-info">
+    <li className="relative ps-9 pe-1 py-2.5">
+      <span className="absolute start-0 top-2.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-info/15 border border-info/40 text-info">
         <Icon className="h-3.5 w-3.5" />
       </span>
       <div className="flex items-center gap-3">

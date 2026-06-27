@@ -1,9 +1,11 @@
+import { useTranslation } from 'react-i18next';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useAoSoc } from '@/store/useAoSoc';
 import { Radio, ShieldAlert, ShieldCheck, RefreshCw } from 'lucide-react';
 
 export const BrokerLiveMetrics: React.FC = () => {
+  const { t } = useTranslation();
   const { summary, loading, refreshIncidents } = useAoSoc();
   const live = summary?.broker_live_alerts ?? 0;
 
@@ -18,13 +20,13 @@ export const BrokerLiveMetrics: React.FC = () => {
       <div className="flex flex-wrap items-center gap-4 text-sm">
         <span className="font-semibold text-fg inline-flex items-center gap-1.5">
           <Radio className="h-4 w-4 text-info animate-pulse" />
-          Broker feed
+          {t('dashboard.brokerFeed')}
         </span>
-        <MetricPill label="LIVE" value={live} tone="info" />
-        <MetricPill label="PENDING" value={pending} tone="high" icon={ShieldAlert} />
-        <MetricPill label="CONTAINED" value={contained} tone="low" icon={ShieldCheck} />
+        <MetricPill label={t('enums.broker.LIVE')} value={live} tone="info" />
+        <MetricPill label={t('enums.broker.PENDING')} value={pending} tone="high" icon={ShieldAlert} />
+        <MetricPill label={t('enums.broker.CONTAINED')} value={contained} tone="low" icon={ShieldCheck} />
         {summary?.posture_mode === 'live' && (
-          <span className="text-[10px] uppercase tracking-wider text-muted">Live posture · demo hidden</span>
+          <span className="text-[10px] uppercase tracking-wider text-muted">{t('dashboard.livePostureDemoHidden')}</span>
         )}
       </div>
       <Button
@@ -34,7 +36,7 @@ export const BrokerLiveMetrics: React.FC = () => {
         onClick={() => { void refreshIncidents(); }}
       >
         <RefreshCw className={`h-3.5 w-3.5 ${busy ? 'animate-spin' : ''}`} />
-        Refresh alerts
+        {t('common.refreshAlerts')}
       </Button>
     </Card>
   );

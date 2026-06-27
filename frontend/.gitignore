@@ -5,3 +5,8 @@ dist
 .env.local
 *.log
 .DS_Store
+
+# Generated build artifacts
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts

@@ -78,7 +78,7 @@ ao-soc/
 
 ## Run It
 
-**Version:** 1.7.0 — see `VERSION` at repo root (bump on every release).
+**Version:** 1.9.0 — see `VERSION` at repo root (bump on every release).
 
 One-time setup (each machine):
 
@@ -260,9 +260,11 @@ matches the types in `frontend/src/types.ts`.
 - **v1.5.0** — Dedicated `/alerts` page: live metrics grid, alert log table, interactive containment checklist, and mitigate action.
 - **v1.6.0** — Posture fusion: broker MITRE heatmap, live executive summary, real broker health in pipeline status, demo incidents filtered when broker is active.
 - **v1.7.0** — Demo tooling: batch seeder (`seed_demo_alert.py`), real-time simulator (`simulate_alerts.py`), auto-reset on each demo run, README demo vs production runbooks.
+- **v1.8.0** — English/Farsi (Persian) UI with RTL layout and dashboard language switcher (EN | FA).
+- **v1.9.0** — Grafana-style Executive Summary (radial gauges, severity donut, risk histogram, response-time bullet bars), full mobile-responsive layout (stacked-card tables, adaptive nav), and **live MTTD/MTTR** computed from broker alert timestamps during demos.
 
 ## Authorship
 
-**Version:** 1.7.0 (see `VERSION` — increment on each release commit)
+**Version:** 1.9.0 (see `VERSION` — increment on each release commit)
 
 Written by J.Ekrami, co-written with GitHub Copilot and Composer (Cursor AI).

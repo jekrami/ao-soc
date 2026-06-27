@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Card, CardHeader, CardTitle, CardSubtitle, CardBody } from '@/components/ui/card';
 import { useAoSoc } from '@/store/useAoSoc';
 import { Progress } from '@/components/ui/progress';
@@ -12,6 +13,7 @@ const iconFor: Record<EntityType, React.ComponentType<{ className?: string }>> =
 };
 
 const EntityList: React.FC<{ items: Entity[]; type: EntityType }> = ({ items, type }) => {
+  const { t } = useTranslation();
   const Icon = iconFor[type];
   return (
     <ul className="space-y-2">
@@ -31,8 +33,8 @@ const EntityList: React.FC<{ items: Entity[]; type: EntityType }> = ({ items, ty
             </div>
             <div className="mt-1 text-[11px] text-muted line-clamp-2">{e.reason}</div>
             <div className="mt-2 flex items-center gap-3 text-[10px] text-muted">
-              <span>conf <span className="font-mono text-fg/80">{e.confidence}%</span></span>
-              <span>seen <span className="font-mono text-fg/80">{e.last_seen}</span></span>
+              <span>{t('common.conf')} <span className="font-mono text-fg/80">{e.confidence}%</span></span>
+              <span>{t('common.seen')} <span className="font-mono text-fg/80">{e.last_seen}</span></span>
             </div>
             <div className="mt-2">
               <Progress value={e.risk_score} tone={tone as 'critical' | 'high' | 'medium' | 'low'} />
@@ -45,6 +47,7 @@ const EntityList: React.FC<{ items: Entity[]; type: EntityType }> = ({ items, ty
 };
 
 export const RiskAnalytics: React.FC = () => {
+  const { t } = useTranslation();
   const { highRiskUsers, highRiskHosts, highRiskIps } = useAoSoc();
 
   return (
@@ -52,8 +55,8 @@ export const RiskAnalytics: React.FC = () => {
       <Card>
         <CardHeader>
           <div>
-            <CardTitle>High Risk Users</CardTitle>
-            <CardSubtitle>{highRiskUsers.length} flagged</CardSubtitle>
+            <CardTitle>{t('dashboard.highRiskUsers')}</CardTitle>
+            <CardSubtitle>{highRiskUsers.length} {t('common.flagged')}</CardSubtitle>
           </div>
           <User className="h-4 w-4 text-high" />
         </CardHeader>
@@ -65,8 +68,8 @@ export const RiskAnalytics: React.FC = () => {
       <Card>
         <CardHeader>
           <div>
-            <CardTitle>High Risk Hosts</CardTitle>
-            <CardSubtitle>{highRiskHosts.length} flagged</CardSubtitle>
+            <CardTitle>{t('dashboard.highRiskHosts')}</CardTitle>
+            <CardSubtitle>{highRiskHosts.length} {t('common.flagged')}</CardSubtitle>
           </div>
           <Server className="h-4 w-4 text-high" />
         </CardHeader>
@@ -78,8 +81,8 @@ export const RiskAnalytics: React.FC = () => {
       <Card>
         <CardHeader>
           <div>
-            <CardTitle>High Risk IPs</CardTitle>
-            <CardSubtitle>{highRiskIps.length} flagged</CardSubtitle>
+            <CardTitle>{t('dashboard.highRiskIps')}</CardTitle>
+            <CardSubtitle>{highRiskIps.length} {t('common.flagged')}</CardSubtitle>
           </div>
           <Globe className="h-4 w-4 text-high" />
         </CardHeader>
