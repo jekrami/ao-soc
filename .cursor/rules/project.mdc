@@ -16,6 +16,15 @@ do next, and overall posture.
 The active feature branch is: feat/aegis-link-broker-orchestrator
 Current version: 2.0.0
 
+Version roadmap:
+- v2.x is the Stage 2 product line: AI Tier-2 decisioning with human
+  confirmation, policy-gated SOAR auto-execution, hardening, tests,
+  integrations, and operational requirements needed to make Stage 2
+  production-ready.
+- v3.0 is reserved for Stage 3: fully autonomous decision-making and
+  execution with humans supervising by exception only. Do not label Stage 3
+  work as a v2.x release.
+
 Never suggest patterns that work "well enough in demos." Every decision
 should be defensible in a production SOC environment.
 

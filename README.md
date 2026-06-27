@@ -12,6 +12,10 @@ This dashboard is **not** a raw-log SIEM. It answers five questions for the huma
 
 ## Architecture
 
+AO-SOC evolves in three autonomy stages. **v2.0** implements **Stage 2**; **v3.0** is reserved for **Stage 3**.
+
+### Current pipeline (v2.0 — Stage 2)
+
 ```
 Data Sources
     ↓
@@ -21,15 +25,41 @@ Python AI Broker / Correlation Engine
     ↓
 Local LLM (Qwen via Ollama)
     ↓
-Response Layer / SOAR
+AI Tier-2 Decision Agent
     ↓
-Python Orchestrator v2 + SQLite AI explanation DB
+Human Confirmer (Approve / Reject plan)
     ↓
-Human Analyst
+Policy Guardrails
+    ↓
+SOAR Auto-Execution
+    ↓
+Python Orchestrator + SQLite (alerts, decisions, actions, audit)
+    ↓
+Dashboard (Command Center)
 ```
 
-The dashboard consumes the correlated, AI-enriched output of that pipeline and
-turns it into a clean command center for the human on shift.
+On ingest, the broker enriches each alert and derives a **single Tier-2 decision**
+(`CONTAIN`, `ESCALATE`, `INVESTIGATE`, `MONITOR`, or `IGNORE`) plus a **bundled
+SOAR action plan**. The analyst reviews once on the dashboard and clicks **Approve
+plan** or **Reject**. On approval, the orchestrator queues and runs every action
+automatically — no per-step clicks — and surfaces live execution status
+(`PENDING` → `APPROVED` → `EXECUTING` → `DONE` / `FAILED`).
+
+The dashboard consumes correlated, AI-enriched output and turns it into a command
+center for the analyst on shift.
+
+### Stage roadmap
+
+| Stage | Version line | Human role | Flow |
+|-------|--------------|------------|------|
+| **Stage 1** — Assistive | v1.x | Analyst does everything manually | `… → LLM Enrichment → Dashboard → Human Analyst` |
+| **Stage 2** — Confirm then auto | **v2.x** (current) | Analyst confirms once; SOAR runs the full plan | `… → AI Tier-2 Decision → Human Confirmer → Policy → SOAR Auto-Execution → Audit` |
+| **Stage 3** — Autonomous | **v3.0** (planned) | Supervisor by exception only | `… → AI Tier-2 Decision → Policy Guardrails → SOAR Auto-Execution → Audit / Override` |
+
+**v2.1–v2.x** will harden Stage 2: real SOAR integrations, policy tuning, tests,
+operational metrics, and production requirements. **v3.0** removes the human
+confirmation gate while keeping policy guardrails and audit/override UI for
+exceptions.
 
 ## Tech Stack
 
