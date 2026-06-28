@@ -22,8 +22,9 @@ python soc_orchestrator.py
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `WORKSTATION_IP` | `192.168.100.111` | Ollama host on LAN |
-| `OLLAMA_ENDPOINT` | `http://{WORKSTATION_IP}:11434/api/generate` | Inference API |
+| `OLLAMA_HOST` | `localhost` | Ollama host (`<ollama-host>`); set to your LAN IP/hostname. `WORKSTATION_IP` still honored as a fallback. |
+| `OLLAMA_PORT` | `11434` | Ollama port |
+| `OLLAMA_ENDPOINT` | `http://{OLLAMA_HOST}:{OLLAMA_PORT}/api/generate` | Full inference API URL (overrides host/port) |
 | `MODEL_NAME` | `qwen3.5:latest` | Model tag |
 | `OLLAMA_TEMPERATURE` | `0.1` | Inference temperature |
 | `ORCHESTRATOR_DB_FILE` | `soc_matrix.db` | SQLite filename |

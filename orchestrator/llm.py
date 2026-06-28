@@ -5,8 +5,31 @@ from typing import Any, Dict
 
 import httpx
 
-WORKSTATION_IP = os.getenv('WORKSTATION_IP', '192.168.100.111')
-OLLAMA_ENDPOINT = os.getenv('OLLAMA_ENDPOINT', f'http://{WORKSTATION_IP}:11434/api/generate')
+# Ollama host is configurable; default to localhost so no environment-specific
+# IP is baked into source. Precedence:
+#   1. OLLAMA_ENDPOINT  — full URL override (wins outright)
+#   2. OLLAMA_HOST / WORKSTATION_IP (+ OLLAMA_PORT) — host[:port], scheme optional
+# OLLAMA_HOST follows the upstream Ollama convention and may already carry a
+# port (e.g. "0.0.0.0:11434"), so we only append OLLAMA_PORT when absent.
+OLLAMA_HOST = os.getenv('OLLAMA_HOST') or os.getenv('WORKSTATION_IP') or 'localhost'
+OLLAMA_PORT = os.getenv('OLLAMA_PORT', '11434')
+
+
+def _build_ollama_endpoint() -> str:
+    explicit = os.getenv('OLLAMA_ENDPOINT')
+    if explicit:
+        return explicit
+    host = OLLAMA_HOST.strip()
+    scheme = 'http'
+    if '://' in host:
+        scheme, host = host.split('://', 1)
+    host = host.rstrip('/')
+    if ':' not in host:
+        host = f'{host}:{OLLAMA_PORT}'
+    return f'{scheme}://{host}/api/generate'
+
+
+OLLAMA_ENDPOINT = _build_ollama_endpoint()
 MODEL_NAME = os.getenv('MODEL_NAME', 'qwen3.5:latest')
 OLLAMA_TEMPERATURE = float(os.getenv('OLLAMA_TEMPERATURE', '0.1'))
 

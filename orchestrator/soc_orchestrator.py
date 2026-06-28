@@ -39,7 +39,6 @@ from tier2 import (
     reject_tier2_decision,
 )
 
-WORKSTATION_IP = os.getenv('WORKSTATION_IP', '192.168.100.111')
 BROKER_PORT = int(os.getenv('BROKER_PORT', '8500'))
 
 

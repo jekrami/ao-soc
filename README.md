@@ -108,7 +108,7 @@ ao-soc/
 
 ## Run It
 
-**Version:** 2.0.0 — see `VERSION` at repo root (bump on every release).
+**Version:** 2.0.1 — see `VERSION` at repo root (bump on every release).
 
 One-time setup (each machine):
 
@@ -198,9 +198,9 @@ Use on shift with real ingestion. **Do not** run `seed_demo_alert.py` or `simula
 
 **Prerequisites**
 
-- Ollama reachable (default: `http://192.168.100.111:11434`, model `qwen3.5:latest`)
+- Ollama reachable at `http://<ollama-host>:11434` (model `qwen3.5:latest`); `<ollama-host>` defaults to `localhost` — set `OLLAMA_HOST` to your LAN IP/hostname
 - Splunk `| sendalert` or scheduled search POSTing to the broker webhook
-- Env vars as needed (see `orchestrator/README.md`): `WORKSTATION_IP`, `OLLAMA_ENDPOINT`, `MODEL_NAME`, `ORCHESTRATOR_DB_FILE`, `BROKER_PORT`
+- Env vars as needed (see `orchestrator/README.md`): `OLLAMA_HOST`, `OLLAMA_PORT`, `OLLAMA_ENDPOINT`, `MODEL_NAME`, `ORCHESTRATOR_DB_FILE`, `BROKER_PORT`
 
 | Terminal | Service | Command |
 | -------- | ------- | ------- |
@@ -330,10 +330,11 @@ matches the types in `frontend/src/types.ts`.
 - **v1.8.0** — English/Farsi (Persian) UI with RTL layout and dashboard language switcher (EN | FA).
 - **v1.9.0** — Grafana-style Executive Summary (radial gauges, severity donut, risk histogram, response-time bullet bars), full mobile-responsive layout (stacked-card tables, adaptive nav), and **live MTTD/MTTR** computed from broker alert timestamps during demos.
 - **v1.9.1** — One-command demo startup/stop scripts for Windows (`start-demo.ps1` / `stop-demo.ps1`) and Linux/macOS (`start-demo.sh` / `stop-demo.sh`).
+- **v2.0.1** — Config hygiene: removed the hardcoded Ollama LAN IP default; host is now `OLLAMA_HOST` / `OLLAMA_PORT` (defaulting to `localhost:11434`, `<ollama-host>` in docs) with `OLLAMA_ENDPOINT` and legacy `WORKSTATION_IP` still honored.
 - **v2.0.0** — Stage 2 AI Tier-2 autonomy (major): the broker derives a structured decision (`CONTAIN` / `ESCALATE` / `INVESTIGATE` / `MONITOR` / `IGNORE`) plus a bundled SOAR action plan per alert. Analyst reviews once and clicks **Approve plan**; the orchestrator then auto-executes every action (policy-gated) and contains the incident with no per-step clicks. This shifts AO-SOC from "AI explains" to "AI operates Tier-2 after one human yes". New endpoints: decision approve/reject and live action status.
 
 ## Authorship
 
-**Version:** 2.0.0 (see `VERSION` — increment on each release commit)
+**Version:** 2.0.1 (see `VERSION` — increment on each release commit)
 
 Written by J.Ekrami, co-written with GitHub Copilot and Composer (Cursor AI).
