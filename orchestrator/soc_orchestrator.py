@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import uuid
 from contextlib import asynccontextmanager
@@ -45,6 +46,16 @@ from tier2 import (
 )
 
 BROKER_PORT = int(os.getenv('BROKER_PORT', '8500'))
+
+# Under uvicorn the root logger stays at WARNING, so every logger.info() in
+# tier2/soar is swallowed — the console shows bare 201s while autopilot is
+# approving plans and SOAR is firing actions. That is exactly the narration a
+# demo operator needs, so configure it here rather than leaving it to uvicorn.
+logging.basicConfig(
+    level=(os.getenv('LOG_LEVEL') or 'INFO').upper(),
+    format='%(asctime)s %(levelname)-7s %(name)s: %(message)s',
+    datefmt='%H:%M:%S',
+)
 
 
 @asynccontextmanager

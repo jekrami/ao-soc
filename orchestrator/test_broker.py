@@ -3,6 +3,7 @@ Integration test for Aegis-Link broker — runs without Ollama by mocking LLM ou
 Usage: python test_broker.py
 """
 import asyncio
+import importlib
 import json
 import os
 import sys
@@ -16,6 +17,7 @@ os.environ['SOAR_STEP_DELAY'] = '0'
 
 import db
 import soc_orchestrator as broker
+import llm
 from llm import parse_json_response
 from tier2 import (
     autopilot_if_eligible,
@@ -60,9 +62,67 @@ async def mock_call_ollama(_prompt: str) -> str:
     return MOCK_LLM_RESPONSE
 
 
+def check_endpoint_resolution() -> None:
+    """OLLAMA_HOST is Ollama's *bind* variable; users routinely set 0.0.0.0."""
+    assert llm._build_ollama_endpoint.__module__ == 'llm'
+    for bind in ('0.0.0.0', '0.0.0.0:11434', '::'):
+        os.environ['OLLAMA_HOST'] = bind
+        importlib.reload(llm)
+        assert llm.OLLAMA_ENDPOINT.startswith('http://localhost:'), llm.OLLAMA_ENDPOINT
+    os.environ['OLLAMA_HOST'] = 'gpu-box:9000'
+    importlib.reload(llm)
+    assert llm.OLLAMA_ENDPOINT == 'http://gpu-box:9000/api/generate', llm.OLLAMA_ENDPOINT
+    os.environ.pop('OLLAMA_HOST', None)
+    importlib.reload(llm)
+
+
+async def check_empty_response_raises() -> None:
+    """A thinking model can return an empty `response` with a full `thinking`.
+
+    Handing the Ollama envelope downstream would parse as valid JSON and every
+    normalizer would silently default — the pipeline would report success while
+    the model contributed nothing.
+    """
+    envelope = {
+        'model': 'qwen3.5:latest', 'created_at': 'now', 'response': '',
+        'thinking': 'a lot of reasoning', 'done': True, 'done_reason': 'length',
+        'eval_count': 512,
+    }
+
+    class _Response:
+        status_code = 200
+
+        def raise_for_status(self): return None
+
+        def json(self): return envelope
+
+    class _Client:
+        async def __aenter__(self): return self
+
+        async def __aexit__(self, *_): return False
+
+        async def post(self, *_args, **_kwargs): return _Response()
+
+    original = llm.httpx.AsyncClient
+    llm.httpx.AsyncClient = lambda *a, **k: _Client()
+    try:
+        # Caught off the module: check_endpoint_resolution reloads llm, so the
+        # class object bound at import time is no longer the one raised.
+        await llm.call_ollama('prompt')
+    except llm.LlmEmptyResponse as exc:
+        assert 'OLLAMA_THINK=false' in str(exc), str(exc)
+    else:
+        raise AssertionError('empty model response must raise, not return the envelope')
+    finally:
+        llm.httpx.AsyncClient = original
+
+
 async def run_test() -> None:
     if os.path.exists('test_soc_matrix.db'):
         os.remove('test_soc_matrix.db')
+
+    check_endpoint_resolution()
+    await check_empty_response_raises()
 
     await db.init_db()
     broker.call_ollama = mock_call_ollama

@@ -120,7 +120,7 @@ ao-soc/
 
 ## Run It
 
-**Version:** 2.2.0 — see `VERSION` at repo root (bump on every release).
+**Version:** 2.2.1 — see `VERSION` at repo root (bump on every release).
 
 One-time setup (each machine):
 
@@ -397,6 +397,7 @@ matches the types in `frontend/src/types.ts`.
 - **v1.8.0** — English/Farsi (Persian) UI with RTL layout and dashboard language switcher (EN | FA).
 - **v1.9.0** — Grafana-style Executive Summary (radial gauges, severity donut, risk histogram, response-time bullet bars), full mobile-responsive layout (stacked-card tables, adaptive nav), and **live MTTD/MTTR** computed from broker alert timestamps during demos.
 - **v1.9.1** — One-command demo startup/stop scripts for Windows (`start-demo.ps1` / `stop-demo.ps1`) and Linux/macOS (`start-demo.sh` / `stop-demo.sh`).
+- **v2.2.1** — Inference fixes found by running the AI mode against real Ollama. Three bugs made the model contribute nothing while the pipeline reported success: `num_predict` was 512 (the alert prompt needs ~1.5–2.5k, so every response truncated mid-JSON); thinking models such as `qwen3.5` returned an **empty `response`** with their output in `thinking`, and `call_ollama` fell back to `json.dumps(envelope)` — valid JSON, so every normalizer silently defaulted and each alert came back `decision_source=rules`. Now: `num_predict` 3072, `think: false`, Ollama-enforced `format: json`, and an empty response **raises** instead of returning the envelope. Also: `OLLAMA_HOST=0.0.0.0` (Ollama's own documented *bind* value) is no longer dialed as a client target, and autopilot/SOAR log lines now reach the console instead of being swallowed by uvicorn's root log level.
 - **v2.2.0** — Incident lifecycle + AI test mode. Cleared incidents leave the active queue the moment containment completes and move to a new **`/archive`** page showing the decision, who approved it (analyst or autopilot), and every delivered SOAR action with its execution id; the dashboard announces each clearing instead of letting the row vanish. `GET /api/incidents` now defaults to `status=active` (`cleared` / `all` also accepted) and `GET /api/archive` joins cleared incidents to their decisions. New **AI test mode** (`run_ai_demo.py`, `-Ai` / `--ai`): mocked alerts, real Ollama inference, and opt-in **autopilot** that auto-executes `CONTAIN`/`ESCALATE` verdicts at ≥90% confidence — never `MONITOR`/`IGNORE`, at any confidence. Actions are delivered through a new pluggable `soar.py` adapter (JSONL sink by default) and SOAR execution now runs in the background, so approval returns immediately and the UI streams `EXECUTING → DONE`.
 - **v2.1.0** — The Tier-2 decision now comes from the LLM, not a severity lookup. `build_splunk_analysis_prompt` asks the model for `tier2_decision` (`decision`, `confidence`, `rationale`, `risk_of_action`) and explicitly instructs it not to mirror `threat_severity`. The verdict is gated against the allowed decision vocabulary — an unrecognized decision discards the whole proposal and the rule path decides, with missing individual fields falling back one at a time. New `tier2_decisions.decision_source` column (auto-migrated; pre-2.1 rows stamped `rules`) is exposed on the decision API and shown as an **AI verdict** / **Rule fallback** badge on the Tier-2 panel.
 - **v2.0.1** — Config hygiene: removed the hardcoded Ollama LAN IP default; host is now `OLLAMA_HOST` / `OLLAMA_PORT` (defaulting to `localhost:11434`, `<ollama-host>` in docs) with `OLLAMA_ENDPOINT` and legacy `WORKSTATION_IP` still honored.
@@ -404,6 +405,6 @@ matches the types in `frontend/src/types.ts`.
 
 ## Authorship
 
-**Version:** 2.1.0 (see `VERSION` — increment on each release commit)
+**Version:** 2.2.1 (see `VERSION` — increment on each release commit)
 
 Written by J.Ekrami, co-written with GitHub Copilot, Composer (Cursor AI), and Claude (Opus 5).

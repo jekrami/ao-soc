@@ -22,11 +22,15 @@ python soc_orchestrator.py
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `OLLAMA_HOST` | `localhost` | Ollama host (`<ollama-host>`); set to your LAN IP/hostname. `WORKSTATION_IP` still honored as a fallback. |
+| `OLLAMA_HOST` | `localhost` | Ollama host (`<ollama-host>`); set to your LAN IP/hostname. `WORKSTATION_IP` still honored as a fallback. Bind addresses (`0.0.0.0`, `::`) resolve to `localhost` — they are where Ollama *listens*, not somewhere you can dial. |
 | `OLLAMA_PORT` | `11434` | Ollama port |
 | `OLLAMA_ENDPOINT` | `http://{OLLAMA_HOST}:{OLLAMA_PORT}/api/generate` | Full inference API URL (overrides host/port) |
 | `MODEL_NAME` | `qwen3.5:latest` | Model tag |
 | `OLLAMA_TEMPERATURE` | `0.1` | Inference temperature |
+| `OLLAMA_NUM_PREDICT` | `3072` | Output token budget — the alert prompt needs ~1.5-2.5k; 512 truncates mid-JSON |
+| `OLLAMA_THINK` | `false` | `false` suppresses reasoning output on thinking models, `true` forces it, anything else leaves the model default |
+| `OLLAMA_FORMAT_JSON` | `1` | Send Ollama's `format: json` so the response is guaranteed parseable |
+| `OLLAMA_TIMEOUT` | `300` | Per-request timeout in seconds |
 | `ORCHESTRATOR_DB_FILE` | `soc_matrix.db` | SQLite filename |
 | `BROKER_PORT` | `8500` | HTTP listen port |
 | `TIER2_AUTOPILOT` | *(off)* | `1` to auto-execute high-confidence verdicts without a human click |

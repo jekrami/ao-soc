@@ -178,7 +178,7 @@ def normalize_tier2_proposal(raw: Any) -> Optional[dict]:
     decision = str(raw.get('decision') or raw.get('decision_type') or '').strip().upper()
     if decision not in DECISION_TYPES:
         if decision:
-            logger.warning('Discarding LLM Tier-2 proposal — unknown decision type %r', decision)
+            logger.warning('Discarding LLM Tier-2 proposal - unknown decision type %r', decision)
         return None
 
     proposal: dict = {'decision': decision}
@@ -451,7 +451,7 @@ async def _execute_soar_plan(alert_id: str, decision_id: int) -> dict:
                 await session.commit()
             any_failed = True
             logger.warning(
-                'SOAR action blocked for alert %s: %s on %s — %s',
+                'SOAR action blocked for alert %s: %s on %s - %s',
                 alert_id, action_row['action_type'], action_row['target'], block_reason,
             )
             continue
@@ -555,7 +555,7 @@ async def approve_tier2_decision(
         await session.commit()
         decision_id = row['id']
 
-    logger.info('Tier-2 decision approved for alert %s by %s — starting SOAR execution', alert_id, approved_by)
+    logger.info('Tier-2 decision approved for alert %s by %s - starting SOAR execution', alert_id, approved_by)
 
     if wait:
         return await _execute_soar_plan(alert_id, decision_id)
@@ -592,19 +592,19 @@ async def autopilot_if_eligible(decision: Optional[dict], *, wait: bool = False)
 
     if verdict not in AUTOPILOT_DECISIONS:
         logger.info(
-            'Autopilot skipped alert %s — %s is not an auto-executable verdict (awaiting analyst)',
+            'Autopilot skipped alert %s - %s is not an auto-executable verdict (awaiting analyst)',
             alert_id, verdict,
         )
         return decision
     if confidence < AUTOPILOT_MIN_CONFIDENCE:
         logger.info(
-            'Autopilot skipped alert %s — %s at %s%% is below the %s%% threshold (awaiting analyst)',
+            'Autopilot skipped alert %s - %s at %s%% is below the %s%% threshold (awaiting analyst)',
             alert_id, verdict, confidence, AUTOPILOT_MIN_CONFIDENCE,
         )
         return decision
 
     logger.info(
-        'Autopilot approving alert %s — %s at %s%% confidence (>= %s%%)',
+        'Autopilot approving alert %s - %s at %s%% confidence (>= %s%%)',
         alert_id, verdict, confidence, AUTOPILOT_MIN_CONFIDENCE,
     )
     approved = await approve_tier2_decision(alert_id, approved_by=AUTOPILOT_APPROVER, wait=wait)
