@@ -252,19 +252,69 @@ backup/HA (M15), pilot (M16), release (M17).
 
 ## 8. Model selection for M08 (measured)
 
-Benchmarked on RTX 3090 24 GB against five Tier-2 cases whose context should override the
-obvious severity read. Full results in the session record; the load-bearing findings:
+14 local models, RTX 3090 24 GB, five Tier-2 cases whose context should override the
+obvious severity read (authorized scanner with a change ticket, EternalBlue against a
+patched and firewalled host, ransomware staging, C2 beacon, DC credential spray ending in
+a successful logon). Temperature 0.1, `format: json`, `think: false`.
 
-- With Ollama `format: json` enforced, **every model returns parseable JSON** — model choice
-  is no longer about output reliability, only judgment.
-- **Qwen family separates cleanly from Llama.** `llama3.1:8b` and `llama3.2:3b` answered
-  `CONTAIN` to all five cases, including an authorized monthly vulnerability sweep with an
-  approved change ticket. `llama3.2:3b` did so at *identical confidence every time* —
-  which makes any confidence threshold meaningless. **Neither is safe behind autopilot.**
-- `qwen2.5:7b`, `qwen3:8b`, `qwen3.5:latest` and `phi4:14b` all scored 5/5 on judgment.
-- Bigger is not better here: `gemma3:27b` scored *below* `gemma3:12b` at 2× the latency.
-- `gpt-oss:20b` fails to load on this Ollama build (`tensor "blk.0.ffn_down_exps.weight"
-  size overflow`) — needs a re-pull, not a verdict.
+| model | params | usable | schema | judgment | verdicts | warm |
+|---|---|---|---|---|---|---|
+| **qwen2.5:7b** | 7.6B | 5/5 | 5/5 | **5/5** | 2 | **7.0s** |
+| qwen3:8b | 8.2B | 5/5 | 5/5 | **5/5** | 2 | 9.0s |
+| **qwen3.5:latest** | 9.7B | 5/5 | 5/5 | **5/5** | 3 | 13.9s |
+| **qwen2.5:14b-instruct** | 14.8B | 5/5 | 4/5 | **5/5** | 3 | 13.2s |
+| phi4:14b | 14.7B | 5/5 | 5/5 | **5/5** | 2 | 14.0s |
+| gemma3:12b | 12.2B | 5/5 | 4/5 | **5/5** | 3 | 17.0s |
+| qwen3.5:27b | 27.8B | 5/5 | 5/5 | **5/5** | 3 | 57.6s |
+| mistral-nemo | 12.2B | 5/5 | 5/5 | 4/5 | 3 | 9.4s |
+| gemma3:27b | 27.4B | 5/5 | 4/5 | 4/5 | 3 | 37.3s |
+| gemma3:4b | 4.3B | 5/5 | 5/5 | 4/5 | 2 | 6.3s |
+| llama3.1:8b | 8.0B | 5/5 | **1/5** | 3/5 | 1 | 6.7s |
+| llama3.2:3b | 3.2B | 5/5 | 5/5 | 3/5 | **1** | 3.8s |
+| glm-4.7-flash | 29.9B | **2/5** | 4/5 | 2/5 | 2 | 9.5s |
+| gpt-oss:20b | 20.9B | — | — | — | — | won't load |
+
+Finalist latencies are from a clean head-to-head with one model resident at a time; sweep
+figures carried VRAM-eviction pressure.
+
+### Findings
+
+1. **JSON reliability is solved, not a selection criterion.** With `format: json` enforced,
+   13 of 14 models returned parseable output on every case. Only `glm-4.7-flash` failed
+   (2/5 usable: two responses carried no verdict, one was not valid JSON) — which matches
+   its existing rejection in the engineering playbook for unrelated reasons.
+2. **Llama is disqualified for autopilot.** `llama3.1:8b` and `llama3.2:3b` answered
+   `CONTAIN` to all five cases including the authorized monthly vulnerability sweep — they
+   echo severity rather than reading context. `llama3.2:3b` did so at identical confidence
+   every time. `llama3.1:8b` also failed schema 4 times out of 5.
+3. **Bigger is not better.** `gemma3:27b` scored *below* `gemma3:12b` at 2× the latency;
+   `qwen3.5:27b` matched the 9.7B model's judgment at 4× the cost.
+4. **Confidence is not calibrated in any model — this is the load-bearing finding.**
+   Every model reports 75-98% on every case; none ever expresses real doubt. The ordering
+   is also wrong: `qwen2.5:14b-instruct` returns 91% for a C2 beacon and **87% for an
+   active credential compromise with a successful logon** — so under a ≥90% gate the beacon
+   auto-executes and the domain-controller compromise does not. Confidence also varies
+   run to run (the same model produced spreads of 45 and 15 on two runs of the same five
+   cases).
+
+   **The verdict-type gate is doing all the real safety work; the confidence threshold is
+   close to decorative.** This is measured support for R6 and for replacing the threshold
+   with the precedent gate in §6.
+5. `gpt-oss:20b` fails to load on this Ollama build (`tensor "blk.0.ffn_down_exps.weight"
+   size overflow`) — needs a re-pull, not a verdict.
+
+### Selection
+
+| Tier | Model | Why |
+|---|---|---|
+| **Showroom / notebook** | `qwen2.5:7b` | 5/5 judgment, 5/5 schema, **7.0s**, ~4.7 GB — half the latency of anything else that scores 5/5 |
+| **Workstation / production Tier-2** | `qwen3.5:latest` (current default) | Only model to reach `IGNORE` on the authorized scanner in both runs — sharpest context discrimination |
+| Alternate | `qwen2.5:14b-instruct` | Equal judgment, 3 distinct verdicts, marginally faster than qwen3.5 |
+| **Do not use** | llama3.x, glm-4.7-flash, 27B tier | Severity echo / unusable output / no gain at 3-4× cost |
+
+Caveat: n=5 cases, single run per model, one temperature. This is a screening benchmark
+adequate for elimination, not a rigorous eval. A production eval needs more cases per
+scenario class, repeated runs for variance, and a held-out set drawn from real alerts.
 
 The AI layer must remain provider-independent regardless (Rule 5, task A3).
 
