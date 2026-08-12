@@ -1,0 +1,208 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1660 1010" width="1660" height="1010" font-family="Vazirmatn, 'Segoe UI', Tahoma, 'Iranian Sans', sans-serif">
+  <style>
+    text { direction: rtl; }
+    .ltr { direction: ltr; unicode-bidi: isolate; }
+    .t1 { font-size: 34px; font-weight: 700; fill: #0f172a; }
+    .t2 { font-size: 18px; fill: #334155; }
+    .t3 { font-size: 14px; fill: #64748b; }
+    .box-title { font-size: 17px; font-weight: 700; fill: #ffffff; }
+    .box-sub { font-size: 13px; fill: #e2e8f0; }
+    .ext-title { font-size: 16px; font-weight: 700; fill: #1e293b; }
+    .ext-item { font-size: 13.5px; fill: #334155; }
+    .ext-note { font-size: 12.5px; fill: #64748b; }
+    .chip { font-size: 12.5px; font-weight: 700; }
+    .lbl { font-size: 12.5px; fill: #475569; }
+    .legend { font-size: 13.5px; fill: #334155; }
+    .foot { font-size: 13px; fill: #64748b; }
+  </style>
+
+  <defs>
+    <marker id="arw" markerWidth="10" markerHeight="10" refX="9" refY="4" orient="auto">
+      <path d="M0,0 L9,4 L0,8 z" fill="#334155"/>
+    </marker>
+    <marker id="arwd" markerWidth="10" markerHeight="10" refX="9" refY="4" orient="auto">
+      <path d="M0,0 L9,4 L0,8 z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1660" height="1010" fill="#f8fafc"/>
+
+  <!-- ================= Title ================= -->
+  <text class="t1" x="830" y="52" text-anchor="middle">معماری نرم‌افزاری AI-SOC</text>
+  <text class="t2" x="830" y="82" text-anchor="middle">مرکز عملیات امنیت مبتنی بر هوش مصنوعی — «لایهٔ تصمیم»</text>
+  <text class="t3" x="830" y="106" text-anchor="middle">نسخهٔ ۲.۱ — تابستان ۱۴۰۵</text>
+
+  <!-- ================= External: detection sources (right) ================= -->
+  <rect x="1330" y="160" width="290" height="292" rx="10" fill="#ffffff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="7 5"/>
+  <rect x="1330" y="160" width="290" height="38" rx="10" fill="#e2e8f0"/>
+  <text class="ext-title" x="1475" y="186" text-anchor="middle">ابزارهای بیرونی — تشخیص</text>
+
+  <text class="ext-item" x="1600" y="228" text-anchor="start">سکوهای SIEM</text>
+  <text class="ext-note ltr" x="1600" y="248" text-anchor="end">Splunk · Elastic · Wazuh · Sentinel</text>
+  <text class="ext-item" x="1600" y="278" text-anchor="start">محصولات EDR / XDR</text>
+  <text class="ext-item" x="1600" y="306" text-anchor="start">پایش شبکه — NDR / IDS</text>
+  <text class="ext-note ltr" x="1600" y="326" text-anchor="end">Suricata · Zeek</text>
+  <text class="ext-item" x="1600" y="356" text-anchor="start">امنیت ابر و هویت</text>
+  <line x1="1350" y1="374" x2="1600" y2="374" stroke="#e2e8f0" stroke-width="1.5"/>
+  <text class="ext-note" x="1600" y="398" text-anchor="start">جمع‌آوری، نگهداری و تشخیصِ لاگ</text>
+  <text class="ext-note" x="1600" y="416" text-anchor="start">بر عهدهٔ این ابزارهاست؛</text>
+  <text class="ext-note" x="1600" y="434" text-anchor="start">لاگ خام وارد AI-SOC نمی‌شود.</text>
+
+  <!-- External: threat intel feeds -->
+  <rect x="1330" y="472" width="290" height="150" rx="10" fill="#ffffff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="7 5"/>
+  <rect x="1330" y="472" width="290" height="34" rx="10" fill="#e2e8f0"/>
+  <text class="ext-title" x="1475" y="496" text-anchor="middle">فیدهای اطلاعات تهدید</text>
+  <text class="ext-note ltr" x="1600" y="532" text-anchor="end">MISP · OpenCTI · VirusTotal</text>
+  <text class="ext-item" x="1600" y="562" text-anchor="start">تنها «پرس‌وجو» می‌شود</text>
+  <text class="ext-note" x="1600" y="586" text-anchor="start">برای راستی‌آزمایی ادعاهای مدل:</text>
+  <text class="ext-note" x="1600" y="606" text-anchor="start">نشانه‌های نفوذ و تکنیک‌های ATT&amp;CK</text>
+
+  <!-- ================= External: execution (left) ================= -->
+  <rect x="30" y="160" width="290" height="292" rx="10" fill="#ffffff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="7 5"/>
+  <rect x="30" y="160" width="290" height="38" rx="10" fill="#e2e8f0"/>
+  <text class="ext-title" x="175" y="186" text-anchor="middle">ابزارهای بیرونی — اجرا</text>
+
+  <text class="ext-item" x="300" y="228" text-anchor="start">سکوهای SOAR</text>
+  <text class="ext-note ltr" x="300" y="248" text-anchor="end">Shuffle · Cortex XSOAR · Tines</text>
+  <text class="ext-item" x="300" y="278" text-anchor="start">واکنش EDR — قرنطینهٔ میزبان</text>
+  <text class="ext-item" x="300" y="306" text-anchor="start">فایروال — مسدودسازی نشانی</text>
+  <text class="ext-item" x="300" y="334" text-anchor="start">هویت (IdP) — ابطال نشست</text>
+  <line x1="50" y1="356" x2="300" y2="356" stroke="#e2e8f0" stroke-width="1.5"/>
+  <text class="ext-note" x="300" y="398" text-anchor="start">AI-SOC تصمیم می‌گیرد</text>
+  <text class="ext-note" x="300" y="416" text-anchor="start">و فرمان را می‌فرستد؛</text>
+  <text class="ext-note" x="300" y="434" text-anchor="start">اجرا بر عهدهٔ این ابزارهاست.</text>
+
+  <!-- External: ticketing -->
+  <rect x="30" y="472" width="290" height="150" rx="10" fill="#ffffff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="7 5"/>
+  <rect x="30" y="472" width="290" height="34" rx="10" fill="#e2e8f0"/>
+  <text class="ext-title" x="175" y="496" text-anchor="middle">سامانهٔ ثبت رسمی</text>
+  <text class="ext-note ltr" x="300" y="532" text-anchor="end">Jira · ServiceNow · TheHive</text>
+  <text class="ext-item" x="300" y="562" text-anchor="start">هم‌گام‌سازی دوسویهٔ پرونده</text>
+  <text class="ext-note" x="300" y="586" text-anchor="start">تصمیم و شواهد آن به سامانهٔ</text>
+  <text class="ext-note" x="300" y="606" text-anchor="start">ثبت سازمان منتقل می‌شود.</text>
+
+  <!-- ================= Boundary ================= -->
+  <rect x="330" y="110" width="960" height="774" rx="14" fill="#ffffff" stroke="#1e3a8a" stroke-width="3"/>
+  <rect x="330" y="110" width="960" height="42" rx="14" fill="#1e3a8a"/>
+  <rect x="330" y="140" width="960" height="12" fill="#1e3a8a"/>
+  <text class="box-title" x="810" y="139" text-anchor="middle">مرز سامانهٔ AI-SOC — آنچه ساخته می‌شود</text>
+
+  <!-- L1 intake -->
+  <rect x="348" y="160" width="924" height="78" rx="9" fill="#0f766e"/>
+  <circle cx="372" cy="184" r="7" fill="#dc2626" stroke="#ffffff" stroke-width="1.5"/>
+  <text class="box-title" x="810" y="189" text-anchor="middle">۱. لایهٔ دریافت تشخیص — یک آداپتور به‌ازای هر ابزار</text>
+  <text class="box-sub" x="810" y="213" text-anchor="middle">«قرارداد دریافت تشخیص» (قرارداد نخست) · ابزار مبدأ · شناسهٔ قاعده · موجودیت‌ها · شدت · محمولهٔ خام عیناً نگهداری می‌شود</text>
+  <text class="box-sub" x="810" y="231" text-anchor="middle">قانون ۹ — نام هیچ ابزاری نباید در منطق اصلی بیاید؛ امروز نقض شده است</text>
+
+  <!-- L2 correlation -->
+  <rect x="348" y="260" width="712" height="90" rx="9" fill="#6d28d9"/>
+  <circle cx="372" cy="284" r="7" fill="#dc2626" stroke="#ffffff" stroke-width="1.5"/>
+  <text class="box-title" x="704" y="289" text-anchor="middle">۲. موتور همبستگی میان‌ابزاری ← «شیء وضعیت امنیتی»</text>
+  <text class="box-sub" x="704" y="313" text-anchor="middle">پنجرهٔ زمانی · موجودیت مشترک (کاربر، میزبان، نشانی، فرایند) · امتیاز ریسک</text>
+  <text class="box-sub" x="704" y="335" text-anchor="middle">قرارداد دوم و وجه تمایز اصلی — هیچ ابزاری تشخیص‌های چند فروشندهٔ متفاوت را به‌هم نمی‌دوزد</text>
+
+  <!-- L3 AI reasoning -->
+  <rect x="348" y="372" width="712" height="116" rx="9" fill="#4338ca"/>
+  <circle cx="372" cy="396" r="7" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"/>
+  <text class="box-title" x="704" y="401" text-anchor="middle">۳. موتور تحلیل و استدلال هوش مصنوعی</text>
+  <rect x="716" y="416" width="330" height="56" rx="7" fill="#ffffff" fill-opacity="0.14" stroke="#c7d2fe" stroke-width="1"/>
+  <text class="chip" x="881" y="437" text-anchor="middle" fill="#e0e7ff">استدلال ساخت‌یافته — ساخته‌شده</text>
+  <text class="box-sub" x="881" y="458" text-anchor="middle">شواهد · دلیل · نگاشت ATT&amp;CK · خروجی JSON</text>
+  <rect x="362" y="416" width="330" height="56" rx="7" fill="#ffffff" fill-opacity="0.14" stroke="#fecaca" stroke-width="1" stroke-dasharray="5 4"/>
+  <text class="chip" x="527" y="437" text-anchor="middle" fill="#fecaca">دانش و سابقه (RAG) — ساخته‌نشده</text>
+  <text class="box-sub" x="527" y="458" text-anchor="middle">رویه‌ها · کتابچه‌ها · تاریخچهٔ تصمیم‌ها</text>
+
+  <!-- L4 tier2 -->
+  <rect x="348" y="510" width="712" height="82" rx="9" fill="#b91c1c"/>
+  <circle cx="372" cy="534" r="7" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"/>
+  <text class="box-title" x="704" y="539" text-anchor="middle">۴. تحلیلگر ارشد هوش مصنوعی (تیر ۲)</text>
+  <text class="box-sub" x="704" y="563" text-anchor="middle">رأی: مهار · تشدید · بررسی · پایش · نادیده‌گرفتن</text>
+  <text class="box-sub" x="704" y="583" text-anchor="middle">درجهٔ اطمینان · دلیل · ریسکِ خودِ اقدام · طرح اقدام بسته‌بندی‌شده</text>
+
+  <!-- L5 human -->
+  <rect x="348" y="614" width="712" height="76" rx="9" fill="#b45309"/>
+  <circle cx="372" cy="638" r="7" fill="#f59e0b" stroke="#ffffff" stroke-width="1.5"/>
+  <text class="box-title" x="704" y="643" text-anchor="middle">۵. تأیید و ویرایش انسانی</text>
+  <text class="box-sub" x="704" y="666" text-anchor="middle">تأیید / رد ← ساخته‌شده  |  ویرایش رأی و طرح اقدام ← ساخته‌نشده</text>
+  <text class="box-sub" x="704" y="684" text-anchor="middle">هر اصلاح انسانی باید به‌عنوان «برچسب» ذخیره شود — تنها پیکرهٔ آموزشی خودگردانی آینده</text>
+
+  <!-- L6 dispatch -->
+  <rect x="348" y="712" width="712" height="76" rx="9" fill="#047857"/>
+  <circle cx="372" cy="736" r="7" fill="#f59e0b" stroke="#ffffff" stroke-width="1.5"/>
+  <text class="box-title" x="704" y="741" text-anchor="middle">۶. ارسال تصمیم به مجریِ بیرونی</text>
+  <text class="box-sub" x="704" y="764" text-anchor="middle">طبقه‌بندی ریسک اقدام: خواندن · نوشتن کم‌خطر · نوشتن پرخطر · مخرب</text>
+  <text class="box-sub" x="704" y="782" text-anchor="middle">اعتبارسنجی شکل هدف پیش از ارسال · ثبت رسید تغییرناپذیر</text>
+
+  <!-- Side: decision store -->
+  <rect x="1076" y="260" width="196" height="228" rx="9" fill="#1e293b"/>
+  <circle cx="1100" cy="284" r="7" fill="#f59e0b" stroke="#ffffff" stroke-width="1.5"/>
+  <text class="box-title" x="1174" y="289" text-anchor="middle">انبارهٔ تصمیم</text>
+  <text class="box-sub" x="1174" y="318" text-anchor="middle">وضعیت‌های امنیتی</text>
+  <text class="box-sub" x="1174" y="342" text-anchor="middle">تصمیم‌ها و دلایل</text>
+  <text class="box-sub" x="1174" y="366" text-anchor="middle">اصلاح‌های انسانی</text>
+  <text class="box-sub" x="1174" y="390" text-anchor="middle">رسیدهای اقدام</text>
+  <text class="box-sub" x="1174" y="414" text-anchor="middle">اشاره‌گر به شواهد</text>
+  <line x1="1096" y1="432" x2="1252" y2="432" stroke="#475569" stroke-width="1.5"/>
+  <text class="box-sub" x="1174" y="456" text-anchor="middle">انبار لاگ نیست —</text>
+  <text class="box-sub" x="1174" y="476" text-anchor="middle">فقط آنچه تصمیم را می‌سازد</text>
+
+  <!-- Side: dashboard -->
+  <rect x="1076" y="510" width="196" height="278" rx="9" fill="#1d4ed8"/>
+  <circle cx="1100" cy="534" r="7" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"/>
+  <text class="box-title" x="1174" y="539" text-anchor="middle">داشبورد</text>
+  <text class="box-sub" x="1174" y="568" text-anchor="middle">۷ مسیر عملیاتی</text>
+  <text class="box-sub" x="1174" y="592" text-anchor="middle">دوزبانه — فارسی/انگلیسی</text>
+  <text class="box-sub" x="1174" y="616" text-anchor="middle">راست‌به‌چپ کامل</text>
+  <text class="box-sub" x="1174" y="640" text-anchor="middle">شاخص‌های مدیریتی</text>
+  <text class="box-sub" x="1174" y="664" text-anchor="middle">نقشهٔ حرارتی ATT&amp;CK</text>
+  <text class="box-sub" x="1174" y="688" text-anchor="middle">تابلوی تیر ۲</text>
+  <text class="box-sub" x="1174" y="712" text-anchor="middle">بایگانی رخدادها</text>
+  <line x1="1096" y1="730" x2="1252" y2="730" stroke="#93c5fd" stroke-width="1.5"/>
+  <text class="box-sub" x="1174" y="754" text-anchor="middle">نتیجه به تفکیکِ</text>
+  <text class="box-sub" x="1174" y="774" text-anchor="middle">ابزارِ مبدأ سنجیده شود</text>
+
+  <!-- Governance -->
+  <rect x="348" y="806" width="924" height="58" rx="9" fill="#334155"/>
+  <circle cx="372" cy="835" r="7" fill="#dc2626" stroke="#ffffff" stroke-width="1.5"/>
+  <text class="box-title" x="810" y="830" text-anchor="middle">حاکمیت و امنیت — احراز هویت · کنترل دسترسی نقش‌محور · مدیریت اسرار · ممیزی</text>
+  <text class="box-sub" x="810" y="852" text-anchor="middle">هنوز هیچ‌کدام ساخته نشده — اولویت نخست (فاز الف)، چون سامانه هم‌اکنون بدون احراز هویت فرمان اقدام صادر می‌کند</text>
+
+  <!-- ================= Arrows ================= -->
+  <line x1="1330" y1="199" x2="1296" y2="199" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <text class="lbl" x="1313" y="182" text-anchor="middle">تشخیص</text>
+
+  <line x1="704" y1="238" x2="704" y2="254" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="704" y1="350" x2="704" y2="366" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="704" y1="488" x2="704" y2="504" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="704" y1="592" x2="704" y2="608" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="704" y1="690" x2="704" y2="706" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+
+  <line x1="330" y1="750" x2="296" y2="750" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <text class="lbl" x="313" y="733" text-anchor="middle">فرمان</text>
+
+  <path d="M1330 542 L1300 542" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arwd)"/>
+  <text class="lbl" x="1312" y="526" text-anchor="middle">پرس‌وجو</text>
+
+  <path d="M330 542 L300 542" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arwd)"/>
+  <text class="lbl" x="313" y="526" text-anchor="middle">پرونده</text>
+
+  <!-- store <-> reasoning (precedent) -->
+  <path d="M1076 374 L1060 374" stroke="#c7d2fe" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arwd)"/>
+  <path d="M1060 300 L1076 300" stroke="#c7d2fe" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arwd)"/>
+
+  <!-- ================= Legend ================= -->
+  <rect x="330" y="914" width="960" height="52" rx="9" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+  <text class="legend" x="1268" y="946" text-anchor="start">وضعیت پیاده‌سازی:</text>
+  <circle cx="1122" cy="941" r="7" fill="#16a34a"/>
+  <text class="legend" x="1108" y="946" text-anchor="start">ساخته‌شده</text>
+  <circle cx="1018" cy="941" r="7" fill="#f59e0b"/>
+  <text class="legend" x="1004" y="946" text-anchor="start">نیمه‌ساخته</text>
+  <circle cx="908" cy="941" r="7" fill="#dc2626"/>
+  <text class="legend" x="894" y="946" text-anchor="start">ساخته‌نشده</text>
+  <rect x="782" y="934" width="14" height="14" rx="3" fill="#ffffff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="4 3"/>
+  <text class="legend" x="770" y="946" text-anchor="start">بیرون از دامنه — ابزار بازار</text>
+  <text class="legend" x="560" y="946" text-anchor="start">خط‌چین = وابستگی بیرونی</text>
+
+  <!-- ================= Footer ================= -->
+  <text class="foot" x="830" y="994" text-anchor="middle">نویسنده: J.Ekrami · هم‌نویسنده: Claude (Opus 5) · © J.Ekrami-Labs · تابستان ۱۴۰۵ · برابر با طرح نسخهٔ ۲.۱</text>
+</svg>
