@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Brain, CheckCircle2, XCircle, Loader2, ShieldAlert, Clock, Ban, PlayCircle,
+  Sparkles, SlidersHorizontal,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardSubtitle, CardBody } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -102,6 +103,19 @@ export const Tier2DecisionPanel: React.FC = () => {
           </span>
           <span className={`inline-flex items-center rounded-md border px-2 py-1 text-[11px] font-medium ${statusClass}`}>
             {t(`tier2.status.${decision.approval_status}`)}
+          </span>
+          <span
+            className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] ${
+              decision.decision_source === 'llm'
+                ? 'text-info border-info/40 bg-info/10'
+                : 'text-muted border-border bg-surface2/60'
+            }`}
+            title={t(`tier2.source.${decision.decision_source === 'llm' ? 'llm' : 'rules'}Hint`)}
+          >
+            {decision.decision_source === 'llm'
+              ? <Sparkles className="h-3 w-3" />
+              : <SlidersHorizontal className="h-3 w-3" />}
+            {t(`tier2.source.${decision.decision_source === 'llm' ? 'llm' : 'rules'}`)}
           </span>
           <span className="text-[11px] text-muted ms-auto font-mono">
             {t('common.confidence')}: {decision.confidence}%

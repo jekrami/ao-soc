@@ -119,6 +119,7 @@ class Tier2ActionPlanItem(BaseModel):
 class Tier2DecisionResponse(BaseModel):
     alert_id: str
     decision: str
+    decision_source: str = 'rules'
     confidence: int = Field(..., ge=0, le=100)
     rationale: str
     risk_of_action: Optional[str] = None

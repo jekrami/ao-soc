@@ -36,6 +36,7 @@ from tier2 import (
     create_tier2_decision_for_alert,
     ensure_tier2_decision,
     list_alert_actions,
+    normalize_tier2_proposal,
     reject_tier2_decision,
 )
 
@@ -139,7 +140,21 @@ def build_splunk_analysis_prompt(fields: Dict[str, Any]) -> str:
         '  recommended_actions (array of {id, action, target, reason, confidence, impact} SOAR playbooks)',
         '  bullets (array of evidence summary strings for the analyst)',
         '  recommendation (single primary remediation sentence)',
+        '  tier2_decision (object: {decision, confidence, rationale, risk_of_action})',
         'Return valid JSON only. No markdown fences or commentary.',
+        '',
+        'tier2_decision is your Tier-2 triage verdict — a human analyst approves it,',
+        'then SOAR executes the recommended_actions automatically. Choose exactly one:',
+        '  CONTAIN     — active compromise; isolate/block now, disruption is justified',
+        '  ESCALATE    — real but beyond Tier-2 (IR team, legal, or exec notification)',
+        '  INVESTIGATE — suspicious, needs analyst work before any containment',
+        '  MONITOR     — likely benign or low impact; watch, do not act',
+        '  IGNORE      — false positive or known-good activity',
+        'Do not simply mirror threat_severity: a HIGH-severity scanner hitting a patched',
+        'edge device may only warrant MONITOR, and a MEDIUM alert on a domain controller',
+        'may warrant CONTAIN. confidence (0-100) is your certainty in the decision itself.',
+        'rationale explains the verdict to the approving analyst; risk_of_action states',
+        'what breaks operationally if the plan is executed.',
         '',
         f"Source IP: {fields['source_ip']}",
         f"Destination IP: {fields['dest_ip']}",
@@ -170,6 +185,12 @@ def build_splunk_analysis_prompt(fields: Dict[str, Any]) -> str:
             ],
             'bullets': ['Outbound TLS to known C2 ASN', 'Internal host initiating connection'],
             'recommendation': 'Block C2 IP and isolate the source host immediately.',
+            'tier2_decision': {
+                'decision': 'CONTAIN',
+                'confidence': 91,
+                'rationale': 'Sustained beaconing to a known C2 ASN from an internal finance host indicates active compromise, not scanning noise.',
+                'risk_of_action': 'Isolating the host drops the analyst session and any in-flight finance transfers on that endpoint.',
+            },
         }, indent=2),
     ])
 
@@ -203,6 +224,12 @@ def normalize_threat_analysis(data: Dict[str, Any], fields: Dict[str, Any], aler
     severity_likelihood = {'CRITICAL': 94, 'HIGH': 88, 'MEDIUM': 71, 'LOW': 55}
     if enrichment.get('likelihood') is None:
         enrichment['likelihood'] = severity_likelihood.get(severity, 71)
+
+    # Carried in enrichment_json so a backfilled decision (ensure_tier2_decision)
+    # sees the same verdict the model gave at ingest.
+    proposal = normalize_tier2_proposal(data.get('tier2_decision'))
+    if proposal:
+        enrichment['tier2_proposal'] = proposal
 
     return {
         'threat_severity': severity,

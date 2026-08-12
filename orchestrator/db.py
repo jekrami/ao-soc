@@ -53,6 +53,7 @@ tier2_decisions = Table(
     Column('id', Integer, primary_key=True, autoincrement=True),
     Column('alert_id', String(64), nullable=False, unique=True, index=True),
     Column('decision_type', String(32), nullable=False),
+    Column('decision_source', String(16), nullable=False, default='rules'),
     Column('confidence', Integer, nullable=False, default=0),
     Column('rationale', String, nullable=False, default=''),
     Column('risk_of_action', String, nullable=True),
@@ -134,12 +135,22 @@ async def init_db() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(metadata.create_all)
         await conn.run_sync(_migrate_security_events)
+        await conn.run_sync(_migrate_tier2_decisions)
 
 
 def _migrate_security_events(conn) -> None:
     cols = {row[1] for row in conn.execute(text('PRAGMA table_info(security_events)')).fetchall()}
     if 'enrichment_json' not in cols:
         conn.execute(text('ALTER TABLE security_events ADD COLUMN enrichment_json TEXT'))
+
+
+def _migrate_tier2_decisions(conn) -> None:
+    """Pre-2.1 rows were all rule-derived; stamp them as such."""
+    cols = {row[1] for row in conn.execute(text('PRAGMA table_info(tier2_decisions)')).fetchall()}
+    if cols and 'decision_source' not in cols:
+        conn.execute(text(
+            "ALTER TABLE tier2_decisions ADD COLUMN decision_source TEXT NOT NULL DEFAULT 'rules'"
+        ))
 
 
 def _normalize_steps(steps: List) -> List[dict]:

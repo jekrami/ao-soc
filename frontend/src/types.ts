@@ -77,9 +77,13 @@ export type Tier2ApprovalStatus =
   | 'DONE'
   | 'FAILED';
 
+export type Tier2DecisionSource = 'llm' | 'rules';
+
 export interface Tier2Decision {
   alert_id: string;
   decision: Tier2DecisionType;
+  /** 'llm' = the model returned this verdict; 'rules' = severity fallback. */
+  decision_source: Tier2DecisionSource;
   confidence: number;
   rationale: string;
   risk_of_action?: string | null;

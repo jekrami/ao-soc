@@ -51,7 +51,30 @@ Example Suricata payload:
 }
 ```
 
-The broker calls Ollama and parses a full enrichment payload: `threat_severity`, `incident_analysis`, `attack_timeline`, `evidence`, `mitre_techniques`, `recommended_actions`, and `recommended_containment_steps` — all persisted to SQLite.
+The broker calls Ollama and parses a full enrichment payload: `threat_severity`, `incident_analysis`, `attack_timeline`, `evidence`, `mitre_techniques`, `recommended_actions`, `recommended_containment_steps`, and `tier2_decision` — all persisted to SQLite.
+
+### Tier-2 decision (`tier2_decision`)
+
+The model returns its own triage verdict:
+
+```json
+{
+  "decision": "CONTAIN",
+  "confidence": 91,
+  "rationale": "Sustained beaconing to a known C2 ASN indicates active compromise.",
+  "risk_of_action": "Isolating the host drops the finance user session."
+}
+```
+
+`decision` must be one of `CONTAIN` · `ESCALATE` · `INVESTIGATE` · `MONITOR` · `IGNORE`.
+The prompt tells the model **not** to mirror `threat_severity` — a HIGH-severity scan
+on a patched edge device may only warrant `MONITOR`.
+
+Validation is deliberately asymmetric: an unrecognized `decision` discards the whole
+proposal and `_severity_to_decision` decides instead, while a missing `confidence`,
+`rationale`, or `risk_of_action` falls back field by field. Every row records which
+path ran in `tier2_decisions.decision_source` (`llm` | `rules`), so a later review can
+find decisions a degraded model or an offline Ollama produced.
 
 ## API
 
@@ -62,6 +85,10 @@ The broker calls Ollama and parses a full enrichment payload: `threat_severity`,
 | GET | `/api/alerts` | List alerts + severity/mitigation metrics |
 | GET | `/api/alerts/{id}` | Single alert with containment checklist |
 | POST | `/api/alerts/{id}/mitigate` | Mark alert CONTAINED, complete all steps |
+| GET | `/api/alerts/{id}/decision` | Tier-2 decision + bundled action plan |
+| POST | `/api/alerts/{id}/decision/approve` | Approve → policy-gated SOAR auto-execution |
+| POST | `/api/alerts/{id}/decision/reject` | Reject the plan |
+| GET | `/api/alerts/{id}/actions` | Action plan with live execution status |
 
 ### Dashboard v2 (React adapter)
 
@@ -78,6 +105,8 @@ The broker calls Ollama and parses a full enrichment payload: `threat_severity`,
 |-------|---------|
 | `security_events` | Splunk alerts with AI analysis |
 | `recommended_containment_steps` | **All AI actions** — one row per checklist step |
+| `tier2_decisions` | One Tier-2 verdict per alert + `decision_source` provenance |
+| `alert_soar_actions` | Bundled SOAR plan with per-action execution status |
 | `ai_explanations` | Dashboard v2 explanation records |
 | `ai_evidence` | Structured evidence for v2 |
 | `recommended_actions` | SOAR-style actions for v2 |
@@ -93,5 +122,9 @@ python test_broker.py
 Expected output:
 
 ```
-PASS: Aegis-Link broker persists alerts and all AI containment steps in SQLite.
+PASS: Broker persists enriched LLM output and an LLM-sourced Tier-2 decision.
 ```
+
+It covers both decision paths: an LLM verdict is honored end to end, an alert
+without a usable proposal falls back to the severity rule, and an out-of-vocabulary
+decision is rejected outright.

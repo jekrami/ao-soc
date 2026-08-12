@@ -25,6 +25,7 @@ APPROVAL_STATUSES = frozenset({
     'PENDING', 'APPROVED', 'REJECTED', 'EXECUTING', 'DONE', 'FAILED',
 })
 ACTION_STATUSES = frozenset({'PENDING', 'QUEUED', 'EXECUTING', 'DONE', 'FAILED', 'BLOCKED'})
+DECISION_SOURCES = frozenset({'llm', 'rules'})
 
 PROTECTED_TARGETS = frozenset({'127.0.0.1', 'localhost', '::1'})
 
@@ -123,6 +124,47 @@ def _confidence_from_alert(alert: dict) -> int:
     return {'CRITICAL': 92, 'HIGH': 85, 'MEDIUM': 72, 'LOW': 58}.get(severity, 70)
 
 
+def normalize_tier2_proposal(raw: Any) -> Optional[dict]:
+    """Validate the LLM's proposed Tier-2 verdict.
+
+    The decision type is a control-plane value, so it is gated hard: anything
+    outside DECISION_TYPES discards the whole proposal and the rule-based path
+    decides instead. Individual missing fields fall back one at a time.
+    """
+    if not isinstance(raw, dict):
+        return None
+
+    decision = str(raw.get('decision') or raw.get('decision_type') or '').strip().upper()
+    if decision not in DECISION_TYPES:
+        if decision:
+            logger.warning('Discarding LLM Tier-2 proposal — unknown decision type %r', decision)
+        return None
+
+    proposal: dict = {'decision': decision}
+
+    try:
+        proposal['confidence'] = max(0, min(100, int(float(raw.get('confidence')))))
+    except (TypeError, ValueError):
+        pass
+
+    rationale = str(raw.get('rationale') or '').strip()
+    if rationale:
+        proposal['rationale'] = rationale[:500]
+
+    risk = str(raw.get('risk_of_action') or '').strip()
+    if risk:
+        proposal['risk_of_action'] = risk[:500]
+
+    return proposal
+
+
+def _proposal_from_alert(alert: dict) -> Optional[dict]:
+    """Read the LLM verdict stored on the alert at ingest time."""
+    enrichment = alert.get('enrichment')
+    raw = enrichment.get('tier2_proposal') if isinstance(enrichment, dict) else None
+    return normalize_tier2_proposal(raw if raw is not None else alert.get('tier2_proposal'))
+
+
 def policy_allows_action(action_type: str, target: str) -> tuple[bool, Optional[str]]:
     normalized_target = (target or '').strip().lower()
     if normalized_target in PROTECTED_TARGETS:
@@ -174,6 +216,7 @@ def _format_decision(row, actions: List[dict]) -> dict:
     return {
         'alert_id': row['alert_id'],
         'decision': row['decision_type'],
+        'decision_source': row.get('decision_source') or 'rules',
         'confidence': row['confidence'],
         'rationale': row['rationale'],
         'risk_of_action': row['risk_of_action'],
@@ -196,13 +239,19 @@ async def create_tier2_decision_for_alert(alert: dict) -> dict:
     if existing is not None:
         return existing
 
-    decision_type = _severity_to_decision(alert.get('threat_severity', 'MEDIUM'))
-    if decision_type not in DECISION_TYPES:
-        decision_type = 'INVESTIGATE'
+    proposal = _proposal_from_alert(alert)
+    if proposal:
+        decision_type = proposal['decision']
+        decision_source = 'llm'
+    else:
+        decision_type = _severity_to_decision(alert.get('threat_severity', 'MEDIUM'))
+        decision_source = 'rules'
 
-    confidence = _confidence_from_alert(alert)
-    rationale = _build_rationale(alert, decision_type)
-    risk = _build_risk_of_action(decision_type)
+    confidence = (proposal or {}).get('confidence')
+    if confidence is None:
+        confidence = _confidence_from_alert(alert)
+    rationale = (proposal or {}).get('rationale') or _build_rationale(alert, decision_type)
+    risk = (proposal or {}).get('risk_of_action') or _build_risk_of_action(decision_type)
     plan = _actions_from_alert(alert)
     now = _utcnow()
 
@@ -211,6 +260,7 @@ async def create_tier2_decision_for_alert(alert: dict) -> dict:
             tier2_decisions.insert().values(
                 alert_id=alert_id,
                 decision_type=decision_type,
+                decision_source=decision_source,
                 confidence=confidence,
                 rationale=rationale,
                 risk_of_action=risk,
@@ -246,7 +296,10 @@ async def create_tier2_decision_for_alert(alert: dict) -> dict:
         ).mappings().one()
         actions = await _load_actions(session, decision_id)
 
-    logger.info('Created Tier-2 decision %s for alert %s (%s)', decision_type, alert_id, 'PENDING')
+    logger.info(
+        'Created Tier-2 decision %s for alert %s (PENDING, source=%s)',
+        decision_type, alert_id, decision_source,
+    )
     return _format_decision(row, actions)
 
 

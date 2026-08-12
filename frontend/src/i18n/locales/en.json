@@ -244,6 +244,12 @@
     "unavailable": "No Tier-2 decision for this alert",
     "rationale": "Rationale",
     "riskOfAction": "Risk if executed",
+    "source": {
+      "llm": "AI verdict",
+      "llmHint": "Decision, confidence and rationale returned by the model",
+      "rules": "Rule fallback",
+      "rulesHint": "Model gave no usable verdict — derived from alert severity"
+    },
     "actionPlan": "Bundled action plan",
     "approvePlan": "Approve plan",
     "rejectPlan": "Reject",

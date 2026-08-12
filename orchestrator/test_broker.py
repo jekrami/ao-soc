@@ -12,6 +12,7 @@ os.environ['ORCHESTRATOR_DB_FILE'] = 'test_soc_matrix.db'
 import db
 import soc_orchestrator as broker
 from llm import parse_json_response
+from tier2 import create_tier2_decision_for_alert, normalize_tier2_proposal
 
 
 MOCK_LLM_RESPONSE = json.dumps({
@@ -37,6 +38,12 @@ MOCK_LLM_RESPONSE = json.dumps({
     ],
     'bullets': ['C2 beacon observed'],
     'recommendation': 'Block C2 and isolate host.',
+    'tier2_decision': {
+        'decision': 'CONTAIN',
+        'confidence': 91,
+        'rationale': 'Sustained beaconing to a known C2 ASN indicates active compromise.',
+        'risk_of_action': 'Isolating FIN-WIN-04 interrupts the finance user session.',
+    },
 })
 
 
@@ -91,8 +98,41 @@ async def run_test() -> None:
     assert fetched is not None
     assert len(fetched.get('timeline', [])) >= 1
 
+    # Tier-2 verdict comes from the model, not the severity table.
+    assert fetched['enrichment']['tier2_proposal']['decision'] == 'CONTAIN'
+    decision = await create_tier2_decision_for_alert(fetched)
+    assert decision['decision_source'] == 'llm', decision['decision_source']
+    assert decision['decision'] == 'CONTAIN'
+    assert decision['confidence'] == 91
+    assert 'known C2 ASN' in decision['rationale']
+    assert decision['required_actions'], 'expected a bundled SOAR plan'
+
+    # No usable proposal → deterministic fallback still decides.
+    no_proposal = dict(analysis)
+    no_proposal['enrichment'] = {
+        k: v for k, v in analysis['enrichment'].items() if k != 'tier2_proposal'
+    }
+    fallback_event = await db.create_security_event(
+        source_ip=fields['source_ip'],
+        dest_ip=fields['dest_ip'],
+        signature=fields['signature'],
+        timestamp=fields['timestamp'],
+        threat_severity='LOW',
+        incident_analysis=no_proposal['incident_analysis'],
+        containment_steps=no_proposal['recommended_containment_steps'],
+        alert_id='ALT-TEST002',
+        enrichment=no_proposal['enrichment'],
+    )
+    fallback = await create_tier2_decision_for_alert(fallback_event)
+    assert fallback['decision_source'] == 'rules', fallback['decision_source']
+    assert fallback['decision'] == 'MONITOR', fallback['decision']
+
+    # An out-of-vocabulary verdict must be discarded, not persisted.
+    assert normalize_tier2_proposal({'decision': 'NUKE_IT', 'confidence': 99}) is None
+    assert normalize_tier2_proposal({'decision': 'contain'})['decision'] == 'CONTAIN'
+
     os.remove('test_soc_matrix.db')
-    print('PASS: Broker persists enriched LLM timeline, evidence, MITRE, and SOAR actions.')
+    print('PASS: Broker persists enriched LLM output and an LLM-sourced Tier-2 decision.')
 
 
 if __name__ == '__main__':

@@ -38,10 +38,14 @@ Python Orchestrator + SQLite (alerts, decisions, actions, audit)
 Dashboard (Command Center)
 ```
 
-On ingest, the broker enriches each alert and derives a **single Tier-2 decision**
-(`CONTAIN`, `ESCALATE`, `INVESTIGATE`, `MONITOR`, or `IGNORE`) plus a **bundled
-SOAR action plan**. The analyst reviews once on the dashboard and clicks **Approve
-plan** or **Reject**. On approval, the orchestrator queues and runs every action
+On ingest, the broker enriches each alert and the **LLM returns a single Tier-2
+decision** (`CONTAIN`, `ESCALATE`, `INVESTIGATE`, `MONITOR`, or `IGNORE`) with its
+own confidence, rationale, and risk-of-action, plus a **bundled SOAR action plan**.
+The verdict is validated against the allowed decision vocabulary before it is
+stored; anything unrecognized is discarded and a deterministic severity rule
+decides instead. Every decision row records which path produced it
+(`decision_source` = `llm` | `rules`) and the dashboard shows that provenance to
+the analyst. The analyst reviews once and clicks **Approve plan** or **Reject**. On approval, the orchestrator queues and runs every action
 automatically — no per-step clicks — and surfaces live execution status
 (`PENDING` → `APPROVED` → `EXECUTING` → `DONE` / `FAILED`).
 
@@ -108,7 +112,7 @@ ao-soc/
 
 ## Run It
 
-**Version:** 2.0.1 — see `VERSION` at repo root (bump on every release).
+**Version:** 2.1.0 — see `VERSION` at repo root (bump on every release).
 
 One-time setup (each machine):
 
@@ -289,7 +293,12 @@ See `orchestrator/README.md` for Splunk field mapping and environment variables.
 | GET    | `/api/entities/{users,hosts,ips}`                   | High-risk entities                   |
 | GET    | `/api/mitre`                                        | MITRE ATT&CK heatmap payload         |
 | GET    | `/api/system/health`                                | Live system telemetry (jitters)      |
-| POST   | `/api/incidents/:id/actions/:actionId/execute`      | Trigger a SOAR playbook              |
+| GET    | `/api/incidents/:id/decision`                       | Tier-2 decision + live action status |
+| POST   | `/api/incidents/:id/decision/approve`               | Approve plan → SOAR auto-execution   |
+| POST   | `/api/incidents/:id/decision/reject`                | Reject the Tier-2 plan               |
+| GET    | `/api/incidents/:id/actions`                        | Action plan with execution status    |
+| POST   | `/api/incidents/:id/mitigate`                       | Mark a broker incident CONTAINED     |
+| POST   | `/api/incidents/:id/actions/:actionId/execute`      | Mock incidents only — broker incidents return 409 `USE_DECISION_APPROVE` |
 | GET    | `/api/incidents/:id/explanations`                  | Retrieve persisted AI explanation     |
 
 ## Design Notes
@@ -330,11 +339,12 @@ matches the types in `frontend/src/types.ts`.
 - **v1.8.0** — English/Farsi (Persian) UI with RTL layout and dashboard language switcher (EN | FA).
 - **v1.9.0** — Grafana-style Executive Summary (radial gauges, severity donut, risk histogram, response-time bullet bars), full mobile-responsive layout (stacked-card tables, adaptive nav), and **live MTTD/MTTR** computed from broker alert timestamps during demos.
 - **v1.9.1** — One-command demo startup/stop scripts for Windows (`start-demo.ps1` / `stop-demo.ps1`) and Linux/macOS (`start-demo.sh` / `stop-demo.sh`).
+- **v2.1.0** — The Tier-2 decision now comes from the LLM, not a severity lookup. `build_splunk_analysis_prompt` asks the model for `tier2_decision` (`decision`, `confidence`, `rationale`, `risk_of_action`) and explicitly instructs it not to mirror `threat_severity`. The verdict is gated against the allowed decision vocabulary — an unrecognized decision discards the whole proposal and the rule path decides, with missing individual fields falling back one at a time. New `tier2_decisions.decision_source` column (auto-migrated; pre-2.1 rows stamped `rules`) is exposed on the decision API and shown as an **AI verdict** / **Rule fallback** badge on the Tier-2 panel.
 - **v2.0.1** — Config hygiene: removed the hardcoded Ollama LAN IP default; host is now `OLLAMA_HOST` / `OLLAMA_PORT` (defaulting to `localhost:11434`, `<ollama-host>` in docs) with `OLLAMA_ENDPOINT` and legacy `WORKSTATION_IP` still honored.
 - **v2.0.0** — Stage 2 AI Tier-2 autonomy (major): the broker derives a structured decision (`CONTAIN` / `ESCALATE` / `INVESTIGATE` / `MONITOR` / `IGNORE`) plus a bundled SOAR action plan per alert. Analyst reviews once and clicks **Approve plan**; the orchestrator then auto-executes every action (policy-gated) and contains the incident with no per-step clicks. This shifts AO-SOC from "AI explains" to "AI operates Tier-2 after one human yes". New endpoints: decision approve/reject and live action status.
 
 ## Authorship
 
-**Version:** 2.0.1 (see `VERSION` — increment on each release commit)
+**Version:** 2.1.0 (see `VERSION` — increment on each release commit)
 
-Written by J.Ekrami, co-written with GitHub Copilot and Composer (Cursor AI).
+Written by J.Ekrami, co-written with GitHub Copilot, Composer (Cursor AI), and Claude (Opus 5).

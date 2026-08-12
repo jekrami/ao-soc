@@ -43,6 +43,7 @@ SCENARIO_TEMPLATES: list[dict[str, Any]] = [
         'src_octet': 21,
         'dest': '185.220.101.7',
         'mitre': 'T1071.001',
+        'decision': 'CONTAIN',
     },
     {
         'signature': 'ET SCAN Potential SSH Scan',
@@ -51,6 +52,7 @@ SCENARIO_TEMPLATES: list[dict[str, Any]] = [
         'src_octet': 44,
         'dest': '45.155.205.211',
         'mitre': 'T1110',
+        'decision': 'INVESTIGATE',
     },
     {
         'signature': 'ET POLICY Suspicious inbound to MSSQL port 1433',
@@ -59,6 +61,7 @@ SCENARIO_TEMPLATES: list[dict[str, Any]] = [
         'src_octet': 88,
         'dest': '193.142.146.4',
         'mitre': 'T1190',
+        'decision': 'INVESTIGATE',
     },
     {
         'signature': 'ET TROJAN Possible Zeus variant outbound',
@@ -67,6 +70,7 @@ SCENARIO_TEMPLATES: list[dict[str, Any]] = [
         'src_octet': 12,
         'dest': '91.204.44.12',
         'mitre': 'T1041',
+        'decision': 'CONTAIN',
     },
     {
         'signature': 'ET DNS Query for .onion TLD',
@@ -75,6 +79,7 @@ SCENARIO_TEMPLATES: list[dict[str, Any]] = [
         'src_octet': 55,
         'dest': '8.8.8.8',
         'mitre': 'T1090',
+        'decision': 'INVESTIGATE',
     },
     {
         'signature': 'ET WEB_SERVER SQL Injection Attempt',
@@ -83,6 +88,7 @@ SCENARIO_TEMPLATES: list[dict[str, Any]] = [
         'src_octet': 33,
         'dest': '177.105.83.40',
         'mitre': 'T1190',
+        'decision': 'MONITOR',
     },
     {
         'signature': 'ET INFO Suspicious TLS SNI to DGA-like domain',
@@ -91,6 +97,7 @@ SCENARIO_TEMPLATES: list[dict[str, Any]] = [
         'src_octet': 67,
         'dest': '198.51.100.14',
         'mitre': 'T1568',
+        'decision': 'CONTAIN',
     },
     {
         'signature': 'ET EXPLOIT Possible EternalBlue SMB attempt',
@@ -99,6 +106,7 @@ SCENARIO_TEMPLATES: list[dict[str, Any]] = [
         'src_octet': 9,
         'dest': '10.4.21.50',
         'mitre': 'T1210',
+        'decision': 'CONTAIN',
     },
     {
         'signature': 'ET POLICY Powershell DownloadString',
@@ -107,6 +115,7 @@ SCENARIO_TEMPLATES: list[dict[str, Any]] = [
         'src_octet': 102,
         'dest': '203.0.113.44',
         'mitre': 'T1059.001',
+        'decision': 'CONTAIN',
     },
     {
         'signature': 'ET SCAN NMAP -sS window 1024',
@@ -115,6 +124,7 @@ SCENARIO_TEMPLATES: list[dict[str, Any]] = [
         'src_octet': 201,
         'dest': '192.0.2.77',
         'mitre': 'T1046',
+        'decision': 'MONITOR',
     },
     {
         'signature': 'ET RANSOMWARE Ryuk style file extension',
@@ -123,6 +133,7 @@ SCENARIO_TEMPLATES: list[dict[str, Any]] = [
         'src_octet': 14,
         'dest': '10.4.22.8',
         'mitre': 'T1486',
+        'decision': 'ESCALATE',
     },
     {
         'signature': 'ET POLICY Outbound SMTP to suspicious port',
@@ -131,10 +142,25 @@ SCENARIO_TEMPLATES: list[dict[str, Any]] = [
         'src_octet': 77,
         'dest': '198.18.0.55',
         'mitre': 'T1048',
+        'decision': 'INVESTIGATE',
     },
 ]
 
 LIKELIHOOD = {'CRITICAL': 94, 'HIGH': 88, 'MEDIUM': 71, 'LOW': 55}
+
+# Per-template verdicts deliberately diverge from severity in places (a HIGH
+# MSSQL probe is only INVESTIGATE, CRITICAL ransomware staging is ESCALATE) so
+# the demo shows a reasoned Tier-2 decision rather than a severity lookup.
+DECISION_RISK = {
+    'CONTAIN': 'Isolation and egress blocks may disrupt legitimate sessions on the affected assets.',
+    'ESCALATE': 'Pulls the IR team in out of hours and pauses Tier-2 handling.',
+    'INVESTIGATE': 'No containment yet — if the assessment is wrong the blast radius widens.',
+    'MONITOR': 'Activity continues unimpeded while under observation.',
+    'IGNORE': 'Alert is closed; a true positive would go unhandled.',
+}
+DECISION_CONFIDENCE_DELTA = {
+    'CONTAIN': 3, 'ESCALATE': 1, 'INVESTIGATE': -6, 'MONITOR': -12, 'IGNORE': -18,
+}
 
 
 def build_scenario(
@@ -147,6 +173,7 @@ def build_scenario(
     src_ip = f"10.4.{template['src_octet'] + (index % 7)}.{10 + (index % 200)}"
     dest_ip = template['dest']
     signature = template['signature']
+    decision = template['decision']
     if base_time is None:
         base_time = datetime(2017, 8, 23, 8, 10) + timedelta(minutes=index * rng.randint(2, 9))
     time_label = base_time.strftime('%H:%M')
@@ -239,6 +266,15 @@ def build_scenario(
             f'Severity assessed as {severity}',
         ],
         'recommendation': f'Block {dest_ip} and isolate {src_ip} immediately.',
+        'tier2_decision': {
+            'decision': decision,
+            'confidence': max(50, min(97, likelihood + DECISION_CONFIDENCE_DELTA[decision])),
+            'rationale': (
+                f"{template['incident_analysis']} "
+                f'Tier-2 verdict {decision} for {src_ip} → {dest_ip}.'
+            ),
+            'risk_of_action': DECISION_RISK[decision],
+        },
     }
     return alert, llm
 
