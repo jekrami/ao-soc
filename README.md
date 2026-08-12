@@ -327,6 +327,15 @@ The **Aegis-Link broker** stores Splunk alerts + AI containment steps in `orches
 
 See `orchestrator/README.md` for Splunk field mapping and environment variables.
 
+## Project Documents
+
+| Document | Purpose |
+| -------- | ------- |
+| [`docs/AI-SOC-PLAN.md`](docs/AI-SOC-PLAN.md) | Master plan v2.0 — milestone status, roadmap phases, risk register, autonomy ramp |
+| [`docs/MODEL-BENCHMARK.md`](docs/MODEL-BENCHMARK.md) | Local LLM benchmark for the Tier-2 decision — 14 models, selection, and why confidence must not gate automation |
+| [`orchestrator/README.md`](orchestrator/README.md) | Broker API, environment variables, autopilot and SOAR policy |
+| [`backend/README.md`](backend/README.md) | UI API endpoints |
+
 ## Pages
 
 | Route             | Purpose                                                           |

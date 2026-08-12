@@ -6,6 +6,7 @@ soc_matrix.db
 data/
 *.jsonl
 *.log
+bench_results.json
 
 # Cursor — keep project rules, ignore local state
 .cursor/*

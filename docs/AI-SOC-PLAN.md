@@ -252,6 +252,9 @@ backup/HA (M15), pilot (M16), release (M17).
 
 ## 8. Model selection for M08 (measured)
 
+> Full report, method, per-case verdict matrix and reproduction instructions:
+> **[`docs/MODEL-BENCHMARK.md`](MODEL-BENCHMARK.md)**. Summary below.
+
 14 local models, RTX 3090 24 GB, five Tier-2 cases whose context should override the
 obvious severity read (authorized scanner with a change ticket, EternalBlue against a
 patched and firewalled host, ransomware staging, C2 beacon, DC credential spray ending in
