@@ -1,12 +1,15 @@
 import { create } from 'zustand';
 import { api } from '@/lib/api';
-import type { Incident, Summary, MitrePayload, SystemHealth, Entity, PersistedAiExplanation, Tier2Decision } from '@/types';
+import type { ArchivedIncident, Incident, Summary, MitrePayload, SystemHealth, Entity, PersistedAiExplanation, Tier2Decision } from '@/types';
 
 type SystemState = 'splunk' | 'broker' | 'llm' | 'soar';
 
 interface AoSocState {
   summary: Summary | null;
   incidents: Incident[];
+  archive: ArchivedIncident[];
+  /** Incidents cleared during this session — shown as a transient banner. */
+  recentlyCleared: { id: string; title: string; by: string | null }[];
   selectedIncidentId: string | null;
   selectedIncident: Incident | null;
   selectedExplanation: PersistedAiExplanation | null;
@@ -29,11 +32,14 @@ interface AoSocState {
     entities: boolean;
     mitigate: boolean;
     tier2Decision: boolean;
+    archive: boolean;
   };
   error: string | null;
 
   loadAll: () => Promise<void>;
   loadIncidents: (includeDemo?: boolean) => Promise<void>;
+  loadArchive: () => Promise<void>;
+  dismissCleared: (id: string) => void;
   refreshHealth: () => Promise<void>;
   refreshIncidents: () => Promise<void>;
   selectIncident: (id: string) => Promise<void>;
@@ -47,6 +53,8 @@ interface AoSocState {
 export const useAoSoc = create<AoSocState>((set, get) => ({
   summary: null,
   incidents: [],
+  archive: [],
+  recentlyCleared: [],
   selectedIncidentId: null,
   selectedIncident: null,
   selectedExplanation: null,
@@ -62,6 +70,7 @@ export const useAoSoc = create<AoSocState>((set, get) => ({
   loading: {
     summary: false, incidents: false, incident: false, incidentExplanation: false,
     mitre: false, health: false, entities: false, mitigate: false, tier2Decision: false,
+    archive: false,
   },
   error: null,
 
@@ -131,6 +140,22 @@ export const useAoSoc = create<AoSocState>((set, get) => ({
     }
   },
 
+  async loadArchive() {
+    set(s => ({ loading: { ...s.loading, archive: true } }));
+    try {
+      const res = await api<{ items: ArchivedIncident[] }>('/api/archive');
+      set({ archive: res.items });
+    } catch (e) {
+      set({ error: (e as Error).message });
+    } finally {
+      set(s => ({ loading: { ...s.loading, archive: false } }));
+    }
+  },
+
+  dismissCleared(id: string) {
+    set(s => ({ recentlyCleared: s.recentlyCleared.filter(c => c.id !== id) }));
+  },
+
   async refreshIncidents() {
     set(s => ({ loading: { ...s.loading, summary: true, incidents: true, mitre: true } }));
     try {
@@ -140,21 +165,55 @@ export const useAoSoc = create<AoSocState>((set, get) => ({
         api<MitrePayload>('/api/mitre'),
       ]);
       const items = incidentsRes.items;
-      const { selectedIncidentId } = get();
-      const selected = selectedIncidentId
+      const { incidents: previous, selectedIncidentId } = get();
+
+      // Anything that left the active queue was contained — by the analyst or
+      // by autopilot. Confirm per incident so a broker outage (which empties
+      // the list) is never mistaken for a wave of successful containments.
+      const activeIds = new Set(items.map(i => i.id));
+      const vanished = previous.filter(i => !activeIds.has(i.id)).slice(0, 5);
+      const clearedNow = (
+        await Promise.all(
+          vanished.map(async prev => {
+            const inc = await api<Incident>(`/api/incidents/${prev.id}`).catch(() => null);
+            if (!inc || inc.status !== 'CONTAINED') return null;
+            const decision = inc.source === 'broker'
+              ? await api<Tier2Decision>(`/api/incidents/${prev.id}/decision`).catch(() => null)
+              : null;
+            return { id: inc.id, title: inc.title, by: decision?.approved_by ?? null };
+          })
+        )
+      ).filter((c): c is { id: string; title: string; by: string | null } => c !== null);
+
+      // Selection follows the queue: if the open incident was cleared, move to
+      // the next one rather than leaving a resolved incident on screen.
+      let nextSelectedId = selectedIncidentId;
+      let selected = selectedIncidentId
         ? items.find(i => i.id === selectedIncidentId) ?? null
         : null;
+      if (selectedIncidentId && !selected) {
+        nextSelectedId = items[0]?.id ?? null;
+        selected = items[0] ?? null;
+      }
 
-      set({
+      set(s => ({
         summary,
         incidents: items,
         mitre,
         selectedIncident: selected,
-        selectedIncidentId: selected ? selected.id : selectedIncidentId,
-      });
-      if (selected?.source === 'broker' && selectedIncidentId) {
-        void get().refreshTier2Decision(selectedIncidentId);
+        selectedIncidentId: nextSelectedId,
+        recentlyCleared: [
+          ...clearedNow.filter(c => !s.recentlyCleared.some(existing => existing.id === c.id)),
+          ...s.recentlyCleared,
+        ].slice(0, 4),
+      }));
+
+      if (nextSelectedId && nextSelectedId !== selectedIncidentId) {
+        void get().selectIncident(nextSelectedId);
+      } else if (selected?.source === 'broker' && nextSelectedId) {
+        void get().refreshTier2Decision(nextSelectedId);
       }
+      if (clearedNow.length) void get().loadArchive();
     } catch (e) {
       set({ error: (e as Error).message });
     } finally {
@@ -208,17 +267,9 @@ export const useAoSoc = create<AoSocState>((set, get) => ({
   async mitigateIncident(id: string) {
     set(s => ({ loading: { ...s.loading, mitigate: true }, error: null }));
     try {
-      const updated = await api<Incident>(`/api/incidents/${id}/mitigate`, { method: 'POST' });
-      const [summary, mitre] = await Promise.all([
-        api<Summary>('/api/summary'),
-        api<MitrePayload>('/api/mitre'),
-      ]);
-      set(s => ({
-        summary,
-        mitre,
-        incidents: s.incidents.map(i => (i.id === id ? updated : i)),
-        selectedIncident: s.selectedIncidentId === id ? updated : s.selectedIncident,
-      }));
+      await api<Incident>(`/api/incidents/${id}/mitigate`, { method: 'POST' });
+      // Contained — refreshIncidents drops it from the queue and archives it.
+      await get().refreshIncidents();
       return true;
     } catch (e) {
       set({ error: (e as Error).message });
@@ -242,8 +293,15 @@ export const useAoSoc = create<AoSocState>((set, get) => ({
 
   async refreshTier2Decision(id: string) {
     try {
+      const previous = get().selectedTier2Decision;
       const tier2 = await api<Tier2Decision>(`/api/incidents/${id}/decision`);
       set({ selectedTier2Decision: tier2 });
+      // Execution just finished: the incident is contained, so pull it out of
+      // the active queue now instead of waiting for the 15s poll.
+      const settled = tier2.approval_status === 'DONE' || tier2.approval_status === 'FAILED';
+      if (settled && previous && previous.approval_status !== tier2.approval_status) {
+        void get().refreshIncidents();
+      }
     } catch {
       /* broker decision may not exist yet */
     }

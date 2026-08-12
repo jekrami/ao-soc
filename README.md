@@ -81,10 +81,17 @@ ao-soc/
 │   ├── mockData.js             Realistic seed data + jittering health
 │   ├── package.json
 │   └── README.md
-├── orchestrator/               Python v2 AI orchestrator + SQLite persistence
-│   ├── soc_orchestrator.py      FastAPI service for explanation storage
+├── orchestrator/               Python AI broker + SQLite persistence
+│   ├── soc_orchestrator.py     FastAPI service: ingest, alerts, decisions
+│   ├── llm.py                  Ollama client + tolerant JSON parsing
+│   ├── enrichment.py           Pure normalizers for LLM output
+│   ├── tier2.py                Tier-2 decision, policy gate, autopilot, executor
+│   ├── soar.py                 SOAR delivery adapter (log / noop drivers)
 │   ├── db.py                   SQLite schema and persistence helpers
 │   ├── models.py               Pydantic payload models
+│   ├── run_ai_demo.py          AI test mode: mocked alerts, real inference
+│   ├── seed_demo_alert.py      Batch demo seeder (mocked LLM)
+│   ├── simulate_alerts.py      Live trickle simulator (mocked LLM)
 │   ├── requirements.txt
 │   └── README.md
 └── frontend/                   Vite + React app (port 5173)
@@ -98,12 +105,13 @@ ao-soc/
     │   ├── components/
     │   │   ├── ui/             ShadCN-style primitives (Card, Button, …)
     │   │   ├── layout/         TopNav
-    │   │   └── dashboard/      ExecutiveSummary, IncidentQueue,
+    │   │   └── dashboard/      ExecutiveSummary, IncidentQueue, ClearedBanner,
     │   │                       AttackStoryboard, RecommendedActions,
-    │   │                       RiskAnalytics, MitreHeatmap,
-    │   │                       AiExplanation, SystemHealthPanel
-    │   └── pages/              Dashboard, Incidents list, Incident details,
-    │                           Entity Risk, System Health
+    │   │                       Tier2DecisionPanel, RiskAnalytics,
+    │   │                       MitreHeatmap, AiExplanation, SystemHealthPanel
+    │   └── pages/              Dashboard, Alerts, Incidents list,
+    │                           Incident details, Archive, Entity Risk,
+    │                           System Health
     ├── tailwind.config.js
     ├── vite.config.ts
     ├── tsconfig.json
@@ -112,7 +120,7 @@ ao-soc/
 
 ## Run It
 
-**Version:** 2.1.0 — see `VERSION` at repo root (bump on every release).
+**Version:** 2.2.0 — see `VERSION` at repo root (bump on every release).
 
 One-time setup (each machine):
 
@@ -191,6 +199,54 @@ Pre-loads 12 varied alerts before you open the dashboard.
 Seed flags: `--count 12`, `--seed 42` (reproducible), `--keep` (append without reset).
 
 **What you should see:** broker incidents with a **LIVE** badge on Command Center and `/alerts`. Mock seed incidents are hidden while the broker is up.
+
+#### Option C — AI test mode (real inference, real SOAR delivery)
+
+The scripts above fake the *model*: they patch `call_ollama` with canned JSON,
+so nothing reasons about anything and the GPU stays idle. AI test mode fakes
+only the **source** — synthetic Suricata alerts instead of Splunk — and sends
+them to a running broker over HTTP, so Ollama really reads each alert, writes
+the enrichment, and returns its own Tier-2 verdict.
+
+Any `CONTAIN`/`ESCALATE` verdict at **≥90% confidence** is approved and executed
+automatically; each action is delivered to the SOAR sink and the incident is
+contained without a click. Everything else waits for an analyst, exactly as in
+Stage 2.
+
+**Automated:**
+
+```powershell
+.\scripts\start-demo.ps1 -Ai -Count 6
+```
+
+```bash
+./scripts/start-demo.sh --ai --count 6
+```
+
+**Manual:**
+
+| Terminal | Service | Command |
+| -------- | ------- | ------- |
+| **1** | Broker (autopilot on) | `cd orchestrator`<br>`TIER2_AUTOPILOT=1 python -m uvicorn soc_orchestrator:app --host 0.0.0.0 --port 8500` |
+| **2** | UI API | `cd backend`<br>`npm start` |
+| **3** | Dashboard | `cd frontend`<br>`npm run dev` |
+| **4** | AI runner | `cd orchestrator`<br>`python run_ai_demo.py --count 6 --interval 5` |
+
+Windows PowerShell terminal 1: `$env:TIER2_AUTOPILOT='1'; python -m uvicorn soc_orchestrator:app --host 0.0.0.0 --port 8500`
+
+Flags: `--count`, `--interval`, `--broker-url`, `--seed`, `--keep`. Threshold and
+allowed verdicts are broker-side policy (`TIER2_AUTOPILOT_MIN_CONFIDENCE`,
+`TIER2_AUTOPILOT_DECISIONS`) — the runner reports what the broker is enforcing
+before it sends anything.
+
+**Requires** Ollama running with the model pulled. Inference is the slow part:
+budget **10–40s per alert** on a notebook, so keep `--count` low for a showroom.
+The runner prints per-alert decision, confidence, source and elapsed time, and
+each delivered action lands in `orchestrator/data/soar-actions.jsonl`:
+
+```bash
+tail -f orchestrator/data/soar-actions.jsonl
+```
 
 **Note:** `GET /v2/explanations/{id}` may return **404** for broker alerts — that is normal. Enrichment comes from `/api/alerts/{id}`; the frontend ignores the 404.
 
@@ -278,6 +334,7 @@ See `orchestrator/README.md` for Splunk field mapping and environment variables.
 | `/`               | Command Center — all six rows in one view                         |
 | `/alerts`         | Live broker alert log + interactive playbook panel                |
 | `/incidents`      | Full incident list with severity, risk, and confidence            |
+| `/archive`        | Cleared incidents: the decision, who approved it, SOAR receipts   |
 | `/incidents/:id`  | Incident details: storyboard, evidence, MITRE, AI actions         |
 | `/entities`       | High-risk users / hosts / IPs with search                         |
 | `/health`         | Dedicated system health view with pipeline diagram                |
@@ -288,7 +345,8 @@ See `orchestrator/README.md` for Splunk field mapping and environment variables.
 | ------ | --------------------------------------------------- | ------------------------------------ |
 | GET    | `/api/health`                                       | Service liveness                     |
 | GET    | `/api/summary`                                      | Executive metrics                    |
-| GET    | `/api/incidents?severity=CRITICAL`                  | Incident queue (filterable)          |
+| GET    | `/api/incidents?severity=CRITICAL&status=active`    | Incident queue — `status` is `active` (default), `cleared`, or `all` |
+| GET    | `/api/archive`                                      | Cleared incidents joined with their Tier-2 decision |
 | GET    | `/api/incidents/:id`                                | Single incident + storyboard          |
 | GET    | `/api/entities/{users,hosts,ips}`                   | High-risk entities                   |
 | GET    | `/api/mitre`                                        | MITRE ATT&CK heatmap payload         |
@@ -339,6 +397,7 @@ matches the types in `frontend/src/types.ts`.
 - **v1.8.0** — English/Farsi (Persian) UI with RTL layout and dashboard language switcher (EN | FA).
 - **v1.9.0** — Grafana-style Executive Summary (radial gauges, severity donut, risk histogram, response-time bullet bars), full mobile-responsive layout (stacked-card tables, adaptive nav), and **live MTTD/MTTR** computed from broker alert timestamps during demos.
 - **v1.9.1** — One-command demo startup/stop scripts for Windows (`start-demo.ps1` / `stop-demo.ps1`) and Linux/macOS (`start-demo.sh` / `stop-demo.sh`).
+- **v2.2.0** — Incident lifecycle + AI test mode. Cleared incidents leave the active queue the moment containment completes and move to a new **`/archive`** page showing the decision, who approved it (analyst or autopilot), and every delivered SOAR action with its execution id; the dashboard announces each clearing instead of letting the row vanish. `GET /api/incidents` now defaults to `status=active` (`cleared` / `all` also accepted) and `GET /api/archive` joins cleared incidents to their decisions. New **AI test mode** (`run_ai_demo.py`, `-Ai` / `--ai`): mocked alerts, real Ollama inference, and opt-in **autopilot** that auto-executes `CONTAIN`/`ESCALATE` verdicts at ≥90% confidence — never `MONITOR`/`IGNORE`, at any confidence. Actions are delivered through a new pluggable `soar.py` adapter (JSONL sink by default) and SOAR execution now runs in the background, so approval returns immediately and the UI streams `EXECUTING → DONE`.
 - **v2.1.0** — The Tier-2 decision now comes from the LLM, not a severity lookup. `build_splunk_analysis_prompt` asks the model for `tier2_decision` (`decision`, `confidence`, `rationale`, `risk_of_action`) and explicitly instructs it not to mirror `threat_severity`. The verdict is gated against the allowed decision vocabulary — an unrecognized decision discards the whole proposal and the rule path decides, with missing individual fields falling back one at a time. New `tier2_decisions.decision_source` column (auto-migrated; pre-2.1 rows stamped `rules`) is exposed on the decision API and shown as an **AI verdict** / **Rule fallback** badge on the Tier-2 panel.
 - **v2.0.1** — Config hygiene: removed the hardcoded Ollama LAN IP default; host is now `OLLAMA_HOST` / `OLLAMA_PORT` (defaulting to `localhost:11434`, `<ollama-host>` in docs) with `OLLAMA_ENDPOINT` and legacy `WORKSTATION_IP` still honored.
 - **v2.0.0** — Stage 2 AI Tier-2 autonomy (major): the broker derives a structured decision (`CONTAIN` / `ESCALATE` / `INVESTIGATE` / `MONITOR` / `IGNORE`) plus a bundled SOAR action plan per alert. Analyst reviews once and clicks **Approve plan**; the orchestrator then auto-executes every action (policy-gated) and contains the incident with no per-step clicks. This shifts AO-SOC from "AI explains" to "AI operates Tier-2 after one human yes". New endpoints: decision approve/reject and live action status.

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Shield, Activity, Server, Users, FileWarning, Radio } from 'lucide-react';
+import { Shield, Activity, Server, Users, FileWarning, Radio, Archive } from 'lucide-react';
 import { useAoSoc } from '@/store/useAoSoc';
 import { StatusDot } from '@/components/ui/status-dot';
 import { LanguageSwitcher } from '@/components/layout/LanguageSwitcher';
@@ -19,6 +19,7 @@ export const TopNav: React.FC = () => {
     { to: '/',          label: t('nav.commandCenter'), icon: Shield        },
     { to: '/alerts',    label: t('nav.liveAlerts'),    icon: Radio         },
     { to: '/incidents', label: t('nav.incidents'),     icon: FileWarning   },
+    { to: '/archive',   label: t('nav.archive'),       icon: Archive       },
     { to: '/entities',  label: t('nav.entityRisk'),    icon: Users         },
     { to: '/health',    label: t('nav.systemHealth'),  icon: Activity      },
   ];

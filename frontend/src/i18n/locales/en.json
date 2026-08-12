@@ -12,7 +12,8 @@
     "soar": "SOAR",
     "language": "Language",
     "switchToEnglish": "Switch to English",
-    "switchToFarsi": "Switch to Farsi"
+    "switchToFarsi": "Switch to Farsi",
+    "archive": "Archive"
   },
   "footer": {
     "title": "AO-SOC Command Center",
@@ -64,7 +65,8 @@
     "refreshHealth": "refresh ↻",
     "seen": "seen",
     "conf": "conf",
-    "src": "src"
+    "src": "src",
+    "dismiss": "Dismiss"
   },
   "enums": {
     "severity": {
@@ -265,5 +267,23 @@
       "DONE": "Complete",
       "FAILED": "Failed"
     }
+  },
+  "archive": {
+    "title": "Incident Archive",
+    "subtitle": "Cleared incidents with the Tier-2 decision and the SOAR actions that closed them",
+    "cleared": "Cleared incidents",
+    "totalSummary": "{{count}} cleared",
+    "autoSummary": "{{count}} auto-executed",
+    "loading": "Loading archive…",
+    "empty": "Nothing cleared yet — resolved incidents land here",
+    "byAutopilot": "Autopilot",
+    "byAnalyst": "Analyst",
+    "deliveredActions": "Delivered SOAR actions",
+    "noActions": "No actions were recorded for this incident",
+    "approvedBy": "Approved by",
+    "decidedBy": "Decided by",
+    "openIncident": "Open incident details",
+    "clearedNotice": "Cleared and moved to the archive: {{title}}",
+    "viewArchive": "View archive"
   }
 }

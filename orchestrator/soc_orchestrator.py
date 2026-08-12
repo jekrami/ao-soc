@@ -31,11 +31,15 @@ from models import (
     RejectDecisionRequest,
     SplunkAlertPayload,
 )
+from soar import soar_config
 from tier2 import (
     approve_tier2_decision,
+    autopilot_config,
+    autopilot_if_eligible,
     create_tier2_decision_for_alert,
     ensure_tier2_decision,
     list_alert_actions,
+    list_decisions,
     normalize_tier2_proposal,
     reject_tier2_decision,
 )
@@ -317,6 +321,8 @@ async def health() -> dict:
         'ollama_endpoint': OLLAMA_ENDPOINT,
         'model': MODEL_NAME,
         'database_url': DATABASE_URL,
+        'autopilot': autopilot_config(),
+        'soar': soar_config(),
     }
 
 
@@ -357,7 +363,9 @@ async def splunk_alert(request: Request) -> dict:
         enrichment=analysis['enrichment'],
     )
     tier2_decision = await create_tier2_decision_for_alert(event)
-    event['tier2_decision'] = tier2_decision
+    # Stage 3 preview: a high-confidence actionable verdict executes without
+    # waiting for a click. No-op unless TIER2_AUTOPILOT is enabled.
+    event['tier2_decision'] = await autopilot_if_eligible(tier2_decision)
     return event
 
 
@@ -410,6 +418,12 @@ async def api_reject_tier2_decision(alert_id: str, body: RejectDecisionRequest) 
     if decision is None:
         raise HTTPException(status_code=404, detail='Alert not found')
     return decision
+
+
+@app.get('/api/decisions')
+async def api_list_decisions(limit: int = 200) -> dict:
+    items = await list_decisions(limit=max(1, min(limit, 1000)))
+    return {'count': len(items), 'items': items}
 
 
 @app.get('/api/alerts/{alert_id}/actions')

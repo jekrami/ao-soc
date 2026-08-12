@@ -29,6 +29,13 @@ python soc_orchestrator.py
 | `OLLAMA_TEMPERATURE` | `0.1` | Inference temperature |
 | `ORCHESTRATOR_DB_FILE` | `soc_matrix.db` | SQLite filename |
 | `BROKER_PORT` | `8500` | HTTP listen port |
+| `TIER2_AUTOPILOT` | *(off)* | `1` to auto-execute high-confidence verdicts without a human click |
+| `TIER2_AUTOPILOT_MIN_CONFIDENCE` | `90` | Confidence floor for autopilot |
+| `TIER2_AUTOPILOT_DECISIONS` | `CONTAIN,ESCALATE` | Verdicts autopilot may execute |
+| `TIER2_AUTOPILOT_APPROVER` | `tier2-autopilot` | Name recorded as the approver in the audit trail |
+| `SOAR_DRIVER` | `log` | `log` (JSONL sink) or `noop` |
+| `SOAR_LOG_FILE` | `data/soar-actions.jsonl` | Where the `log` driver writes deliveries |
+| `SOAR_STEP_DELAY` | `0.35` | Seconds between actions, so the UI can render each transition |
 
 ## Splunk Hook
 
@@ -89,6 +96,7 @@ find decisions a degraded model or an offline Ollama produced.
 | POST | `/api/alerts/{id}/decision/approve` | Approve → policy-gated SOAR auto-execution |
 | POST | `/api/alerts/{id}/decision/reject` | Reject the plan |
 | GET | `/api/alerts/{id}/actions` | Action plan with live execution status |
+| GET | `/api/decisions` | All Tier-2 decisions + plans (drives the dashboard archive) |
 
 ### Dashboard v2 (React adapter)
 
@@ -98,6 +106,40 @@ find decisions a degraded model or an offline Ollama produced.
 | POST | `/v2/explanations/generate` | LLM-generate + persist |
 | GET | `/v2/explanations/{incident_id}` | Fetch latest explanation |
 | GET | `/v2/explanations` | List explanations |
+
+## Autopilot (Stage 3 preview)
+
+Off by default — Stage 2 means a human confirms. When `TIER2_AUTOPILOT=1`, a
+verdict is auto-approved and executed at ingest only if **both** hold:
+
+1. the decision is in `TIER2_AUTOPILOT_DECISIONS` (default `CONTAIN`/`ESCALATE`), and
+2. confidence ≥ `TIER2_AUTOPILOT_MIN_CONFIDENCE`.
+
+Confidence alone is never sufficient. A 99%-confident `MONITOR` means *do not
+act*, so it stays PENDING for an analyst — executing a containment plan against
+a verdict that said "watch this" would be wrong at any confidence.
+
+Skips are logged with the reason, so a demo operator can explain why a given
+alert is still waiting. Autopilot approvals are recorded as
+`approved_by = tier2-autopilot`, which is what the dashboard archive shows.
+
+## SOAR delivery
+
+Approved actions run through `soar.py`. The `log` driver appends one JSON line
+per delivered action:
+
+```json
+{"execution_id":"exec_a1eb351592","driver":"log","status":"DONE","action":"Block IP",
+ "target":"185.220.101.7","delivered_at":"2026-08-12T16:12:32Z","alert_id":"ALT-…",
+ "decision":"CONTAIN","decision_source":"llm","confidence":95,"approved_by":"tier2-autopilot"}
+```
+
+Tail it during a demo: `tail -f orchestrator/data/soar-actions.jsonl`.
+
+A sink that cannot be written fails the action rather than reporting success —
+an unrecorded containment is worse than a visibly failed one. Execution runs in
+the background, so `approve` returns immediately and the dashboard polls
+`PENDING → APPROVED → EXECUTING → DONE`.
 
 ## Storage (`soc_matrix.db`)
 

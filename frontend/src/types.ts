@@ -118,6 +118,17 @@ export interface Incident {
   source?: 'broker' | 'mock';
   /** Broker containment checklist (from recommended_containment_steps) */
   containment_steps?: ContainmentStep[];
+  /** Broker timestamps (ISO); absent on mock incidents */
+  timestamp?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  ingested_at?: string | null;
+  mitigated_at?: string | null;
+}
+
+/** A cleared incident plus the Tier-2 decision that closed it. */
+export interface ArchivedIncident extends Incident {
+  tier2_decision: Tier2Decision | null;
 }
 
 export interface Entity {

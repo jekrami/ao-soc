@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -17,6 +18,7 @@ from db import (
     mitigate_alert,
     tier2_decisions,
 )
+from soar import deliver as soar_deliver
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +30,45 @@ ACTION_STATUSES = frozenset({'PENDING', 'QUEUED', 'EXECUTING', 'DONE', 'FAILED',
 DECISION_SOURCES = frozenset({'llm', 'rules'})
 
 PROTECTED_TARGETS = frozenset({'127.0.0.1', 'localhost', '::1'})
+
+# --- Autopilot (Stage 3 preview, opt-in) ---------------------------------
+# Off by default: Stage 2 is "confirm then auto", and the human gate is the
+# whole point. Enabled for the AI test mode, where high-confidence actionable
+# verdicts execute without waiting for a click.
+AUTOPILOT_ENABLED = (os.getenv('TIER2_AUTOPILOT') or '').strip().lower() in {'1', 'true', 'yes', 'on'}
+AUTOPILOT_APPROVER = os.getenv('TIER2_AUTOPILOT_APPROVER') or 'tier2-autopilot'
+
+# Pacing between actions so the dashboard can render each state transition.
+try:
+    EXECUTION_STEP_DELAY = max(0.0, float(os.getenv('SOAR_STEP_DELAY') or 0.35))
+except ValueError:
+    EXECUTION_STEP_DELAY = 0.35
+
+try:
+    AUTOPILOT_MIN_CONFIDENCE = int(os.getenv('TIER2_AUTOPILOT_MIN_CONFIDENCE') or 90)
+except ValueError:
+    AUTOPILOT_MIN_CONFIDENCE = 90
+
+# Only actionable verdicts. A 99%-confident MONITOR still means "do not act",
+# so confidence alone must never trigger containment.
+AUTOPILOT_DECISIONS = frozenset(
+    d.strip().upper()
+    for d in (os.getenv('TIER2_AUTOPILOT_DECISIONS') or 'CONTAIN,ESCALATE').split(',')
+    if d.strip()
+) & DECISION_TYPES
+
+# Fire-and-forget SOAR runs; held so the GC cannot collect a task mid-flight.
+_BACKGROUND_EXECUTIONS: set[asyncio.Task] = set()
+
+
+def autopilot_config() -> Dict[str, Any]:
+    """Reported on /health so an operator can see the active policy."""
+    return {
+        'enabled': AUTOPILOT_ENABLED,
+        'min_confidence': AUTOPILOT_MIN_CONFIDENCE,
+        'decisions': sorted(AUTOPILOT_DECISIONS),
+        'approver': AUTOPILOT_APPROVER,
+    }
 
 
 def _utcnow() -> datetime:
@@ -367,8 +408,7 @@ async def reject_tier2_decision(
 
 
 async def _execute_soar_plan(alert_id: str, decision_id: int) -> dict:
-    """Run all queued actions sequentially (SOAR stub)."""
-    now = _utcnow()
+    """Run all queued actions sequentially, delivering each to the SOAR sink."""
     any_failed = False
 
     async with async_session() as session:
@@ -378,6 +418,11 @@ async def _execute_soar_plan(alert_id: str, decision_id: int) -> dict:
             .values(approval_status='EXECUTING')
         )
         await session.commit()
+        decision_row = (
+            await session.execute(
+                select(tier2_decisions).where(tier2_decisions.c.id == decision_id)
+            )
+        ).mappings().one()
 
     async with async_session() as session:
         action_rows = (
@@ -419,33 +464,34 @@ async def _execute_soar_plan(alert_id: str, decision_id: int) -> dict:
             )
             await session.commit()
 
-        await asyncio.sleep(0.35)
+        await asyncio.sleep(EXECUTION_STEP_DELAY)
 
-        execution_id = f'exec_{uuid.uuid4().hex[:10]}'
-        result_payload = {
-            'execution_id': execution_id,
-            'action': action_row['action_type'],
-            'target': action_row['target'],
-            'status': 'DONE',
-        }
-        done_at = _utcnow()
+        receipt = await soar_deliver(
+            alert_id=alert_id,
+            decision_id=decision_id,
+            action_id=action_row['action_id'],
+            action_type=action_row['action_type'],
+            target=action_row['target'],
+            reason=action_row['reason'],
+            decision_type=decision_row['decision_type'],
+            confidence=decision_row['confidence'],
+            decision_source=decision_row.get('decision_source') or 'rules',
+            approved_by=decision_row['approved_by'],
+        )
+        if receipt.get('status') != 'DONE':
+            any_failed = True
 
         async with async_session() as session:
             await session.execute(
                 update(alert_soar_actions)
                 .where(alert_soar_actions.c.id == action_row['id'])
                 .values(
-                    status='DONE',
-                    result_json=json.dumps(result_payload),
-                    completed_at=done_at,
+                    status=receipt.get('status', 'DONE'),
+                    result_json=json.dumps(receipt),
+                    completed_at=_utcnow(),
                 )
             )
             await session.commit()
-
-        logger.info(
-            'SOAR executed %s on %s for alert %s -> %s',
-            action_row['action_type'], action_row['target'], alert_id, execution_id,
-        )
 
     if not any_failed:
         await mitigate_alert(alert_id)
@@ -474,7 +520,14 @@ async def approve_tier2_decision(
     alert_id: str,
     *,
     approved_by: str = 'analyst',
+    wait: bool = False,
 ) -> Optional[dict]:
+    """Approve a plan and start SOAR execution.
+
+    Returns as soon as the plan is APPROVED; execution runs in the background
+    and the dashboard polls the decision while it is EXECUTING. Pass wait=True
+    (scripts, tests) to block until every action has finished.
+    """
     async with async_session() as session:
         row = await _load_decision_row(session, alert_id)
         if not row:
@@ -503,4 +556,67 @@ async def approve_tier2_decision(
         decision_id = row['id']
 
     logger.info('Tier-2 decision approved for alert %s by %s — starting SOAR execution', alert_id, approved_by)
-    return await _execute_soar_plan(alert_id, decision_id)
+
+    if wait:
+        return await _execute_soar_plan(alert_id, decision_id)
+
+    task = asyncio.create_task(_execute_soar_plan(alert_id, decision_id))
+    _BACKGROUND_EXECUTIONS.add(task)
+    task.add_done_callback(_BACKGROUND_EXECUTIONS.discard)
+
+    async with async_session() as session:
+        current = await _load_decision_row(session, alert_id)
+        return _format_decision(current, await _load_actions(session, current['id']))
+
+
+async def wait_for_executions() -> None:
+    """Await every in-flight SOAR run (scripts and tests; not used by the API)."""
+    while _BACKGROUND_EXECUTIONS:
+        await asyncio.gather(*tuple(_BACKGROUND_EXECUTIONS), return_exceptions=True)
+
+
+async def autopilot_if_eligible(decision: Optional[dict], *, wait: bool = False) -> Optional[dict]:
+    """Auto-approve a high-confidence actionable verdict (Stage 3 preview).
+
+    Returns the decision unchanged when autopilot is off or the verdict is not
+    eligible — the alert then waits for a human exactly as in Stage 2.
+    """
+    if not decision or not AUTOPILOT_ENABLED:
+        return decision
+    if decision.get('approval_status') != 'PENDING':
+        return decision
+
+    alert_id = decision['alert_id']
+    verdict = decision.get('decision')
+    confidence = decision.get('confidence') or 0
+
+    if verdict not in AUTOPILOT_DECISIONS:
+        logger.info(
+            'Autopilot skipped alert %s — %s is not an auto-executable verdict (awaiting analyst)',
+            alert_id, verdict,
+        )
+        return decision
+    if confidence < AUTOPILOT_MIN_CONFIDENCE:
+        logger.info(
+            'Autopilot skipped alert %s — %s at %s%% is below the %s%% threshold (awaiting analyst)',
+            alert_id, verdict, confidence, AUTOPILOT_MIN_CONFIDENCE,
+        )
+        return decision
+
+    logger.info(
+        'Autopilot approving alert %s — %s at %s%% confidence (>= %s%%)',
+        alert_id, verdict, confidence, AUTOPILOT_MIN_CONFIDENCE,
+    )
+    approved = await approve_tier2_decision(alert_id, approved_by=AUTOPILOT_APPROVER, wait=wait)
+    return approved or decision
+
+
+async def list_decisions(limit: int = 200) -> List[dict]:
+    """All Tier-2 decisions with their action plans, newest first."""
+    async with async_session() as session:
+        rows = (
+            await session.execute(
+                select(tier2_decisions).order_by(tier2_decisions.c.id.desc()).limit(limit)
+            )
+        ).mappings().all()
+        return [_format_decision(row, await _load_actions(session, row['id'])) for row in rows]

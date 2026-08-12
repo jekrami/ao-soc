@@ -12,7 +12,8 @@
     "soar": "پاسخ خودکار",
     "language": "زبان",
     "switchToEnglish": "تغییر به انگلیسی",
-    "switchToFarsi": "تغییر به فارسی"
+    "switchToFarsi": "تغییر به فارسی",
+    "archive": "بایگانی"
   },
   "footer": {
     "title": "مرکز فرماندهی AO-SOC",
@@ -64,7 +65,8 @@
     "refreshHealth": "بروزرسانی ↻",
     "seen": "مشاهده",
     "conf": "اطمینان",
-    "src": "مبدأ"
+    "src": "مبدأ",
+    "dismiss": "بستن"
   },
   "enums": {
     "severity": {
@@ -265,5 +267,23 @@
       "DONE": "تکمیل",
       "FAILED": "ناموفق"
     }
+  },
+  "archive": {
+    "title": "بایگانی رخدادها",
+    "subtitle": "رخدادهای بسته‌شده همراه با تصمیم سطح ۲ و اقدامات SOAR که آن‌ها را بستند",
+    "cleared": "رخدادهای بسته‌شده",
+    "totalSummary": "{{count}} مورد بسته‌شده",
+    "autoSummary": "{{count}} مورد اجرای خودکار",
+    "loading": "در حال بارگذاری بایگانی…",
+    "empty": "هنوز موردی بسته نشده — رخدادهای حل‌شده اینجا می‌آیند",
+    "byAutopilot": "خلبان خودکار",
+    "byAnalyst": "تحلیل‌گر",
+    "deliveredActions": "اقدامات ارسال‌شده به SOAR",
+    "noActions": "اقدامی برای این رخداد ثبت نشده است",
+    "approvedBy": "تأییدکننده",
+    "decidedBy": "تصمیم‌گیرنده",
+    "openIncident": "مشاهده جزئیات رخداد",
+    "clearedNotice": "بسته شد و به بایگانی منتقل شد: {{title}}",
+    "viewArchive": "مشاهده بایگانی"
   }
 }

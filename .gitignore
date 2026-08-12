@@ -2,6 +2,10 @@
 soc_matrix.db
 *.db
 
+# Derived runtime data (SOAR delivery log, exports) - never evidence in git
+data/
+*.jsonl
+
 # Cursor — keep project rules, ignore local state
 .cursor/*
 !.cursor/rules/

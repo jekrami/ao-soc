@@ -20,7 +20,7 @@ import {
   listBrokerActions,
   rejectBrokerDecision,
 } from './decisions.js';
-import { buildSummary, buildMitre, getIncident, listIncidents } from './incidents.js';
+import { buildSummary, buildMitre, getIncident, listArchive, listIncidents } from './incidents.js';
 import { buildSystemHealth } from './systemHealth.js';
 
 const app = express();
@@ -44,10 +44,19 @@ app.get('/api/summary', async (_req, res) => {
   res.json(await buildSummary());
 });
 
+const INCIDENT_STATUS_FILTERS = new Set(['active', 'cleared', 'all']);
+
 app.get('/api/incidents', async (req, res) => {
   const severity = (req.query.severity || '').toUpperCase();
   const includeDemo = req.query.include === 'demo';
-  const items = await listIncidents(severity, { includeDemo });
+  const requested = String(req.query.status || 'active').toLowerCase();
+  const status = INCIDENT_STATUS_FILTERS.has(requested) ? requested : 'active';
+  const items = await listIncidents(severity, { includeDemo, status });
+  res.json({ count: items.length, items, status });
+});
+
+app.get('/api/archive', async (req, res) => {
+  const items = await listArchive({ includeDemo: req.query.include !== 'live' });
   res.json({ count: items.length, items });
 });
 

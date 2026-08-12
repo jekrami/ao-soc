@@ -4,6 +4,7 @@ import { useAoSoc } from '@/store/useAoSoc';
 import { ExecutiveSummary }      from '@/components/dashboard/ExecutiveSummary';
 import { BrokerLiveMetrics }   from '@/components/dashboard/BrokerLiveMetrics';
 import { IncidentQueue }         from '@/components/dashboard/IncidentQueue';
+import { ClearedBanner }         from '@/components/dashboard/ClearedBanner';
 import { AttackStoryboard }      from '@/components/dashboard/AttackStoryboard';
 import { RecommendedActions }    from '@/components/dashboard/RecommendedActions';
 import { Tier2DecisionPanel }    from '@/components/dashboard/Tier2DecisionPanel';
@@ -41,6 +42,7 @@ export const DashboardPage: React.FC = () => {
 
       <section aria-label={t('dashboard.mainOperations')}>
         <SectionHeader title={t('dashboard.mainOperations')} subtitle={t('dashboard.mainOperationsSubtitle')} />
+        <ClearedBanner />
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
           <div className="lg:col-span-3">
             <IncidentQueue />

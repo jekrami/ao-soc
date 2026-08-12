@@ -8,11 +8,20 @@ import os
 import sys
 
 os.environ['ORCHESTRATOR_DB_FILE'] = 'test_soc_matrix.db'
+# Read at import by tier2/soar, so they must be set before those modules load.
+os.environ['TIER2_AUTOPILOT'] = '1'
+os.environ['TIER2_AUTOPILOT_MIN_CONFIDENCE'] = '90'
+os.environ['SOAR_LOG_FILE'] = 'test_soar_actions.jsonl'
+os.environ['SOAR_STEP_DELAY'] = '0'
 
 import db
 import soc_orchestrator as broker
 from llm import parse_json_response
-from tier2 import create_tier2_decision_for_alert, normalize_tier2_proposal
+from tier2 import (
+    autopilot_if_eligible,
+    create_tier2_decision_for_alert,
+    normalize_tier2_proposal,
+)
 
 
 MOCK_LLM_RESPONSE = json.dumps({
@@ -131,8 +140,47 @@ async def run_test() -> None:
     assert normalize_tier2_proposal({'decision': 'NUKE_IT', 'confidence': 99}) is None
     assert normalize_tier2_proposal({'decision': 'contain'})['decision'] == 'CONTAIN'
 
+    # --- Autopilot: CONTAIN at 91% >= 90% executes without a human ---
+    executed = await autopilot_if_eligible(decision, wait=True)
+    assert executed['approval_status'] == 'DONE', executed['approval_status']
+    assert executed['approved_by'] == 'tier2-autopilot'
+    assert all(a['status'] == 'DONE' for a in executed['required_actions'])
+
+    contained = await db.get_alert(alert_id)
+    assert contained['mitigation_status'] == 'CONTAINED'
+
+    # Every action really reached the SOAR sink, with its provenance attached.
+    with open('test_soar_actions.jsonl', encoding='utf-8') as handle:
+        delivered = [json.loads(line) for line in handle if line.strip()]
+    assert len(delivered) == len(executed['required_actions']), delivered
+    assert delivered[0]['approved_by'] == 'tier2-autopilot'
+    assert delivered[0]['decision'] == 'CONTAIN'
+    assert delivered[0]['decision_source'] == 'llm'
+    assert delivered[0]['execution_id'].startswith('exec_')
+
+    # --- Autopilot must NOT act on a non-actionable verdict, at any confidence ---
+    watch_event = await db.create_security_event(
+        source_ip=fields['source_ip'],
+        dest_ip=fields['dest_ip'],
+        signature=fields['signature'],
+        timestamp=fields['timestamp'],
+        threat_severity='HIGH',
+        incident_analysis='Scanner against a patched edge device.',
+        containment_steps=['Watch the source'],
+        alert_id='ALT-TEST003',
+        enrichment={
+            **analysis['enrichment'],
+            'tier2_proposal': {'decision': 'MONITOR', 'confidence': 99, 'rationale': 'Benign scanner.'},
+        },
+    )
+    watch = await autopilot_if_eligible(await create_tier2_decision_for_alert(watch_event), wait=True)
+    assert watch['decision'] == 'MONITOR'
+    assert watch['approval_status'] == 'PENDING', 'a 99% MONITOR must never auto-execute'
+    assert (await db.get_alert('ALT-TEST003'))['mitigation_status'] == 'PENDING'
+
     os.remove('test_soc_matrix.db')
-    print('PASS: Broker persists enriched LLM output and an LLM-sourced Tier-2 decision.')
+    os.remove('test_soar_actions.jsonl')
+    print('PASS: LLM Tier-2 decision, autopilot policy, and SOAR delivery all verified.')
 
 
 if __name__ == '__main__':

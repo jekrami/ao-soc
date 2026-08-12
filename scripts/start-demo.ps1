@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Prepare and launch the full AO-SOC demo stack on Windows.
 
@@ -19,6 +19,14 @@
 
 .PARAMETER Live
   Use live simulation (Option A) instead of instant batch seed (Option B).
+
+.PARAMETER Ai
+  AI test mode: mocked alerts are sent through the real Ollama model and
+  CONTAIN/ESCALATE verdicts at or above -Threshold execute automatically.
+  Requires Ollama to be running and the model pulled.
+
+.PARAMETER Threshold
+  Autopilot confidence threshold in AI mode (default: 90).
 
 .PARAMETER Count
   Number of alerts for batch seed (default: 12). Ignored when -Live is set.
@@ -49,6 +57,8 @@
 [CmdletBinding()]
 param(
     [switch]$Live,
+    [switch]$Ai,
+    [int]$Threshold = 90,
     [int]$Count = 12,
     [switch]$SkipInstall,
     [int]$Seed = 42,
@@ -160,7 +170,13 @@ if (-not $SkipInstall) {
 
 Write-Step 'Starting Aegis-Link broker on port 8500'
 
-$brokerCmd = "`$env:BROKER_PORT='8500'; python -m uvicorn soc_orchestrator:app --host 0.0.0.0 --port 8500"
+$brokerEnv = "`$env:BROKER_PORT='8500'; "
+if ($Ai) {
+    # AI mode: real inference, and high-confidence actionable verdicts execute
+    # without waiting for a click.
+    $brokerEnv += "`$env:TIER2_AUTOPILOT='1'; `$env:TIER2_AUTOPILOT_MIN_CONFIDENCE='$Threshold'; "
+}
+$brokerCmd = $brokerEnv + "python -m uvicorn soc_orchestrator:app --host 0.0.0.0 --port 8500"
 $brokerPid = Start-DemoWindow -Title 'AO-SOC Broker' -WorkingDirectory $OrchestratorDir -Command $brokerCmd
 
 Start-Sleep -Seconds 3
@@ -188,7 +204,13 @@ Start-Sleep -Seconds 4
 
 $simPid = $null
 
-if ($Live) {
+if ($Ai) {
+    Write-Step "Starting AI test mode ($Count alerts through the real model, autopilot >= $Threshold%)"
+
+    $aiArgs = @('run_ai_demo.py', '--count', $Count, '--interval', $SimInterval, '--seed', $Seed)
+    $aiCmdLine = "python $($aiArgs -join ' ')"
+    $simPid = Start-DemoWindow -Title 'AO-SOC AI Runner' -WorkingDirectory $OrchestratorDir -Command $aiCmdLine
+} elseif ($Live) {
     Write-Step "Starting live alert simulation (${SimInterval}s interval, ${SimDuration}s duration)"
 
     $simArgs = @(
@@ -217,7 +239,7 @@ $meta = @{
     frontend  = $fePid
     simulator = $simPid
     ports     = @(8500, 4317, 5173)
-    mode      = if ($Live) { 'live' } else { 'batch' }
+    mode      = if ($Ai) { 'ai' } elseif ($Live) { 'live' } else { 'batch' }
     startedAt = (Get-Date).ToString('o')
 }
 $meta | ConvertTo-Json | Set-Content -Path $PidFile -Encoding UTF8

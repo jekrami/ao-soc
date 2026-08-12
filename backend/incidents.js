@@ -1,5 +1,6 @@
 import { incidents as mockIncidents, summary as mockSummary } from './mockData.js';
 import { getBrokerIncident, listBrokerIncidents } from './alertStore.js';
+import { listBrokerDecisions } from './decisions.js';
 import { buildMitrePayload } from './posture.js';
 
 const SEVERITY_ORDER = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
@@ -77,7 +78,12 @@ function computeLiveMttrMinutes(containedIncidents) {
   return med != null ? Math.round(med) : null;
 }
 
-export async function listIncidents(severityFilter = '', { includeDemo = null } = {}) {
+/** An incident is cleared once containment has run — it belongs in the archive. */
+export function isCleared(incident) {
+  return incident.status === 'CONTAINED' || incident.status === 'CLOSED';
+}
+
+export async function listIncidents(severityFilter = '', { includeDemo = null, status = 'active' } = {}) {
   const broker = await listBrokerIncidents();
   const brokerIds = new Set(broker.map(i => i.id));
   const mock = mockIncidents
@@ -85,7 +91,10 @@ export async function listIncidents(severityFilter = '', { includeDemo = null } 
     .map(i => ({ ...i, source: 'mock' }));
 
   const showDemo = includeDemo ?? broker.length === 0;
-  const merged = showDemo ? [...broker, ...mock] : [...broker];
+  let merged = showDemo ? [...broker, ...mock] : [...broker];
+
+  if (status === 'active') merged = merged.filter(i => !isCleared(i));
+  else if (status === 'cleared') merged = merged.filter(isCleared);
 
   merged.sort((a, b) => {
     const sev = (SEVERITY_ORDER[a.severity] ?? 9) - (SEVERITY_ORDER[b.severity] ?? 9);
@@ -97,6 +106,27 @@ export async function listIncidents(severityFilter = '', { includeDemo = null } 
   return merged.filter(i => i.severity === severityFilter);
 }
 
+/**
+ * Cleared incidents joined with the Tier-2 decision that closed them.
+ * Newest first — this is the audit log, not a work queue.
+ */
+export async function listArchive({ includeDemo = true } = {}) {
+  const [cleared, decisions] = await Promise.all([
+    listIncidents('', { includeDemo, status: 'cleared' }),
+    listBrokerDecisions(),
+  ]);
+
+  const byAlert = new Map(decisions.map(d => [d.alert_id, d]));
+
+  return cleared
+    .map(inc => ({ ...inc, tier2_decision: byAlert.get(inc.id) ?? null }))
+    .sort((a, b) => {
+      const at = parseTime(a.mitigated_at ?? a.updated_at) ?? 0;
+      const bt = parseTime(b.mitigated_at ?? b.updated_at) ?? 0;
+      return bt - at;
+    });
+}
+
 export async function getIncident(id) {
   const broker = await getBrokerIncident(id);
   if (broker) return broker;
@@ -105,7 +135,9 @@ export async function getIncident(id) {
 }
 
 export async function buildSummary(incidentList = null) {
-  const allIncidents = incidentList ?? await listIncidents('', { includeDemo: true });
+  // Metrics span the full corpus — contained incidents are what MTTR and the
+  // automation rate are computed from, so this must not use the active filter.
+  const allIncidents = incidentList ?? await listIncidents('', { includeDemo: true, status: 'all' });
   const liveIncidents = allIncidents.filter(i => i.source === 'broker');
   const demoIncidents = allIncidents.filter(i => i.source === 'mock');
   const postureIncidents = liveIncidents.length > 0 ? liveIncidents : allIncidents;
@@ -154,6 +186,6 @@ export async function buildSummary(incidentList = null) {
 }
 
 export async function buildMitre() {
-  const incidents = await listIncidents('', { includeDemo: true });
+  const incidents = await listIncidents('', { includeDemo: true, status: 'all' });
   return buildMitrePayload(incidents);
 }

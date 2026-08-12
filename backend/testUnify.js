@@ -9,12 +9,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { brokerFetch } from './brokerClient.js';
 import { mapAlertToIncident } from './alertStore.js';
-import { buildSummary, getIncident, listIncidents } from './incidents.js';
+import { buildSummary, getIncident, listArchive, listIncidents } from './incidents.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const orchestratorDir = path.resolve(__dirname, '../orchestrator');
 
-const seed = spawnSync('python', ['seed_demo_alert.py'], { cwd: orchestratorDir, encoding: 'utf8' });
+const python = process.env.PYTHON || 'python';
+const seed = spawnSync(python, ['seed_demo_alert.py'], { cwd: orchestratorDir, encoding: 'utf8' });
 if (seed.status !== 0) {
   console.error('FAIL: could not seed demo alert');
   console.error(seed.stderr || seed.stdout);
@@ -38,17 +39,30 @@ async function main() {
   }
 
   const incident = mapAlertToIncident(alert);
-  const merged = await listIncidents();
+  const all = await listIncidents('', { status: 'all' });
+  const active = await listIncidents('', { status: 'active' });
+  const cleared = await listIncidents('', { status: 'cleared' });
+  const archive = await listArchive();
   const fetched = await getIncident(alert.id);
   const summary = await buildSummary();
 
+  const isCleared = incident.status === 'CONTAINED';
+  const queue = isCleared ? cleared : active;
+
   const checks = [
     ['source broker', incident.source === 'broker'],
-    ['severity', incident.severity === 'HIGH'],
+    // Assert the mapping, not the fixture — the seeder shuffles scenarios.
+    ['severity', incident.severity === String(alert.threat_severity).toUpperCase()],
     ['timeline', incident.timeline.length >= 1],
     ['actions', incident.recommended_actions.length === 3],
     ['ai summary', Boolean(incident.ai_explanation?.summary)],
-    ['merged', merged.some(i => i.id === alert.id)],
+    ['merged', all.some(i => i.id === alert.id)],
+    ['status routing', queue.some(i => i.id === alert.id)],
+    // Active and cleared must partition the corpus — no incident in both, none lost.
+    ['no overlap', !active.some(a => cleared.some(c => c.id === a.id))],
+    ['partition', active.length + cleared.length === all.length],
+    ['archive = cleared', archive.length === cleared.length],
+    ['archive carries decision', archive.every(i => 'tier2_decision' in i)],
     ['get by id', fetched?.id === alert.id],
     ['summary', (summary.broker_live_alerts ?? 0) >= 1],
   ];
@@ -61,7 +75,7 @@ async function main() {
 
   console.log('PASS: broker alert unified into dashboard Incident model');
   console.log(`  id: ${incident.id}`);
-  console.log(`  queue: ${merged.length} total, ${summary.broker_live_alerts} live`);
+  console.log(`  queue: ${all.length} total, ${active.length} active, ${cleared.length} archived`);
 }
 
 main().catch(err => {

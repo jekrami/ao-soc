@@ -18,6 +18,7 @@
 #   chmod +x scripts/start-demo.sh
 #   ./scripts/start-demo.sh
 #   ./scripts/start-demo.sh --live
+#   ./scripts/start-demo.sh --ai --count 6      # real Ollama + autopilot
 #   ./scripts/start-demo.sh --skip-install --count 8
 #
 # Stop:
@@ -30,6 +31,8 @@ set -euo pipefail
 
 # --- Defaults (override with flags) ---
 LIVE=0
+AI=0
+THRESHOLD=90
 COUNT=12
 SEED=42
 SKIP_INSTALL=0
@@ -40,6 +43,8 @@ SIM_DURATION=120
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --live)          LIVE=1; shift ;;
+    --ai)            AI=1; shift ;;
+    --threshold)     THRESHOLD="$2"; shift 2 ;;
     --count)         COUNT="$2"; shift 2 ;;
     --seed)          SEED="$2"; shift 2 ;;
     --skip-install)  SKIP_INSTALL=1; shift ;;
@@ -164,6 +169,13 @@ fi
 
 step "Starting Aegis-Link broker on port 8500"
 export BROKER_PORT=8500
+if [[ $AI -eq 1 ]]; then
+  # AI mode: real inference, and high-confidence actionable verdicts execute
+  # without waiting for a click.
+  export TIER2_AUTOPILOT=1
+  export TIER2_AUTOPILOT_MIN_CONFIDENCE="$THRESHOLD"
+  echo "    Autopilot ON (CONTAIN/ESCALATE at >= ${THRESHOLD}% confidence)"
+fi
 start_bg broker "$ORCHESTRATOR_DIR" \
   "$PYTHON" -m uvicorn soc_orchestrator:app --host 0.0.0.0 --port 8500
 sleep 3
@@ -185,7 +197,10 @@ sleep 4
 
 # --- 6. Demo data ---
 
-if [[ $LIVE -eq 1 ]]; then
+if [[ $AI -eq 1 ]]; then
+  step "Starting AI test mode ($COUNT alerts through the real model, autopilot >= ${THRESHOLD}%)"
+  start_bg ai-runner "$ORCHESTRATOR_DIR"     "$PYTHON" run_ai_demo.py       --count "$COUNT"       --interval "$SIM_INTERVAL"       --seed "$SEED"
+elif [[ $LIVE -eq 1 ]]; then
   step "Starting live alert simulation (${SIM_INTERVAL}s interval, ${SIM_DURATION}s duration)"
   start_bg simulator "$ORCHESTRATOR_DIR" \
     "$PYTHON" simulate_alerts.py \
@@ -209,7 +224,10 @@ echo "  Live alerts:   $DASHBOARD_URL/alerts"
 echo "  Broker health: $BROKER_URL/health"
 echo "  UI API:        $API_URL/api/summary"
 echo ""
-if [[ $LIVE -eq 1 ]]; then
+if [[ $AI -eq 1 ]]; then
+  echo "  Mode:          AI test mode ($COUNT alerts, autopilot >= ${THRESHOLD}%)"
+  echo "  SOAR sink:     orchestrator/data/soar-actions.jsonl"
+elif [[ $LIVE -eq 1 ]]; then
   echo "  Mode:          Live simulation"
 else
   echo "  Mode:          Batch seed ($COUNT alerts)"
