@@ -30,7 +30,7 @@
   <!-- ================= Title ================= -->
   <text class="t1" x="830" y="52" text-anchor="middle">معماری نرم‌افزاری AI-SOC</text>
   <text class="t2" x="830" y="82" text-anchor="middle">مرکز عملیات امنیت مبتنی بر هوش مصنوعی — «لایهٔ تصمیم»</text>
-  <text class="t3" x="830" y="106" text-anchor="middle">نسخهٔ ۲.۲ — تابستان ۱۴۰۵</text>
+  <text class="t3" x="830" y="106" text-anchor="middle">نسخهٔ ۲.۳ — تابستان ۱۴۰۵</text>
 
   <!-- ================= External: detection sources (right) ================= -->
   <rect x="1330" y="160" width="290" height="292" rx="10" fill="#ffffff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="7 5"/>
@@ -89,16 +89,16 @@
 
   <!-- L1 intake -->
   <rect x="348" y="160" width="924" height="78" rx="9" fill="#0f766e"/>
-  <circle cx="372" cy="184" r="7" fill="#dc2626" stroke="#ffffff" stroke-width="1.5"/>
+  <circle cx="372" cy="184" r="7" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"/>
   <text class="box-title" x="810" y="189" text-anchor="middle">۱. لایهٔ دریافت تشخیص — یک آداپتور به‌ازای هر ابزار</text>
   <text class="box-sub" x="810" y="213" text-anchor="middle">«قرارداد دریافت تشخیص» (قرارداد نخست) · ابزار مبدأ · شناسهٔ قاعده · موجودیت‌ها · شدت · محمولهٔ خام عیناً نگهداری می‌شود</text>
-  <text class="box-sub" x="810" y="231" text-anchor="middle">قانون ۹ — نام هیچ ابزاری نباید در منطق اصلی بیاید؛ امروز نقض شده است</text>
+  <text class="box-sub" x="810" y="231" text-anchor="middle">قانون ۹ برقرار شد — نام میدان‌های هر فروشنده تنها در آداپتور خودش می‌ماند؛ افزودن ابزار تازه یک فایل است، نه تغییر کد</text>
 
   <!-- L2 correlation -->
   <rect x="348" y="260" width="712" height="90" rx="9" fill="#6d28d9"/>
-  <circle cx="372" cy="284" r="7" fill="#dc2626" stroke="#ffffff" stroke-width="1.5"/>
+  <circle cx="372" cy="284" r="7" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"/>
   <text class="box-title" x="704" y="289" text-anchor="middle">۲. موتور همبستگی میان‌ابزاری ← «شیء وضعیت امنیتی»</text>
-  <text class="box-sub" x="704" y="313" text-anchor="middle">پنجرهٔ زمانی · موجودیت مشترک (کاربر، میزبان، نشانی، فرایند) · امتیاز ریسک</text>
+  <text class="box-sub" x="704" y="313" text-anchor="middle">پنجرهٔ زمانی · موجودیت مشترک (کاربر · میزبان · نشانی · درهم‌ریزهٔ فایل · نشانی وب) · امتیاز ریسک قطعی با ثبت عوامل آن</text>
   <text class="box-sub" x="704" y="335" text-anchor="middle">قرارداد دوم و وجه تمایز اصلی — هیچ ابزاری تشخیص‌های چند فروشندهٔ متفاوت را به‌هم نمی‌دوزد</text>
 
   <!-- L3 AI reasoning -->
@@ -204,5 +204,5 @@
   <text class="legend" x="560" y="946" text-anchor="start">خط‌چین = وابستگی بیرونی</text>
 
   <!-- ================= Footer ================= -->
-  <text class="foot" x="830" y="994" text-anchor="middle">نویسنده: J.Ekrami · هم‌نویسنده: Claude (Opus 5) · © J.Ekrami-Labs · تابستان ۱۴۰۵ · برابر با طرح نسخهٔ ۲.۲</text>
+  <text class="foot" x="830" y="994" text-anchor="middle">نویسنده: J.Ekrami · هم‌نویسنده: Claude (Opus 5) · © J.Ekrami-Labs · تابستان ۱۴۰۵ · برابر با طرح نسخهٔ ۲.۳</text>
 </svg>

@@ -374,6 +374,84 @@ async def create_tier2_decision_for_alert(alert: dict) -> dict:
     return _format_decision(row, actions)
 
 
+async def rebuild_tier2_decision_for_alert(alert: dict) -> Optional[dict]:
+    """Re-derive the proposal after its situation gained a detection (B3).
+
+    A situation that grows is a different situation to reason about, so the
+    verdict is re-derived rather than left stale. Two states are refused
+    outright and returned untouched:
+
+    * anything past PENDING — the plan has been approved, dispatched or
+      rejected, and the row is the record of what was sent (Rule 4);
+    * ``decision_source='human'`` — an analyst has already corrected this one,
+      and overwriting their verdict with a fresh machine guess would delete the
+      only label the autonomy ramp has (plan §7).
+
+    In both cases the new detection is still stored and still correlated; it
+    simply does not rewrite a decision somebody is standing behind.
+    """
+    alert_id = alert['id']
+    existing = await get_tier2_decision(alert_id)
+    if existing is None:
+        return await create_tier2_decision_for_alert(alert)
+    if existing['approval_status'] != 'PENDING':
+        logger.info(
+            'Not re-deriving the Tier-2 decision for %s — it is %s',
+            alert_id, existing['approval_status'],
+        )
+        return existing
+    if existing.get('decision_source') == 'human':
+        logger.info('Not re-deriving the Tier-2 decision for %s — a human corrected it', alert_id)
+        return existing
+
+    proposal = _proposal_from_alert(alert)
+    if proposal:
+        decision_type, decision_source = proposal['decision'], 'llm'
+    else:
+        decision_type = _severity_to_decision(alert.get('threat_severity', 'MEDIUM'))
+        decision_source = 'rules'
+
+    confidence = (proposal or {}).get('confidence')
+    if confidence is None:
+        confidence = _confidence_from_alert(alert)
+    plan = _actions_from_alert(alert)
+    now = _utcnow()
+
+    async with async_session() as session:
+        row = await _load_decision_row(session, alert_id)
+        if not row:
+            return None
+        decision_id = row['id']
+        await session.execute(
+            update(tier2_decisions).where(tier2_decisions.c.id == decision_id).values(
+                decision_type=decision_type,
+                decision_source=decision_source,
+                confidence=confidence,
+                rationale=(proposal or {}).get('rationale') or _build_rationale(alert, decision_type),
+                risk_of_action=(proposal or {}).get('risk_of_action') or _build_risk_of_action(decision_type),
+            )
+        )
+        await session.execute(
+            alert_soar_actions.delete().where(alert_soar_actions.c.decision_id == decision_id)
+        )
+        if plan:
+            await session.execute(
+                alert_soar_actions.insert(),
+                [_action_row(alert_id, decision_id, item, now) for item in plan],
+            )
+        await session.commit()
+        updated = (
+            await session.execute(select(tier2_decisions).where(tier2_decisions.c.id == decision_id))
+        ).mappings().one()
+        actions = await _load_actions(session, decision_id)
+
+    logger.info(
+        'Re-derived Tier-2 decision for %s after correlation: %s -> %s (source=%s)',
+        alert_id, row['decision_type'], decision_type, decision_source,
+    )
+    return _format_decision(updated, actions)
+
+
 async def ensure_tier2_decision(alert_id: str) -> Optional[dict]:
     """Return existing decision or backfill from stored alert."""
     existing = await get_tier2_decision(alert_id)

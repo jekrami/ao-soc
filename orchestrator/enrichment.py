@@ -69,7 +69,11 @@ def normalize_evidence(items: Any, alert_id: str, source_ip: str, dest_ip: str, 
                 'id': f'EV-{alert_id}-NET-SRC',
                 'type': 'network',
                 'src': source_ip,
-                'signal': signature or 'Suricata IDS match',
+                # Rule 9: never name a product here. This used to read
+                # 'Suricata IDS match', asserting a sensor that may have had
+                # nothing to do with the detection — the situation's members
+                # each carry the tool that actually saw it.
+                'signal': signature or 'Detection with no signature reported',
                 'weight': 0.88,
             },
             {
@@ -166,11 +170,15 @@ def build_enrichment(
         fallback_time=fallback_time,
     )
     if not timeline:
+        # R4: no technique is asserted here. This used to stamp T1071.001 on
+        # every alert whose timeline the model omitted — a fabricated ATT&CK
+        # mapping that rendered in the heatmap as fact. An empty string says
+        # "nobody claimed a technique", which is what actually happened.
         timeline = [{
             'time': fallback_time,
-            'label': 'IDS Alert',
+            'label': 'Detection',
             'detail': f'{signature} · {source_ip} → {dest_ip}',
-            'mitre': 'T1071.001',
+            'mitre': '',
         }]
 
     evidence = normalize_evidence(

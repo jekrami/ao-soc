@@ -3,12 +3,14 @@ import logging
 import os
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 
+import adapters  # noqa: F401 — importing registers the built-in adapters (Rule 9)
+import situation as situations
+import source_registry
 from auth import (
     DECISIONS_ACT,
     DECISIONS_READ,
@@ -33,7 +35,9 @@ from db import (
     list_alerts,
     list_explanations as list_explanations_db,
     mitigate_alert,
+    update_security_event_analysis,
 )
+from detection import DetectionParseError, list_adapters, parse_detection
 from enrichment import build_enrichment
 from llm import parse_json_response
 from llm_provider import get_provider, provider_config
@@ -44,7 +48,7 @@ from models import (
     GenerateExplanationRequest,
     RecordOutcomeRequest,
     RejectDecisionRequest,
-    SplunkAlertPayload,
+    SetTrustWeightRequest,
 )
 from soar import soar_config
 from tier2 import (
@@ -62,16 +66,17 @@ from tier2 import (
     list_pending_feedback,
     normalize_tier2_proposal,
     outcome_summary,
+    rebuild_tier2_decision_for_alert,
     record_decision_outcome,
     reject_tier2_decision,
 )
 
 BROKER_PORT = int(os.getenv('BROKER_PORT', '8500'))
 
-# The identity this route reports as a detection source. It is the one place a
-# vendor name legitimately appears — /splunk-alert *is* the Splunk adapter, and
-# Phase B (B1) turns it into SplunkAdapter behind a generic route.
-SPLUNK_ADAPTER_SOURCE = os.getenv('DETECTION_SOURCE_DEFAULT', 'splunk')
+# The adapter the legacy /splunk-alert route is pinned to. It is the last
+# vendor name in core logic and it names an *adapter*, not a parser: the route
+# is a compatibility alias for POST /detections?adapter=splunk (B1, Rule 9).
+LEGACY_SPLUNK_ADAPTER = os.getenv('LEGACY_SPLUNK_ADAPTER', 'splunk')
 
 # Under uvicorn the root logger stays at WARNING, so every logger.info() in
 # tier2/soar is swallowed — the console shows bare 201s while autopilot is
@@ -82,6 +87,8 @@ logging.basicConfig(
     format='%(asctime)s %(levelname)-7s %(name)s: %(message)s',
     datefmt='%H:%M:%S',
 )
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -107,85 +114,48 @@ app.add_middleware(
 )
 
 
-def _coalesce(*values: Optional[str], default: str = '') -> str:
-    for value in values:
-        if value is not None and str(value).strip():
-            return str(value).strip()
-    return default
+def build_situation_analysis_prompt(situation: situations.Situation) -> str:
+    """The M08 prompt, written against a Security Situation (B3).
 
+    Two things changed with contract 2, and both are the point of Phase B:
 
-def _parse_timestamp(value: Any) -> Optional[datetime]:
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        return value
-    text = str(value).strip()
-    if not text:
-        return None
-    if text.isdigit():
-        ts = int(text)
-        return datetime.fromtimestamp(ts if ts < 10_000_000_000 else ts / 1000)
-    try:
-        return datetime.fromisoformat(text.replace('Z', '+00:00')).replace(tzinfo=None)
-    except ValueError:
-        return None
+    * the analyst is told it is reading **a situation, possibly assembled from
+      several tools**, and is asked to reason about the whole rather than
+      re-triage the loudest member. A single detection is the degenerate case
+      and reads almost exactly as the old single-alert prompt did;
+    * where the *detecting tools* asserted MITRE techniques, those are handed
+      over as fact and the model is told to prefer them (R4). A technique from
+      an upstream rule is evidence; one the model produced is a claim.
 
-
-def _extract_alert_fields(body: Dict[str, Any]) -> Dict[str, Any]:
-    nested = body.get('result') if isinstance(body.get('result'), dict) else {}
-    merged = {**nested, **{k: v for k, v in body.items() if k != 'result'}}
-
-    source_ip = _coalesce(
-        merged.get('source_ip'),
-        merged.get('src_ip'),
-        merged.get('src'),
-        default='unknown',
-    )
-    dest_ip = _coalesce(
-        merged.get('dest_ip'),
-        merged.get('dst_ip'),
-        merged.get('dest'),
-        default='unknown',
-    )
-    signature = _coalesce(
-        merged.get('signature'),
-        merged.get('alert_signature'),
-        merged.get('msg'),
-        merged.get('rule_name'),
-        default='Suricata IDS alert',
-    )
-    timestamp = _parse_timestamp(
-        merged.get('timestamp') or merged.get('_time') or merged.get('event_time')
-    )
-
-    # R8: which tool detected this. Taken from the payload where the sender
-    # says so, otherwise the route's own adapter identity. Recorded on every
-    # event so outcomes can be attributed per detection source rather than
-    # blamed on the AI — and so Phase B's intake contract has somewhere to land.
-    detection_source = _coalesce(
-        merged.get('detection_source'),
-        merged.get('source_tool'),
-        merged.get('vendor'),
-        merged.get('sourcetype'),
-        merged.get('source'),
-        default=SPLUNK_ADAPTER_SOURCE,
-    )[:64]
-
-    return {
-        'source_ip': source_ip,
-        'dest_ip': dest_ip,
-        'signature': signature,
-        'timestamp': timestamp,
-        'detection_source': detection_source,
-        'raw': merged,
-    }
-
-
-def build_splunk_analysis_prompt(fields: Dict[str, Any]) -> str:
+    No vendor is named anywhere here — the situation carries whichever tools
+    happen to have contributed, and the prompt says their names because the
+    analyst needs to know who is corroborating whom, not because core logic
+    knows anything about them (Rule 9).
+    """
+    fields = situation.analysis_fields()
+    ts = situation.last_seen.strftime('%H:%M') if situation.last_seen else 'unknown'
     raw = fields['raw']
-    ts = fields['timestamp'].strftime('%H:%M') if fields['timestamp'] else 'unknown'
-    return '\n'.join([
-        'You are a senior SOC analyst reviewing a Suricata IDS alert from Splunk.',
+    vendor_techniques = situation.vendor_techniques()
+
+    header = [
+        'You are a senior SOC analyst reviewing a correlated security situation.',
+        f'It contains {situation.detection_count} detection(s) from '
+        f'{len(situation.sources)} tool(s): {", ".join(situation.sources) or "unknown"}.',
+    ]
+    if situation.is_multi_source:
+        header.append(
+            'Independent tools corroborating each other is significant evidence — '
+            'reason about the situation as one event, not as separate alerts.'
+        )
+    if vendor_techniques:
+        header.append(
+            'The detecting tools asserted these ATT&CK techniques: '
+            f'{", ".join(vendor_techniques)}. Prefer them over any you infer, and '
+            'include them in mitre_techniques.'
+        )
+
+    return '\n'.join(header + [
+        '',
         'Return a JSON object with these keys:',
         '  threat_severity (CRITICAL | HIGH | MEDIUM | LOW)',
         '  incident_analysis (concise narrative)',
@@ -213,13 +183,16 @@ def build_splunk_analysis_prompt(fields: Dict[str, Any]) -> str:
         'rationale explains the verdict to the approving analyst; risk_of_action states',
         'what breaks operationally if the plan is executed.',
         '',
+        f"Situation: {situation.situation_id} — {fields['signature']}",
+        f"Correlation risk score: {situation.risk_score}/100 ({situation.severity}), "
+        f"computed from: {'; '.join(f['detail'] for f in situation.risk_factors) or 'n/a'}",
         f"Source IP: {fields['source_ip']}",
         f"Destination IP: {fields['dest_ip']}",
-        f"Signature: {fields['signature']}",
-        f"Timestamp: {fields['timestamp'].isoformat() if fields['timestamp'] else 'unknown'}",
+        f"Window: {situation.first_seen} → {situation.last_seen}",
         '',
-        'Additional alert fields:',
-        json.dumps(raw, default=str)[:4000],
+        'The full situation, including every member detection and the entity graph',
+        'they were correlated on:',
+        json.dumps(raw, default=str)[:6000],
         '',
         'Example shape:',
         json.dumps({
@@ -228,7 +201,7 @@ def build_splunk_analysis_prompt(fields: Dict[str, Any]) -> str:
             'likelihood': 88,
             'recommended_containment_steps': ['Block egress to C2 IP', 'Isolate source host'],
             'attack_timeline': [
-                {'time': ts, 'label': 'IDS Alert', 'detail': 'Suricata signature match', 'mitre': 'T1071.001'},
+                {'time': ts, 'label': 'Detection', 'detail': 'Network signature match', 'mitre': 'T1071.001'},
                 {'time': ts, 'label': 'C2 Beacon', 'detail': 'Outbound TLS to threat IP', 'mitre': 'T1071.001'},
             ],
             'evidence': [
@@ -252,7 +225,45 @@ def build_splunk_analysis_prompt(fields: Dict[str, Any]) -> str:
     ])
 
 
-def normalize_threat_analysis(data: Dict[str, Any], fields: Dict[str, Any], alert_id: str) -> Dict[str, Any]:
+def _merge_vendor_techniques(
+    techniques: List[Dict[str, Any]],
+    vendor_asserted: List[str],
+) -> List[Dict[str, Any]]:
+    """R4: mark which techniques a *tool* asserted and which the model claimed.
+
+    Both render in the same heatmap, and today nothing verifies either (the TI
+    client is Phase D). Until something does, the least the store can do is
+    keep the provenance — a technique from an upstream rule and one a model
+    produced are not the same kind of statement, and the column that says so is
+    what makes the difference visible later (playbook §7.5).
+    """
+    asserted = {tid.upper() for tid in vendor_asserted}
+    merged: List[Dict[str, Any]] = []
+    seen = set()
+    for tid in vendor_asserted:
+        merged.append({'id': tid, 'tactic': 'Reported by detection tool', 'name': tid, 'source': 'tool'})
+        seen.add(tid.upper())
+    for item in techniques:
+        tid = str(item.get('id') or '').upper()
+        if tid in seen:
+            # The model agreed with the tool: keep the tool's row, but take the
+            # model's tactic/name, which are usually the readable ones.
+            for row in merged:
+                if row['id'].upper() == tid:
+                    row['tactic'] = item.get('tactic') or row['tactic']
+                    row['name'] = item.get('name') or row['name']
+            continue
+        merged.append({**item, 'source': 'tool' if tid in asserted else 'llm'})
+        seen.add(tid)
+    return merged
+
+
+def normalize_threat_analysis(
+    data: Dict[str, Any],
+    fields: Dict[str, Any],
+    alert_id: str,
+    situation: Optional[situations.Situation] = None,
+) -> Dict[str, Any]:
     severity = str(data.get('threat_severity', 'MEDIUM')).upper().strip()
     if severity not in {'CRITICAL', 'HIGH', 'MEDIUM', 'LOW'}:
         severity = 'MEDIUM'
@@ -281,6 +292,27 @@ def normalize_threat_analysis(data: Dict[str, Any], fields: Dict[str, Any], aler
     severity_likelihood = {'CRITICAL': 94, 'HIGH': 88, 'MEDIUM': 71, 'LOW': 55}
     if enrichment.get('likelihood') is None:
         enrichment['likelihood'] = severity_likelihood.get(severity, 71)
+
+    if situation is not None:
+        enrichment['mitre_techniques'] = _merge_vendor_techniques(
+            enrichment.get('mitre_techniques') or [], situation.vendor_techniques()
+        )
+        # The situation summary travels with the analysed record so the panel,
+        # the archive and any later evaluator can see what was correlated
+        # without re-reading the correlation store.
+        enrichment['situation'] = {
+            key: value for key, value in situation.as_dict().items() if key != 'detections'
+        }
+        enrichment['situation']['detections'] = [
+            {
+                'detection_id': item.get('detection_id'),
+                'source_tool': item.get('source_tool'),
+                'rule_name': item.get('rule_name'),
+                'severity': item.get('severity'),
+                'detected_at': item.get('detected_at'),
+            }
+            for item in situation.detections
+        ]
 
     # Carried in enrichment_json so a backfilled decision (ensure_tier2_decision)
     # sees the same verdict the model gave at ingest.
@@ -399,18 +431,129 @@ async def health(request: Request) -> dict:
         'auth': auth_config(),
         'autopilot': autopilot_config(),
         'soar': soar_config(),
+        'correlation': situations.correlation_config(),
+        'detection_sources': source_registry.registry_config(),
+        'adapters': [adapter.describe() for adapter in list_adapters()],
     }
 
 
 # --- Aegis-Link broker (original pipeline) ---
 
 
-@app.post('/splunk-alert', status_code=201)
-async def splunk_alert(
+async def analyze_situation(situation: situations.Situation) -> dict:
+    """Run M08/M10 over a Situation and persist the result (B3).
+
+    New situation → a new analysed record and a fresh Tier-2 proposal.
+    Grown situation → the existing record is re-analysed in place and the
+    proposal re-derived, unless a human or a dispatch has already claimed it
+    (``rebuild_tier2_decision_for_alert`` is where that is refused).
+
+    The model runs *after* the detection and the situation are already stored,
+    which is deliberate: an Ollama outage must cost the analysis, never the
+    evidence. The situation simply carries no analysed record until the next
+    detection joins it or somebody re-runs it.
+    """
+    fields = situation.analysis_fields()
+    existing_alert_id = situation.alert_id
+    alert_id = existing_alert_id or f'ALT-{uuid.uuid4().hex[:12].upper()}'
+
+    try:
+        raw_output = await get_provider().complete(build_situation_analysis_prompt(situation))
+        parsed = parse_json_response(raw_output)
+        analysis = normalize_threat_analysis(parsed, fields, alert_id, situation=situation)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f'LLM inference failed: {exc}')
+
+    event = None
+    if existing_alert_id:
+        event = await update_security_event_analysis(
+            existing_alert_id,
+            source_ip=fields['source_ip'],
+            dest_ip=fields['dest_ip'],
+            signature=fields['signature'],
+            threat_severity=analysis['threat_severity'],
+            incident_analysis=analysis['incident_analysis'],
+            containment_steps=analysis['recommended_containment_steps'],
+            enrichment=analysis['enrichment'],
+            detection_source=situation.detection_source_label,
+        )
+        if event is None:
+            # The analysed record was cleared out from under the situation —
+            # a `--reset` that took the alerts but left the correlation store.
+            # Re-analysing into a fresh record is the resumable answer (plan
+            # §9); refusing the detection would lose evidence over bookkeeping.
+            logger.warning(
+                'Situation %s pointed at missing alert %s — re-analysing into a new record',
+                situation.situation_id, existing_alert_id,
+            )
+            alert_id = f'ALT-{uuid.uuid4().hex[:12].upper()}'
+        else:
+            decision = await rebuild_tier2_decision_for_alert(event)
+
+    if event is None:
+        event = await create_security_event(
+            source_ip=fields['source_ip'],
+            dest_ip=fields['dest_ip'],
+            signature=fields['signature'],
+            timestamp=fields['timestamp'],
+            threat_severity=analysis['threat_severity'],
+            incident_analysis=analysis['incident_analysis'],
+            containment_steps=analysis['recommended_containment_steps'],
+            # Rule 4: the situation's own members hold each tool's verbatim
+            # payload; this is the correlated view that produced the analysis.
+            raw_payload=json.dumps(situation.as_prompt_document(), default=str),
+            alert_id=alert_id,
+            enrichment=analysis['enrichment'],
+            detection_source=situation.detection_source_label,
+            situation_id=situation.situation_id,
+        )
+        await situations.attach_alert(situation.situation_id, alert_id)
+        decision = await create_tier2_decision_for_alert(event)
+
+    # Stage 3 preview: a high-confidence actionable verdict executes without
+    # waiting for a click. No-op unless TIER2_AUTOPILOT is enabled.
+    event['tier2_decision'] = await autopilot_if_eligible(decision)
+    return event
+
+
+async def ingest_detection(payload: Dict[str, Any], adapter: Optional[str] = None) -> dict:
+    """The one intake path: adapter → detection → situation → decision.
+
+    Everything vendor-specific happened before the first line of this function,
+    inside the adapter. What arrives here is the Detection Intake contract, and
+    a second detection tool changes nothing below this point — which is B6's
+    test of B1 (plan §8).
+    """
+    try:
+        detection = parse_detection(payload, adapter)
+    except DetectionParseError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except KeyError as exc:
+        raise HTTPException(status_code=400, detail=str(exc).strip('"'))
+
+    # B5: health and trust bookkeeping, before anything can fail downstream.
+    await source_registry.record_detection(
+        detection.source_tool, detection.adapter, detection.adapter_version
+    )
+    outcome = await situations.correlate(detection)
+    event = await analyze_situation(outcome.situation)
+
+    refreshed = await situations.get_situation(outcome.situation.situation_id)
+    event['situation'] = (refreshed or outcome.situation).as_dict()
+    event['correlation'] = outcome.as_dict()
+    return event
+
+
+@app.post('/detections', status_code=201)
+async def post_detection(
     request: Request,
+    adapter: Optional[str] = Query(
+        default=None,
+        description='Adapter name. Omit to auto-detect from the payload shape.',
+    ),
     _principal: Principal = Depends(require(DETECTIONS_WRITE)),
 ) -> dict:
-    """Splunk | sendalert webhook: infer, persist alert + containment steps.
+    """Generic detection intake — every tool arrives here (B1, Rule 9).
 
     R1: this is the path that, with autopilot on, ends in a dispatched action.
     It requires a detections:write key — the ingest role holds nothing else.
@@ -419,38 +562,111 @@ async def splunk_alert(
         body = await request.json()
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f'Invalid JSON body: {exc}')
-
     if not isinstance(body, dict):
         raise HTTPException(status_code=400, detail='Expected JSON object')
 
-    fields = _extract_alert_fields(body)
-    alert_id = f'ALT-{uuid.uuid4().hex[:12].upper()}'
+    return await ingest_detection(body, adapter)
 
+
+@app.post('/splunk-alert', status_code=201)
+async def splunk_alert(
+    request: Request,
+    _principal: Principal = Depends(require(DETECTIONS_WRITE)),
+) -> dict:
+    """Compatibility alias for ``POST /detections?adapter=splunk``.
+
+    The route survives because a Splunk alert action already points at it in
+    the field and changing that is a customer's change window, not ours. It is
+    a thin alias now: the vendor's field names live in ``adapters/splunk.py``
+    and nothing behind this line knows which tool sent the payload.
+    """
     try:
-        raw_output = await get_provider().complete(build_splunk_analysis_prompt(fields))
-        parsed = parse_json_response(raw_output)
-        analysis = normalize_threat_analysis(parsed, fields, alert_id)
+        body = await request.json()
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f'LLM inference failed: {exc}')
+        raise HTTPException(status_code=400, detail=f'Invalid JSON body: {exc}')
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail='Expected JSON object')
 
-    event = await create_security_event(
-        source_ip=fields['source_ip'],
-        dest_ip=fields['dest_ip'],
-        signature=fields['signature'],
-        timestamp=fields['timestamp'],
-        threat_severity=analysis['threat_severity'],
-        incident_analysis=analysis['incident_analysis'],
-        containment_steps=analysis['recommended_containment_steps'],
-        raw_payload=json.dumps(body, default=str),
-        alert_id=alert_id,
-        enrichment=analysis['enrichment'],
-        detection_source=fields['detection_source'],
-    )
-    tier2_decision = await create_tier2_decision_for_alert(event)
-    # Stage 3 preview: a high-confidence actionable verdict executes without
-    # waiting for a click. No-op unless TIER2_AUTOPILOT is enabled.
-    event['tier2_decision'] = await autopilot_if_eligible(tier2_decision)
-    return event
+    return await ingest_detection(body, LEGACY_SPLUNK_ADAPTER)
+
+
+# --- Phase B read surface: situations, detections, sources, adapters ------
+
+
+@app.get('/api/situations')
+async def api_list_situations(
+    limit: int = 200,
+    _principal: Principal = Depends(require(DECISIONS_READ)),
+) -> dict:
+    items = await situations.list_situations(limit=max(1, min(limit, 1000)))
+    return {'count': len(items), 'metrics': await situations.situation_metrics(), 'items': items}
+
+
+@app.get('/api/situations/{situation_id}')
+async def api_get_situation(
+    situation_id: str,
+    _principal: Principal = Depends(require(DECISIONS_READ)),
+) -> dict:
+    found = await situations.get_situation(situation_id)
+    if found is None:
+        raise HTTPException(status_code=404, detail='Situation not found')
+    return found.as_dict()
+
+
+@app.get('/api/alerts/{alert_id}/situation')
+async def api_get_alert_situation(
+    alert_id: str,
+    _principal: Principal = Depends(require(DECISIONS_READ)),
+) -> dict:
+    """The situation behind a decision — every detection it was built from.
+
+    Pre-2.4 alerts have none: they were ingested before correlation existed and
+    were never correlated, which 404 states honestly.
+    """
+    found = await situations.get_situation_for_alert(alert_id)
+    if found is None:
+        raise HTTPException(status_code=404, detail='No situation is linked to this alert')
+    return found.as_dict()
+
+
+@app.get('/api/correlation/metrics')
+async def api_correlation_metrics(
+    _principal: Principal = Depends(require(DECISIONS_READ)),
+) -> dict:
+    return await situations.situation_metrics()
+
+
+@app.get('/api/detection-sources')
+async def api_list_detection_sources(
+    _principal: Principal = Depends(require(DECISIONS_READ)),
+) -> dict:
+    items = await source_registry.list_sources()
+    return {'count': len(items), 'config': source_registry.registry_config(), 'items': items}
+
+
+@app.post('/api/detection-sources/{source_tool}/trust')
+async def api_set_trust_weight(
+    source_tool: str,
+    body: SetTrustWeightRequest,
+    _principal: Principal = Depends(require(DECISIONS_ACT)),
+) -> dict:
+    """Operator judgement about a tool, applied to the next situation scored.
+
+    Behind decisions:act rather than read: trust weight is an input to the risk
+    score an analyst triages by, so changing it changes what the queue says is
+    urgent.
+    """
+    updated = await source_registry.set_trust_weight(source_tool, body.trust_weight)
+    if updated is None:
+        raise HTTPException(status_code=404, detail='Unknown detection source')
+    return updated
+
+
+@app.get('/api/adapters')
+async def api_list_adapters(_principal: Principal = Depends(require(DECISIONS_READ))) -> dict:
+    """Which vendor shapes this deployment can read (Rule 9)."""
+    items = [adapter.describe() for adapter in list_adapters()]
+    return {'count': len(items), 'items': items}
 
 
 @app.get('/api/alerts')

@@ -33,6 +33,10 @@ security_events = Table(
     # is bounded by upstream detection quality, so every outcome has to be
     # attributable to its source. Splunk is the first value, not the only one.
     Column('detection_source', String(64), nullable=False, default='unknown'),
+    # Phase B: the situation this analysed record belongs to. One row per
+    # situation, not per detection — a situation of five alerts from two tools
+    # is one thing to decide about, which is the entire point of M06.
+    Column('situation_id', String(64), nullable=True, index=True),
     Column('enrichment_json', String, nullable=True),
     Column('created_at', DateTime, nullable=False),
     Column('updated_at', DateTime, nullable=False),
@@ -141,6 +145,80 @@ decision_outcomes = Table(
     Column('created_at', DateTime, nullable=False),
 )
 
+# --- Phase B: the two frozen contracts ------------------------------------
+# Contract 1 (detections) and contract 2 (situations). Note what is *not* here:
+# no log table. Plan §2 — raw logs never enter AI-SOC, and a detection's
+# `raw_payload` is evidence of what the tool said, not a copy of its index.
+
+detections = Table(
+    'detections',
+    metadata,
+    Column('id', Integer, primary_key=True, autoincrement=True),
+    Column('detection_id', String(64), nullable=False, unique=True, index=True),
+    # Nullable only for the instant between insert and correlation.
+    Column('situation_id', String(64), nullable=True, index=True),
+    Column('source_tool', String(64), nullable=False, default='unknown', index=True),
+    Column('adapter', String(64), nullable=False, default='unknown'),
+    # Which mapping read this payload. A re-parse by a better adapter has to be
+    # distinguishable from the original read (plan §9, app_version).
+    Column('adapter_version', String(32), nullable=False, default='0'),
+    Column('rule_id', String(128), nullable=False, default=''),
+    Column('rule_name', String(255), nullable=False, default=''),
+    Column('detected_at', DateTime, nullable=False),
+    Column('received_at', DateTime, nullable=False),
+    Column('severity', String(16), nullable=False, default='MEDIUM'),
+    Column('vendor_severity', String(64), nullable=False, default=''),
+    # R4: techniques the *tool* asserted, kept apart from the model's claims.
+    Column('vendor_techniques_json', String, nullable=True),
+    Column('entities_json', String, nullable=True),
+    Column('message', String, nullable=False, default=''),
+    # Rule 4: verbatim, never re-serialised from the parsed fields.
+    Column('raw_payload', String, nullable=True),
+    Column('created_at', DateTime, nullable=False),
+)
+
+situations = Table(
+    'situations',
+    metadata,
+    Column('id', Integer, primary_key=True, autoincrement=True),
+    Column('situation_id', String(64), nullable=False, unique=True, index=True),
+    # The analysed record / decision this situation carries. One-to-one, and
+    # the identity the dashboard and every Phase-A route already speak.
+    Column('alert_id', String(64), nullable=True, index=True),
+    Column('title', String(255), nullable=False, default=''),
+    Column('status', String(16), nullable=False, default='OPEN', index=True),
+    Column('first_seen', DateTime, nullable=False),
+    Column('last_seen', DateTime, nullable=False),
+    Column('detection_count', Integer, nullable=False, default=0),
+    Column('source_count', Integer, nullable=False, default=0),
+    Column('sources_json', String, nullable=True),
+    Column('entities_json', String, nullable=True),
+    Column('severity', String(16), nullable=False, default='MEDIUM'),
+    Column('risk_score', Integer, nullable=False, default=0),
+    Column('risk_factors_json', String, nullable=True),
+    Column('created_at', DateTime, nullable=False),
+    Column('updated_at', DateTime, nullable=False),
+)
+
+# B5. Health and trust of the tools feeding the decision layer. Trust weight is
+# an input to situation risk scoring: a source that cries wolf should not lift
+# a situation as far as one that does not.
+detection_sources = Table(
+    'detection_sources',
+    metadata,
+    Column('id', Integer, primary_key=True, autoincrement=True),
+    Column('source_tool', String(64), nullable=False, unique=True, index=True),
+    Column('adapter', String(64), nullable=False, default='unknown'),
+    Column('adapter_version', String(32), nullable=False, default='0'),
+    Column('trust_weight', Float, nullable=False, default=1.0),
+    Column('enabled', Boolean, nullable=False, default=True),
+    Column('detection_count', Integer, nullable=False, default=0),
+    Column('first_seen', DateTime, nullable=False),
+    Column('last_seen', DateTime, nullable=False),
+    Column('created_at', DateTime, nullable=False),
+    Column('updated_at', DateTime, nullable=False),
+)
+
 # --- Dashboard v2 explanation tables ---
 
 ai_explanations = Table(
@@ -208,6 +286,11 @@ def _migrate_security_events(conn) -> None:
         conn.execute(text(
             "ALTER TABLE security_events ADD COLUMN detection_source TEXT NOT NULL DEFAULT 'unknown'"
         ))
+    if cols and 'situation_id' not in cols:
+        # Pre-2.4 rows are single-alert records with no situation behind them.
+        # NULL is the honest value: they were never correlated, and back-filling
+        # a synthetic situation would assert a correlation nobody performed.
+        conn.execute(text('ALTER TABLE security_events ADD COLUMN situation_id TEXT'))
 
 
 def _migrate_tier2_decisions(conn) -> None:
@@ -299,6 +382,7 @@ def _serialize_event(row, steps: List[dict]) -> dict:
         'incident_analysis': row['incident_analysis'],
         'mitigation_status': row['mitigation_status'],
         'detection_source': row.get('detection_source') or 'unknown',
+        'situation_id': row.get('situation_id'),
         'recommended_containment_steps': steps,
         'created_at': row['created_at'].isoformat() if row['created_at'] else None,
         'updated_at': row['updated_at'].isoformat() if row['updated_at'] else None,
@@ -324,6 +408,7 @@ async def create_security_event(
     alert_id: Optional[str] = None,
     enrichment: Optional[dict] = None,
     detection_source: str = 'unknown',
+    situation_id: Optional[str] = None,
 ) -> dict:
     now = _utcnow()
     alert_id = alert_id or f'ALT-{uuid.uuid4().hex[:12].upper()}'
@@ -342,6 +427,7 @@ async def create_security_event(
             mitigation_status='PENDING',
             raw_payload=raw_payload,
             detection_source=(detection_source or 'unknown').strip() or 'unknown',
+            situation_id=situation_id,
             enrichment_json=enrichment_json,
             created_at=now,
             updated_at=now,
@@ -430,6 +516,85 @@ async def mitigate_alert(alert_id: str) -> Optional[dict]:
         ).mappings().one()
         steps = await _load_containment_steps(session, row['id'])
         return _serialize_event(updated, steps)
+
+
+async def update_security_event_analysis(
+    alert_id: str,
+    *,
+    source_ip: str,
+    dest_ip: str,
+    signature: str,
+    threat_severity: str,
+    incident_analysis: str,
+    containment_steps: List,
+    enrichment: Optional[dict] = None,
+    detection_source: Optional[str] = None,
+) -> Optional[dict]:
+    """Re-write the analysed record after its situation grew (B3).
+
+    A situation that gains a member is a *different* situation to reason about,
+    so the analysis is redone rather than appended to. Only the analysis is
+    replaced: ``raw_payload``, ``alert_id``, ``created_at`` and the mitigation
+    status are the evidence and the audit trail, and are never touched here
+    (Rule 4). Callers gate this on the decision still being PENDING and
+    machine-authored — a dispatched or human-corrected record is history.
+    """
+    now = _utcnow()
+    steps = _normalize_steps(containment_steps)
+
+    async with async_session() as session:
+        row = (
+            await session.execute(
+                select(security_events).where(security_events.c.alert_id == alert_id)
+            )
+        ).mappings().first()
+        if not row:
+            return None
+
+        values = {
+            'source_ip': source_ip or 'unknown',
+            'dest_ip': dest_ip or 'unknown',
+            'signature': signature or '',
+            'threat_severity': (threat_severity or 'MEDIUM').upper(),
+            'incident_analysis': incident_analysis,
+            'enrichment_json': json.dumps(enrichment) if enrichment else None,
+            'updated_at': now,
+        }
+        if detection_source:
+            values['detection_source'] = detection_source.strip()[:64]
+
+        await session.execute(
+            update(security_events).where(security_events.c.id == row['id']).values(**values)
+        )
+        await session.execute(
+            recommended_containment_steps.delete().where(
+                recommended_containment_steps.c.event_id == row['id']
+            )
+        )
+        if steps:
+            await session.execute(
+                recommended_containment_steps.insert(),
+                [
+                    {
+                        'event_id': row['id'],
+                        'step_id': step['step_id'],
+                        'description': step['description'],
+                        'order_index': step['order_index'],
+                        'completed': False,
+                    }
+                    for step in steps
+                ],
+            )
+        await session.commit()
+
+        updated = (
+            await session.execute(
+                select(security_events).where(security_events.c.id == row['id'])
+            )
+        ).mappings().one()
+        loaded_steps = await _load_containment_steps(session, row['id'])
+
+    return _serialize_event(updated, loaded_steps)
 
 
 async def alert_metrics() -> dict:

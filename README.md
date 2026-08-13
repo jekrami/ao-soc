@@ -14,31 +14,44 @@ This dashboard is **not** a raw-log SIEM. It answers five questions for the huma
 
 AO-SOC evolves in three autonomy stages. **v2.0** implements **Stage 2**; **v3.0** is reserved for **Stage 3**.
 
-### Current pipeline (v2.0 — Stage 2)
+### Current pipeline (v2.4 — Stage 2, correlated)
 
 ```
-Data Sources
+Detection tools (external)      Splunk · Wazuh · EDR · firewall · anything
+    ↓                            each behind its own adapter — no vendor name in core
+Detection Intake contract        one vendor-neutral shape: source tool, rule identity,
+    ↓                            timestamps, entities, vendor severity + technique, raw
+Cross-tool correlation           entity + time-window join
     ↓
-Splunk Enterprise
+SECURITY SITUATION               N detections from M tools = one thing to decide about
     ↓
-Python AI Broker / Correlation Engine
-    ↓
-Local LLM (Qwen via Ollama)
+Local LLM (Qwen via Ollama)      reasons over the situation, not the alert
     ↓
 AI Tier-2 Decision Agent
     ↓
-Human Confirmer (Approve / Reject plan)
+Human Confirmer (Approve / Edit / Reject plan)
     ↓
-Policy Guardrails
+Policy Guardrails                risk class + target shape
     ↓
-SOAR Auto-Execution
+SOAR Auto-Execution (external)
     ↓
-Python Orchestrator + SQLite (alerts, decisions, actions, audit)
+Python Orchestrator + SQLite (detections, situations, decisions, actions, audit)
     ↓
 Dashboard (Command Center)
 ```
 
-On ingest, the broker enriches each alert and the **LLM returns a single Tier-2
+**AI-SOC does not collect logs, store logs, detect, or execute.** Those are mature
+market categories bought per site; AI-SOC owns the decision. The one function with
+no product against it is the middle of that diagram: joining detections *across
+vendors* into one situation. A SIEM groups its own notable events and an XDR groups
+its own telemetry — neither can see the other, and nothing joins a Splunk brute-force
+alert, a Wazuh privilege escalation and a firewall egress hit into the single
+sentence a human would write.
+
+A situation of one detection is the degenerate case, so a single-alert deployment
+behaves exactly as it did before.
+
+On ingest, the broker enriches each situation and the **LLM returns a single Tier-2
 decision** (`CONTAIN`, `ESCALATE`, `INVESTIGATE`, `MONITOR`, or `IGNORE`) with its
 own confidence, rationale, and risk-of-action, plus a **bundled SOAR action plan**.
 The verdict is validated against the allowed decision vocabulary before it is
@@ -82,10 +95,20 @@ ao-soc/
 │   ├── package.json
 │   └── README.md
 ├── orchestrator/               Python AI broker + SQLite persistence
-│   ├── soc_orchestrator.py     FastAPI service: ingest, alerts, decisions
+│   ├── soc_orchestrator.py     FastAPI service: intake, situations, decisions
+│   ├── detection.py            CONTRACT 1 — Detection Intake + adapter interface
+│   ├── adapters/               The only place a vendor's field names may appear
+│   │   ├── splunk.py           Splunk `| sendalert` (raw or CIM)
+│   │   ├── wazuh.py            Wazuh manager alert document
+│   │   └── native.py           A sender that already speaks the contract
+│   ├── situation.py            CONTRACT 2 — Security Situation, correlation, risk score
+│   ├── source_registry.py      Detection sources: adapter, health, trust weight
 │   ├── llm.py                  Ollama client + tolerant JSON parsing
+│   ├── llm_provider.py         LLMProvider abstraction (ollama / echo / scripted)
 │   ├── enrichment.py           Pure normalizers for LLM output
 │   ├── tier2.py                Tier-2 decision, policy gate, autopilot, executor
+│   ├── action_policy.py        Action risk class + target-shape validation
+│   ├── auth.py                 API keys, roles, scopes
 │   ├── soar.py                 SOAR delivery adapter (log / noop drivers)
 │   ├── db.py                   SQLite schema and persistence helpers
 │   ├── models.py               Pydantic payload models
@@ -120,7 +143,7 @@ ao-soc/
 
 ## Run It
 
-**Version:** 2.3.0 — see `VERSION` at repo root (bump on every release).
+**Version:** 2.4.0 — see `VERSION` at repo root (bump on every release).
 
 One-time setup (each machine):
 
@@ -348,11 +371,21 @@ python -m pip install -r requirements.txt
 uvicorn soc_orchestrator:app --host 0.0.0.0 --port 8500 --reload
 ```
 
-The **Aegis-Link broker** stores Splunk alerts + AI containment steps in `orchestrator/soc_matrix.db`.
+The **Aegis-Link broker** stores detections, situations, decisions and action
+receipts in `orchestrator/soc_matrix.db`.
 
 **Broker API** (every route but `GET /health` requires a key):
 
 - `GET /health` — open for liveness; the deployment config only with a key
+- `POST /detections?adapter=<name>` — **the intake.** Omit `adapter` to auto-detect
+  from the payload shape. Registered adapters: `splunk`, `wazuh`, `native`
+- `POST /splunk-alert` — compatibility alias for `?adapter=splunk`, unchanged
+- `GET /api/adapters` — which vendor shapes this deployment can read
+- `GET /api/situations` · `GET /api/situations/{id}` — correlated situations
+- `GET /api/alerts/{id}/situation` — the situation behind a decision
+- `GET /api/correlation/metrics` — detections per situation, multi-source count
+- `GET /api/detection-sources` — registry: adapter, health, trust weight
+- `POST /api/detection-sources/{tool}/trust` — set a source's trust weight
 - `GET /api/alerts` — alert log + severity/mitigation metrics
 - `POST /api/alerts/{id}/mitigate`
 - `GET /api/alerts/{id}/decision` · `POST .../decision/{approve,reject,edit,outcome}`
@@ -371,7 +404,7 @@ See `orchestrator/README.md` for Splunk field mapping and environment variables.
 
 | Document | Purpose |
 | -------- | ------- |
-| [`docs/AI-SOC-PLAN.md`](docs/AI-SOC-PLAN.md) | Master plan v2.2 — milestone status, roadmap phases, risk register, autonomy ramp |
+| [`docs/AI-SOC-PLAN.md`](docs/AI-SOC-PLAN.md) | Master plan v2.3 — milestone status, roadmap phases, risk register, autonomy ramp |
 | [`docs/MODEL-BENCHMARK.md`](docs/MODEL-BENCHMARK.md) | Local LLM benchmark for the Tier-2 decision — 14 models, selection, and why confidence must not gate automation |
 | [`orchestrator/README.md`](orchestrator/README.md) | Broker API, environment variables, autopilot and SOAR policy |
 | [`backend/README.md`](backend/README.md) | UI API endpoints |
@@ -440,6 +473,15 @@ matches the types in `frontend/src/types.ts`.
 
 ## New Features
 
+- **v2.4.0 — Phase B: freeze both contracts, build cross-tool correlation.** Everything above the intake was written against **one alert from one vendor**: the route named Splunk, the field extractor read Suricata's schema, and a second detection source meant a second code path (risk R7, and the Rule 9 violation in the audit). Phase B freezes the two contracts that fix that, and builds the one function on the ownership matrix with no market tool against it.
+  - **B1 — Detection Intake contract + adapter interface.** One vendor-neutral shape every adapter emits: source tool, **adapter identity and version**, rule identity, timestamps, entities (user / host / host IP / process / src / dst / hash / URL / domain), vendor severity, **the technique the tool itself asserted**, and the payload verbatim (Rule 4). It describes *a detection*, not a log event — narrow by design, because the log is the SIEM's problem and never enters AI-SOC. `adapters/` is now the only place in the repository where a vendor's field names may appear, and a test asserts no core module can reach into it. `POST /detections` is the intake, with auto-detection from the payload shape; **`POST /splunk-alert` still works exactly as before** as a thin alias.
+  - **B2 — Security Situation contract + risk scoring.** The frozen object between correlation and the AI analyst: member detections, entity graph, time span, contributing sources, and a **deterministic risk score with its factors kept alongside it** — highest member severity, plus points for cross-tool corroboration, volume, multiple hosts or accounts, and multiple tool-asserted techniques, scaled by source trust. Deliberately not the model's own number: benchmarked across 14 models, self-reported confidence is uncalibrated and unstable run to run, so the number an analyst triages by is a countable fact instead.
+  - **B3 — The AI layer reasons over situations, not alerts.** M08/M10 were refactored **once**, as planned, with a single detection as the degenerate case — which is why the Splunk path did not change. The prompt now tells the analyst how many tools corroborate what it is reading, and hands over the techniques the *detecting tools* asserted with an instruction to prefer them (R4). Stored techniques carry `source: tool | llm`, so an upstream rule's claim and a model's guess are no longer indistinguishable in the heatmap. When a situation gains a detection the analysis is re-run and the verdict re-derived — **unless a human has corrected it or the plan has been dispatched**, in which case the record stands and the new detection opens its own situation.
+  - **B4 — Cross-tool correlation.** Detections join on **shared entities inside a time window** (`CORRELATION_WINDOW_MINUTES`, default 30), never on the text of a rule name: two tools describe the same machine in completely different words, and the same words for completely different machines. IPs from either end of a flow and an endpoint agent's own address share one namespace, so a firewall alert and an EDR alert about one host actually meet. Placeholder values (`unknown`, `-`, `n/a`) are dropped at the contract boundary — correlating on 'unknown' would collapse an entire shift into one situation.
+  - **B5 — Detection-source registry.** Every tool that has ever sent a detection, with its adapter and version, health (first seen, last seen, count, `HEALTHY` / `STALE`) and a **trust weight** that feeds situation scoring. Self-populating on first sight; weights are configuration (`DETECTION_SOURCE_TRUST`) or an operator decision, never learned automatically — a source that silences itself by earning a low weight from one bad night is a source nobody is watching.
+  - **B6 — A second vendor, with no core change.** `adapters/wazuh.py` was written without editing anything outside `adapters/`, which is the whole test: Wazuh's rule is a nested object, its severity is an integer 0–15, its endpoint is an `agent`, and its MITRE lives at `rule.mitre.id` — none of which is visible above the intake. A third (`native`) reads the contract posted directly.
+  - **Verified against the Definition of Done:** five detections from three tools collapse into one situation and one decision; the model prompt states `5 detection(s) from 3 tool(s)` and carries the entity graph; corroboration lifts the risk score above any member's; a human-corrected situation refuses to absorb a late detection; and the Splunk path passes its original tests unchanged. The demo seeder now ships a correlated cluster, so `start-demo` shows 15 detections becoming 13 decisions.
+  - **Two fabrications removed while in there.** The enrichment fallback stamped `T1071.001` on any alert whose timeline the model omitted — an invented ATT&CK mapping rendering in the heatmap as fact — and labelled evidence with no signature as a `Suricata IDS match`, asserting a sensor that may have had nothing to do with the detection. Both now say what is actually known.
 - **v2.3.0 — Phase A: make what exists safe and modular.** The system could already dispatch actions to tools that act on a network, and did so with **no authentication at all** — R1, the highest item on the risk register, was scheduled last. Phase A moves it first and closes the four governance gaps around it.
   - **A1 — Authentication.** Pre-shared API keys with roles (`ingest` / `viewer` / `analyst` / `service` / `admin`) on **both** the broker and the UI API; `Authorization: Bearer` accepted so an IdP drops in later without touching call sites. `allow_origins=['*']` is gone and `'*'` is now refused rather than honoured. `/health` stays open for liveness but discloses the model, database, SOAR sink and autopilot policy only to an authenticated caller. **The approver is the authenticated identity, never a name in the request body** — only a confidential client holding `actor:assert` (the UI API, which authenticated the human) may name the operator it acts for. With no keys configured a random one is minted and printed, so there is no unauthenticated mode to fall into.
   - **A2 — Action risk classification (Rule 7).** Every action is classified `READ` / `LOW_WRITE` / `HIGH_WRITE` / `DESTRUCTIVE` from a keyword registry, and an action nobody recognises is **HIGH_WRITE, never READ**. Each class declares what its target must *be*, and the target is parsed against it before dispatch — the three malformed targets a real Ollama run produced (`Network Segment / Firewall Rules`, `Suricata/Splunk Indexer`, `10.4.103.18 (PID of PowerShell)`) are all rejected as non-addresses. `DESTRUCTIVE` is refused outright unless a site enables it deliberately. **Autopilot now gates on the risk class of the plan, not only on confidence** (benchmarked: confidence is uncalibrated and unstable), and one bad action sends the whole plan to a human.
@@ -465,6 +507,6 @@ matches the types in `frontend/src/types.ts`.
 
 ## Authorship
 
-**Version:** 2.3.0 (see `VERSION` — increment on each release commit)
+**Version:** 2.4.0 (see `VERSION` — increment on each release commit)
 
 Written by J.Ekrami, co-written with GitHub Copilot, Composer (Cursor AI), and Claude (Opus 5).

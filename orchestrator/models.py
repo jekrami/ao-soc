@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -52,21 +52,17 @@ class GenerateExplanationRequest(BaseModel):
     context: Optional[str] = None
 
 
-class SplunkAlertPayload(BaseModel):
-    """Flexible Splunk | sendalert webhook body (Suricata IDS schema)."""
+# Phase B removed SplunkAlertPayload from here. A vendor's field names in the
+# shared request models were the Rule 9 violation in miniature: every reader of
+# this file learned that a detection *is* src_ip/dest_ip/signature. Payload
+# shapes now live in adapters/, one file per tool, and nothing above the intake
+# declares a schema for somebody else's product.
 
-    source_ip: Optional[str] = None
-    dest_ip: Optional[str] = None
-    src_ip: Optional[str] = None
-    dst_ip: Optional[str] = None
-    signature: Optional[str] = None
-    alert_signature: Optional[str] = None
-    timestamp: Optional[Union[str, datetime]] = None
-    _time: Optional[Union[str, datetime]] = None
-    result: Optional[Dict[str, Any]] = None
 
-    class Config:
-        extra = 'allow'
+class SetTrustWeightRequest(BaseModel):
+    """Operator judgement about a detection source (B5)."""
+
+    trust_weight: float = Field(..., ge=0.1, le=2.0)
 
 
 class ContainmentStepResponse(BaseModel):

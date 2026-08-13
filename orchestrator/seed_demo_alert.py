@@ -27,11 +27,20 @@ async def reset_demo_data() -> None:
     async with db.engine.begin() as conn:
         for table in (
             db.alert_soar_actions,
+            db.decision_corrections,
+            db.decision_outcomes,
             db.tier2_decisions,
             db.recommended_containment_steps,
             db.ai_evidence,
             db.recommended_actions,
             db.ai_explanations,
+            # Phase B: the correlation store goes with the alerts it produced.
+            # Leaving situations behind would strand OPEN rows pointing at
+            # alert_ids that no longer exist, and the next detection would join
+            # one of those orphans instead of opening its own.
+            db.detections,
+            db.situations,
+            db.detection_sources,
             db.security_events,
         ):
             await conn.execute(table.delete())
@@ -165,6 +174,111 @@ DECISION_CONFIDENCE_DELTA = {
 }
 
 
+def build_correlated_cluster(base_time: datetime) -> list[tuple[str, dict[str, Any], dict[str, Any]]]:
+    """One account compromise, seen three ways by three different tools (B4).
+
+    The twelve scenarios above are one alert each, which is what the demo
+    looked like before Phase B and is still the common case. This cluster is
+    the thing no upstream tool can assemble: a Splunk search, a Wazuh agent and
+    a firewall each hold one third of the story, and only the shared account
+    and host join them into one decision.
+
+    Returned as ``(adapter, payload, mocked model response)`` — the model
+    response is only consumed on whichever post triggers analysis.
+    """
+    user, host, host_ip, peer = 'mmalek', 'HR-WIN-11', '10.9.4.7', '198.51.100.9'
+    analysis = (
+        'Credential compromise on HR-WIN-11: brute force from an external address, '
+        'a successful logon, privilege escalation to SYSTEM and outbound traffic to a '
+        'low-reputation host — corroborated by three independent tools.'
+    )
+    llm = {
+        'threat_severity': 'CRITICAL',
+        'incident_analysis': analysis,
+        'likelihood': 93,
+        'recommended_containment_steps': [
+            f'Disable the {user} account and revoke active sessions',
+            f'Isolate {host} from the network segment',
+            f'Block egress to {peer} at the perimeter firewall',
+        ],
+        'attack_timeline': [
+            {'time': base_time.strftime('%H:%M'), 'label': 'Brute force',
+             'detail': f'Repeated failed logons against {user}', 'mitre': 'T1110'},
+            {'time': (base_time + timedelta(minutes=4)).strftime('%H:%M'), 'label': 'Successful logon',
+             'detail': f'{user} authenticated to {host}', 'mitre': 'T1078'},
+            {'time': (base_time + timedelta(minutes=9)).strftime('%H:%M'), 'label': 'Privilege escalation',
+             'detail': 'Escalation to SYSTEM via UAC bypass', 'mitre': 'T1548.002'},
+            {'time': (base_time + timedelta(minutes=14)).strftime('%H:%M'), 'label': 'Egress',
+             'detail': f'Outbound connection to {peer}', 'mitre': 'T1071.001'},
+        ],
+        'evidence': [
+            {'id': 'EV-CORR-1', 'type': 'auth', 'src': host,
+             'signal': f'Successful logon for {user} after repeated failures', 'weight': 0.94},
+            {'id': 'EV-CORR-2', 'type': 'process', 'src': host,
+             'signal': 'powershell.exe escalated to SYSTEM', 'weight': 0.91},
+            {'id': 'EV-CORR-3', 'type': 'network', 'src': host_ip,
+             'signal': f'Egress to {peer}', 'weight': 0.88},
+        ],
+        'mitre_techniques': [
+            {'id': 'T1110', 'tactic': 'Credential Access', 'name': 'Brute Force'},
+            {'id': 'T1548.002', 'tactic': 'Privilege Escalation', 'name': 'Bypass User Account Control'},
+            {'id': 'T1071.001', 'tactic': 'Command and Control', 'name': 'Web Protocols'},
+        ],
+        'recommended_actions': [
+            {'id': 'A1', 'action': 'Disable account', 'target': user,
+             'reason': 'Confirmed credential compromise', 'confidence': 94, 'impact': 'Locks the user out'},
+            {'id': 'A2', 'action': 'Isolate host', 'target': host,
+             'reason': 'SYSTEM-level compromise', 'confidence': 92, 'impact': 'Contains the endpoint'},
+            {'id': 'A3', 'action': 'Block IP', 'target': peer,
+             'reason': 'Low-reputation egress peer', 'confidence': 90, 'impact': 'Stops egress'},
+        ],
+        'bullets': [
+            'Three independent tools corroborate one account compromise',
+            f'Brute force → successful logon → SYSTEM on {host}',
+            f'Outbound traffic to {peer} after escalation',
+        ],
+        'recommendation': f'Disable {user}, isolate {host} and block {peer}.',
+        'tier2_decision': {
+            'decision': 'CONTAIN',
+            'confidence': 93,
+            'rationale': (
+                'Three unrelated tools independently observed stages of the same intrusion '
+                'against one account and one host. No single alert justifies containment; '
+                'the correlation does.'
+            ),
+            'risk_of_action': (
+                f'Disabling {user} locks an HR user out mid-shift and isolating {host} '
+                'drops any in-flight payroll session on that endpoint.'
+            ),
+        },
+    }
+
+    return [
+        ('splunk', {'result': {
+            'search_name': 'Brute force against a single account',
+            'user': user, 'src_ip': '203.0.113.44', 'dest_ip': host_ip,
+            'severity': 'medium', 'mitre_attack': ['T1110'],
+            '_time': base_time.isoformat(),
+        }}, llm),
+        ('wazuh', {
+            'timestamp': (base_time + timedelta(minutes=9)).isoformat(),
+            'rule': {'level': 12, 'id': '92100', 'description': 'Privilege escalation to SYSTEM',
+                     'mitre': {'id': ['T1548.002'], 'tactic': ['Privilege Escalation']}},
+            'agent': {'id': '011', 'name': host, 'ip': host_ip},
+            'data': {'dstuser': user, 'process': 'powershell.exe'},
+            'full_log': 'powershell.exe -enc <base64> elevated to NT AUTHORITY\\SYSTEM',
+        }, llm),
+        ('native', {
+            'source_tool': 'edge-firewall',
+            'rule_name': 'Outbound connection to a low-reputation host',
+            'detected_at': (base_time + timedelta(minutes=14)).isoformat(),
+            'severity': 'HIGH', 'techniques': ['T1071.001'],
+            'message': f'ALLOW {host_ip} -> {peer}:443',
+            'entities': {'src_ip': host_ip, 'dst_ip': peer, 'user': user},
+        }, llm),
+    ]
+
+
 def build_scenario(
     index: int,
     rng: random.Random,
@@ -292,11 +406,15 @@ async def seed_alerts(count: int, seed: int | None, reset: bool = True) -> list[
     rng.shuffle(order)
 
     scenarios = [build_scenario(i, rng) for i in order]
+    # The correlated cluster is dated well clear of the single alerts so its
+    # members find each other and nothing else.
+    cluster = build_correlated_cluster(datetime(2017, 8, 23, 11, 40))
     call_index = 0
+    responses = [llm for _, llm in scenarios] + [llm for _, _, llm in cluster]
 
     def scripted(_prompt: str) -> str:
         nonlocal call_index
-        _, llm = scenarios[call_index]
+        llm = responses[min(call_index, len(responses) - 1)]
         call_index += 1
         return json.dumps(llm)
 
@@ -315,6 +433,17 @@ async def seed_alerts(count: int, seed: int | None, reset: bool = True) -> list[
                 print(response.text, file=sys.stderr)
                 sys.exit(1)
             created_ids.append(response.json()['id'])
+
+        # Phase B: three tools, one situation, one decision. Posted through the
+        # generic intake — the same route a real Wazuh manager would use.
+        for adapter_name, payload, _ in cluster:
+            response = await client.post(f'/detections?adapter={adapter_name}', json=payload)
+            if response.status_code != 201:
+                print(response.text, file=sys.stderr)
+                sys.exit(1)
+            alert_id = response.json()['id']
+            if alert_id not in created_ids:
+                created_ids.append(alert_id)
 
         contain_count = max(1, count // 4)
         for alert_id in rng.sample(created_ids, k=min(contain_count, len(created_ids))):
@@ -347,7 +476,11 @@ async def main() -> None:
         sys.exit(1)
 
     ids = await seed_alerts(args.count, args.seed, reset=not args.keep)
-    print(f'Seeded {len(ids)} demo alerts ({max(1, args.count // 4)} marked CONTAINED).')
+    print(
+        f'Seeded {len(ids)} demo decisions from {args.count + 3} detections '
+        f'({max(1, args.count // 4)} marked CONTAINED). The last one is a single '
+        'situation correlated across three tools.'
+    )
     print(ids[0])
 
 

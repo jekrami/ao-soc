@@ -27,10 +27,21 @@ import db
 import soc_orchestrator as broker
 import llm
 import llm_provider
+import situation as situations
+import source_registry
 from action_policy import assess_action, autopilot_allows, classify_action
 from auth import Principal, configured_origins, resolve_actor
+from detection import (
+    DetectionParseError,
+    list_adapters,
+    normalize_severity,
+    normalize_techniques,
+    parse_detection,
+    parse_timestamp,
+)
 from llm import parse_json_response
 from llm_provider import EchoProvider, ScriptedProvider, get_provider, set_provider
+from situation import score_situation, situation_from_detections
 from tier2 import (
     Tier2EditError,
     autopilot_if_eligible,
@@ -77,6 +88,113 @@ MOCK_LLM_RESPONSE = json.dumps({
 })
 
 
+# A verdict autopilot will not act on, so the situation stays PENDING and keeps
+# absorbing detections — the Phase B DoD is about correlation, not dispatch.
+DOD_LLM_RESPONSE = json.dumps({
+    'threat_severity': 'HIGH',
+    'incident_analysis': 'Credential compromise: brute force, successful logon, privilege escalation and egress.',
+    'likelihood': 84,
+    'recommended_containment_steps': ['Disable the account', 'Isolate the host'],
+    'evidence': [{'id': 'EV-1', 'type': 'auth', 'src': 'HR-WIN-11', 'signal': 'Successful logon after brute force', 'weight': 0.9}],
+    'mitre_techniques': [{'id': 'T1110', 'tactic': 'Credential Access', 'name': 'Brute Force'}],
+    'recommended_actions': [
+        {'id': 'A1', 'action': 'Add to watchlist', 'target': 'HR-WIN-11', 'reason': 'Track', 'confidence': 80, 'impact': 'None'},
+    ],
+    'bullets': ['Four tools agree'],
+    'recommendation': 'Investigate the account.',
+    'tier2_decision': {
+        'decision': 'INVESTIGATE',
+        'confidence': 84,
+        'rationale': 'Corroborated across tools but the logon may be legitimate travel.',
+        'risk_of_action': 'Disabling the account locks out an HR user mid-shift.',
+    },
+})
+
+
+def check_detection_contract() -> None:
+    """B1: the intake contract normalises, and refuses to invent."""
+    # Vendor severities do not agree with each other and never will.
+    assert normalize_severity('high') == 'HIGH'
+    assert normalize_severity(12) == 'CRITICAL', 'Wazuh rule level 12'
+    assert normalize_severity(2) == 'LOW', 'a 1-5 scale'
+    assert normalize_severity(95) == 'CRITICAL', 'a 0-100 scale'
+    # A severity nobody can read is MEDIUM, never LOW: an unreadable field is
+    # a reason for attention, the same way an unknown action verb is HIGH_WRITE.
+    assert normalize_severity('purple') == 'MEDIUM'
+    assert normalize_severity(None) == 'MEDIUM'
+
+    # An offset is converted, not stripped: a Tehran detection three and a half
+    # hours out of place would fall outside every correlation window.
+    assert parse_timestamp('2026-08-13T12:00:00+03:30').hour == 8
+    assert parse_timestamp('2026-08-13T08:19:02.000+0000').minute == 19
+    assert parse_timestamp(1755072000).year == 2025
+    assert parse_timestamp('not a time') is None
+
+    # Only real technique IDs reach the heatmap (R4).
+    assert normalize_techniques(['T1110', 'T1059.001']) == ('T1110', 'T1059.001')
+    assert normalize_techniques(['Command and Control', 'T99', 'T1110.x']) == ()
+    assert normalize_techniques([{'id': 't1110'}, 'T1110']) == ('T1110',)
+
+    # Placeholders must never become correlation keys — joining on 'unknown'
+    # would collapse an entire shift into one situation.
+    empty = parse_detection(
+        {'signature': 'rule', 'src_ip': 'unknown', 'user': '-', 'host': 'HR-WIN-11'}, 'splunk'
+    )
+    assert empty.correlation_keys() == [('host', 'hr-win-11')]
+
+    # A payload with neither a rule nor an entity is not a detection.
+    try:
+        parse_detection({'sourcetype': 'whatever'}, 'splunk')
+    except DetectionParseError as exc:
+        assert 'no rule' in str(exc).lower(), str(exc)
+    else:
+        raise AssertionError('an empty payload must be refused, not ingested as a detection')
+
+    # Auto-detection picks the right adapter; naming one always wins.
+    wazuh_payload = {'rule': {'level': 10, 'id': '5710', 'description': 'x'},
+                     'agent': {'name': 'H1', 'ip': '10.9.4.7'}}
+    assert parse_detection(wazuh_payload).adapter == 'wazuh'
+    assert {a.name for a in list_adapters()} == {'splunk', 'wazuh', 'native'}
+
+    # The native path is the contract itself, and it refuses fields the
+    # contract does not define rather than dropping them silently.
+    try:
+        parse_detection({'source_tool': 'crowdstrike', 'rule_name': 'x',
+                         'entities': {'hostname': 'H1'}}, 'native')
+    except DetectionParseError as exc:
+        assert 'hostname' in str(exc)
+    else:
+        raise AssertionError('an unknown entity field must be refused, not dropped')
+
+
+def check_risk_scoring() -> None:
+    """B2: the score is a countable fact, not the model's self-report.
+
+    Playbook §7.3.1: every model reports 75-98% confidence on every input, so
+    the number an analyst triages by must come from somewhere else.
+    """
+    one = [{'severity': 'HIGH', 'source_tool': 'a', 'entities': {'host': 'H1'}, 'vendor_techniques': []}]
+    two_tools = one + [
+        {'severity': 'HIGH', 'source_tool': 'b', 'entities': {'host': 'H1'}, 'vendor_techniques': []},
+    ]
+    lone_score, lone_sev, _ = score_situation(one)
+    pair_score, _, factors = score_situation(two_tools)
+    assert (lone_score, lone_sev) == (70, 'HIGH')
+    assert pair_score > lone_score, 'independent corroboration must raise the score'
+    assert any(f['factor'] == 'cross_tool_corroboration' for f in factors)
+
+    # Deterministic: same members, same score, every time (playbook §9).
+    assert score_situation(two_tools)[0] == pair_score
+
+    # B5: a source nobody trusts does not lift a situation as far.
+    distrusted, _, trust_factors = score_situation(two_tools, {'a': 0.5, 'b': 0.5})
+    assert distrusted < pair_score
+    assert any(f['factor'] == 'source_trust_weight' for f in trust_factors)
+
+    # An empty situation scores nothing rather than a default.
+    assert score_situation([]) == (0, 'LOW', [])
+
+
 async def check_provider_abstraction() -> None:
     """Rule 5: the AI layer is swappable and never invents a verdict.
 
@@ -93,8 +211,12 @@ async def check_provider_abstraction() -> None:
     assert 'tier2_decision' not in parsed, 'model-free mode must not fabricate a verdict'
     assert parsed['incident_analysis']
 
-    fields = broker._extract_alert_fields({'src_ip': '10.0.0.1'})
-    analysis = broker.normalize_threat_analysis(parsed, fields, 'ALT-ECHO')
+    situation = situation_from_detections(
+        [parse_detection({'src_ip': '10.0.0.1', 'signature': 'echo probe'}, 'splunk')]
+    )
+    analysis = broker.normalize_threat_analysis(
+        parsed, situation.analysis_fields(), 'ALT-ECHO', situation=situation
+    )
     assert 'tier2_proposal' not in analysis['enrichment']
 
     try:
@@ -143,7 +265,11 @@ async def check_authentication() -> None:
             '/splunk-alert', headers=ingest,
             json={'result': {**alert['result'], 'detection_source': 'wazuh'}},
         )
-        assert sourced.json()['detection_source'] == 'wazuh', 'the sender may name its own tool'
+        # The sender may name its own tool. This one lands in its own situation
+        # rather than joining the first: autopilot already executed that plan,
+        # and a dispatched situation stops absorbing detections. Where two
+        # tools *do* share a live situation, detection_source reads 'a+b'.
+        assert sourced.json()['detection_source'] == 'wazuh'
 
         # Bearer is accepted as well, so an IdP token slots in without a change
         # at the call sites (M14).
@@ -168,6 +294,167 @@ async def check_authentication() -> None:
     # CORS: '*' is refused rather than honoured.
     assert '*' not in configured_origins('*')
     assert configured_origins('http://soc.internal') == ['http://soc.internal']
+
+
+#: The Phase B DoD scenario, plan §8: one account compromise, seen four
+#: different ways by three different tools. No single tool sees all of it —
+#: which is the entire argument for owning correlation (plan §2.1).
+DOD_DETECTIONS = [
+    ('splunk', {'result': {
+        'search_name': 'Brute force against a single account',
+        'user': 'mmalek', 'src_ip': '203.0.113.44', 'dest_ip': '10.9.4.7',
+        'severity': 'medium', 'mitre_attack': ['T1110'],
+    }}),
+    ('splunk', {'result': {
+        'search_name': 'Successful logon after repeated failures',
+        'user': 'mmalek', 'host': 'HR-WIN-11', 'src_ip': '203.0.113.44', 'severity': 'high',
+    }}),
+    ('wazuh', {
+        'rule': {'level': 12, 'id': '92100', 'description': 'Privilege escalation to SYSTEM',
+                 'mitre': {'id': ['T1548.002']}},
+        'agent': {'id': '011', 'name': 'HR-WIN-11', 'ip': '10.9.4.7'},
+        'data': {'dstuser': 'mmalek', 'process': 'powershell.exe'},
+    }),
+    ('wazuh', {
+        'rule': {'level': 10, 'id': '92211', 'description': 'New service installed',
+                 'mitre': {'id': ['T1543.003']}},
+        'agent': {'id': '011', 'name': 'HR-WIN-11', 'ip': '10.9.4.7'},
+        'data': {'process': 'svc-updater.exe'},
+    }),
+    ('native', {
+        'source_tool': 'edge-firewall', 'rule_name': 'Outbound connection to a low-reputation host',
+        'severity': 'HIGH', 'techniques': ['T1071.001'],
+        'entities': {'src_ip': '10.9.4.7', 'dst_ip': '198.51.100.9'},
+    }),
+]
+
+
+async def check_phase_b_dod(client, ingest: dict, viewer: dict) -> None:
+    """Plan §8, Phase B Definition of Done — every clause, in order.
+
+    > five detections from two different tools collapse into one situation, the
+    > AI analyst reasons over the situation rather than the alert, a second
+    > vendor is integrated without editing core code, and the Splunk path still
+    > works unchanged.
+    """
+    prompts: list[str] = []
+
+    def _record(prompt: str) -> str:
+        prompts.append(prompt)
+        return DOD_LLM_RESPONSE
+
+    set_provider(ScriptedProvider(_record))
+    try:
+        responses = []
+        for adapter_name, payload in DOD_DETECTIONS:
+            # Only the first is routed by name. The rest are auto-detected from
+            # the payload shape, which is what a generic webhook actually does.
+            path = f'/detections?adapter={adapter_name}' if adapter_name == 'splunk' else '/detections'
+            response = await client.post(path, json=payload, headers=ingest)
+            assert response.status_code == 201, response.text
+            responses.append(response.json())
+
+        # --- one situation ------------------------------------------------
+        situation_ids = {item['situation']['situation_id'] for item in responses}
+        assert len(situation_ids) == 1, f'five detections landed in {len(situation_ids)} situations'
+        final = responses[-1]['situation']
+        assert final['detection_count'] == 5, final['detection_count']
+        assert set(final['sources']) == {'splunk', 'wazuh', 'edge-firewall'}, final['sources']
+        assert final['multi_source']
+
+        # ...joined on entities, not on the words in a rule name. The five
+        # rules share no vocabulary at all; the account and the host do.
+        assert responses[1]['correlation']['joined_on'], 'the second detection must state its join'
+        assert 'mmalek' in [v.lower() for v in final['entities']['user']]
+        assert 'HR-WIN-11' in final['entities']['host']
+        assert '10.9.4.7' in final['entities']['ip']
+
+        # ...and one decision, not five. This is the number that matters: four
+        # alerts a human did not have to triage separately.
+        alert_ids = {item['id'] for item in responses}
+        assert len(alert_ids) == 1, f'five detections produced {len(alert_ids)} decisions'
+
+        # Corroboration raised the risk above what any member scored alone.
+        assert final['risk_score'] > 70, final['risk_score']
+        assert any(f['factor'] == 'cross_tool_corroboration' for f in final['risk_factors'])
+        # R4: techniques the tools asserted, carried as fact and marked as such.
+        assert {'T1548.002', 'T1543.003', 'T1071.001', 'T1110'} <= set(final['vendor_techniques'])
+        stored = await db.get_alert(next(iter(alert_ids)))
+        tool_asserted = [t for t in stored['mitre_techniques'] if t.get('source') == 'tool']
+        assert len(tool_asserted) >= 4, stored['mitre_techniques']
+
+        # --- the analyst reasons over the situation, not the alert ---------
+        last_prompt = prompts[-1]
+        assert '5 detection(s) from 3 tool(s)' in last_prompt, last_prompt[:400]
+        assert 'edge-firewall' in last_prompt and 'wazuh' in last_prompt
+        assert 'T1548.002' in last_prompt, 'tool-asserted techniques must reach the model (R4)'
+        assert 'entity_graph' in last_prompt
+        # The degenerate case still reads as one detection, which is what keeps
+        # the Splunk path working through the same code (plan §4).
+        assert '1 detection(s) from 1 tool(s)' in prompts[0]
+
+        # --- the decision was re-derived as the situation grew -------------
+        decision = (await client.get(f'/api/alerts/{stored["id"]}/decision', headers=viewer)).json()
+        assert decision['decision'] == 'INVESTIGATE', decision['decision']
+        assert decision['approval_status'] == 'PENDING'
+
+        # --- read surface --------------------------------------------------
+        listed = (await client.get('/api/situations', headers=viewer)).json()
+        assert listed['metrics']['multi_source_situations'] >= 1
+        assert listed['metrics']['detections_per_situation'] > 1.0, listed['metrics']
+        linked = (await client.get(f'/api/alerts/{stored["id"]}/situation', headers=viewer)).json()
+        assert linked['situation_id'] == final['situation_id']
+        assert len(linked['detections']) == 5
+
+        # B5: every contributing tool registered itself, with its adapter.
+        sources = {
+            item['source_tool']: item
+            for item in (await client.get('/api/detection-sources', headers=viewer)).json()['items']
+        }
+        assert sources['wazuh']['adapter'] == 'wazuh'
+        assert sources['edge-firewall']['adapter'] == 'native'
+        assert sources['edge-firewall']['detection_count'] == 1
+        assert sources['wazuh']['detection_count'] >= 2
+        assert sources['wazuh']['health'] == 'HEALTHY'
+
+        # --- a settled situation stops absorbing ---------------------------
+        # Rule 4: once a human has corrected the verdict, a late detection must
+        # not rewrite what they decided. It opens its own situation instead.
+        await edit_tier2_decision(stored['id'], edited_by='jek', decision='CONTAIN',
+                                  note='Confirmed compromise.')
+        late = await client.post('/detections', headers=ingest, json={
+            'source_tool': 'edge-firewall', 'rule_name': 'Second egress attempt',
+            'severity': 'HIGH', 'entities': {'src_ip': '10.9.4.7', 'dst_ip': '198.51.100.9'},
+        })
+        assert late.status_code == 201, late.text
+        assert late.json()['situation']['situation_id'] != final['situation_id'], \
+            'a human-corrected situation must not absorb further detections'
+        corrected = (await client.get(f'/api/alerts/{stored["id"]}/decision', headers=viewer)).json()
+        assert corrected['decision'] == 'CONTAIN', 'the analyst verdict must survive re-correlation'
+        assert corrected['decision_source'] == 'human'
+    finally:
+        set_provider(ScriptedProvider(lambda _prompt: MOCK_LLM_RESPONSE))
+
+
+def check_adapter_boundary() -> None:
+    """Rule 9 / B6: only adapters know a vendor's field names.
+
+    The structural half of B6. A second adapter proving nothing above it had to
+    change is only meaningful if nothing above it *can* reach a vendor — so no
+    core module may import the adapters package, and the one that does may only
+    import it to trigger registration.
+    """
+    core = ('detection.py', 'situation.py', 'source_registry.py', 'tier2.py',
+            'db.py', 'action_policy.py', 'enrichment.py', 'models.py')
+    for module in core:
+        source = open(module, encoding='utf-8').read()
+        assert 'import adapters' not in source and 'from adapters' not in source, \
+            f'{module} reaches into adapters/ — core logic must talk to the contract'
+
+    broker_source = open('soc_orchestrator.py', encoding='utf-8').read()
+    assert broker_source.count('import adapters') == 1
+    for vendor in ('SplunkAdapter', 'WazuhAdapter', 'adapters.splunk', 'adapters.wazuh'):
+        assert vendor not in broker_source, f'{vendor} is named in the broker — Rule 9'
 
 
 def check_action_policy() -> None:
@@ -263,11 +550,20 @@ async def run_test() -> None:
 
     check_endpoint_resolution()
     check_action_policy()
+    check_detection_contract()
+    check_risk_scoring()
+    check_adapter_boundary()
     await check_empty_response_raises()
     await check_provider_abstraction()
 
     await db.init_db()
     await check_authentication()
+
+    transport = httpx.ASGITransport(app=broker.app)
+    async with httpx.AsyncClient(transport=transport, base_url='http://test') as client:
+        await check_phase_b_dod(
+            client, ingest={'X-API-Key': 'service-secret'}, viewer={'X-API-Key': 'viewer-secret'}
+        )
 
     splunk_payload = {
         'result': {
@@ -278,9 +574,10 @@ async def run_test() -> None:
         }
     }
 
-    fields = broker._extract_alert_fields(splunk_payload)
+    situation = situation_from_detections([parse_detection(splunk_payload, 'splunk')])
+    fields = situation.analysis_fields()
     parsed = parse_json_response(MOCK_LLM_RESPONSE)
-    analysis = broker.normalize_threat_analysis(parsed, fields, 'ALT-TEST001')
+    analysis = broker.normalize_threat_analysis(parsed, fields, 'ALT-TEST001', situation=situation)
 
     assert analysis['threat_severity'] == 'HIGH'
     assert len(analysis['recommended_containment_steps']) == 3
@@ -489,7 +786,10 @@ async def run_test() -> None:
     await db.engine.dispose()
     os.remove('test_soc_matrix.db')
     os.remove('test_soar_actions.jsonl')
-    print('PASS: LLM Tier-2 decision, autopilot policy, and SOAR delivery all verified.')
+    print(
+        'PASS: Detection Intake contract, cross-tool correlation into one situation, '
+        'situation-driven Tier-2 decision, autopilot policy and SOAR delivery all verified.'
+    )
 
 
 if __name__ == '__main__':

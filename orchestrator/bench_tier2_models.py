@@ -26,7 +26,9 @@ from pathlib import Path
 import httpx
 
 import soc_orchestrator as broker
+from detection import parse_detection
 from llm import OLLAMA_ENDPOINT, parse_json_response
+from situation import situation_from_detections
 from tier2 import _severity_to_decision, normalize_tier2_proposal
 
 # Each case carries context that SHOULD override the obvious severity read.
@@ -134,8 +136,13 @@ async def bench_model(client: httpx.AsyncClient, model: str) -> dict:
     per_case = []
 
     for case in CASES:
-        fields = broker._extract_alert_fields({'result': case['result']})
-        prompt = broker.build_splunk_analysis_prompt(fields)
+        # Phase B: the production prompt is written against a Situation, so the
+        # benchmark measures one too — a degenerate single-detection situation,
+        # built in memory. Same code path the real ingest takes, no database.
+        detection = parse_detection({'result': case['result']}, 'splunk')
+        situation = situation_from_detections([detection])
+        fields = situation.analysis_fields()
+        prompt = broker.build_situation_analysis_prompt(situation)
         try:
             raw, elapsed = await _ask(client, model, prompt)
             parsed = parse_json_response(raw)
@@ -145,7 +152,7 @@ async def bench_model(client: httpx.AsyncClient, model: str) -> dict:
             continue
 
         latencies.append(elapsed)
-        analysis = broker.normalize_threat_analysis(parsed, fields, 'ALT-BENCH')
+        analysis = broker.normalize_threat_analysis(parsed, fields, 'ALT-BENCH', situation=situation)
         enrichment = analysis['enrichment']
         proposal = normalize_tier2_proposal(parsed.get('tier2_decision'))
 

@@ -1,8 +1,15 @@
 # Aegis-Link AI-SOC Broker
 
-Python FastAPI middleware for the **Aegis-Link** pipeline: Splunk ingestion → Ollama inference → SQLite persistence.
+Python FastAPI middleware for the **Aegis-Link** pipeline: detection intake → cross-tool
+correlation → Ollama inference → SQLite persistence.
 
-This is the orchestration hub described in the original architecture — listening on **`0.0.0.0:8500`**, storing all AI-generated containment actions in SQLite.
+This is the orchestration hub described in the original architecture — listening on
+**`0.0.0.0:8500`**, storing detections, situations, decisions and action receipts in SQLite.
+
+Since 2.4.0 the intake is **vendor-neutral**. Detections arrive from any number of tools
+through adapters, are correlated into **Security Situations**, and the AI analyst reasons
+over a situation rather than a single alert. A situation of one detection is the
+degenerate case, so a single-source deployment behaves exactly as before.
 
 ## Run
 
@@ -25,7 +32,11 @@ python soc_orchestrator.py
 | `BROKER_API_KEYS` | *(mints one and logs it)* | `name:role:secret` triples, comma-separated. Roles: `ingest`, `viewer`, `analyst`, `service`, `admin`. **Required in any real deployment** — see [Authentication](#authentication) |
 | `BROKER_CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173,http://localhost:4317` | Allow-list. `'*'` is refused, not honoured |
 | `LLM_PROVIDER` | `ollama` | `ollama` or `echo` (model-free mode: full pipeline, no inference, no verdict) |
-| `DETECTION_SOURCE_DEFAULT` | `splunk` | What `/splunk-alert` records as the detecting tool when the payload does not say |
+| `LEGACY_SPLUNK_ADAPTER` | `splunk` | Adapter the compatibility `/splunk-alert` route is pinned to |
+| `CORRELATION_WINDOW_MINUTES` | `30` | How far apart two detections may be and still describe one situation |
+| `SITUATION_MAX_MEMBERS` | `25` | Cap, so one busy host cannot chain a situation into a whole shift |
+| `DETECTION_SOURCE_TRUST` | *(all 1.0)* | Per-source trust weight, e.g. `splunk=1.0,wazuh=0.8`. Bounded to 0.1-2.0 |
+| `DETECTION_SOURCE_STALE_HOURS` | `24` | Silence after which a source is reported `STALE` |
 | `ACTION_MAX_AUTOPILOT_RISK` | `HIGH_WRITE` | Highest risk class autopilot may execute. `DESTRUCTIVE` is never reachable here |
 | `ACTION_ALLOW_DESTRUCTIVE` | *(off)* | Allow `DESTRUCTIVE` actions to dispatch at all, even with human approval |
 | `ACTION_RISK_OVERRIDES` | *(none)* | Site verbs, e.g. `reboot switch=DESTRUCTIVE` |
@@ -83,15 +94,28 @@ With `BROKER_API_KEYS` unset the broker mints a single admin key and logs it at
 startup rather than serving open. That keeps a local run one command while making an
 accidentally unauthenticated deployment impossible.
 
-## Splunk Hook
+## Detection intake
 
-Configure Splunk `| sendalert` or a scheduled search webhook to POST to:
+Every detection tool posts to the same route. The adapter can be named, or inferred
+from the payload's shape:
 
 ```
-http://127.0.0.1:8500/splunk-alert
+POST http://127.0.0.1:8500/detections?adapter=splunk
+POST http://127.0.0.1:8500/detections            # auto-detect
 ```
 
-Example Suricata payload:
+`GET /api/adapters` lists what this deployment can read. Shipped:
+
+| Adapter | Source tool | Reads |
+|---------|-------------|-------|
+| `splunk` | `splunk` | `\| sendalert` webhook, raw or CIM-normalised, with or without the `result` wrapper |
+| `wazuh` | `wazuh` | Wazuh manager alert document (`rule` / `agent` / `data`, rule level 0-15, `rule.mitre.id`) |
+| `native` | *(declared)* | A sender that already speaks the Detection Intake contract |
+
+`POST /splunk-alert` still exists and is unchanged — it is a thin alias for
+`?adapter=splunk`, kept because a Splunk alert action in the field already points at it.
+
+Example Splunk payload:
 
 ```json
 {
@@ -103,6 +127,66 @@ Example Suricata payload:
   }
 }
 ```
+
+### The Detection Intake contract
+
+Whatever the vendor sent, every adapter emits this and nothing else:
+
+| Field | Notes |
+|-------|-------|
+| `detection_id`, `source_tool` | Assigned here; the tool as it names itself |
+| `adapter`, `adapter_version` | Which mapping read the payload — a re-parse by a better adapter must be distinguishable from the original |
+| `rule_id`, `rule_name` | Rule identity |
+| `detected_at`, `received_at` | When the tool says it happened, and when we got it. Offsets are converted to UTC, not stripped |
+| `severity`, `vendor_severity` | The verbatim value, plus a class normalised across word / 1-5 / 0-15 / 0-100 scales. Unreadable ⇒ `MEDIUM`, never `LOW` |
+| `vendor_techniques` | ATT&CK the **tool** asserted. Preferred over the model's own claims (R4); anything not shaped like a technique ID is dropped |
+| `entities` | `user`, `host`, `host_ip`, `process`, `src_ip`, `dst_ip`, `file_hash`, `url`, `domain` — all optional, none invented |
+| `raw` | The payload byte-for-byte (Rule 4) |
+
+Placeholder values (`unknown`, `-`, `n/a`, …) are stripped at this boundary rather than
+stored: they are not identities, and correlating on one would join every unrelated
+detection in the window into a single situation.
+
+**Adding a vendor** is `adapters/<tool>.py` plus a registry line — nothing else. If a new
+tool requires an edit outside `adapters/`, the contract is wrong. A test
+(`check_adapter_boundary`) fails the build if a core module imports the package.
+
+## Correlation → Security Situation
+
+Detections join into one situation when they share **at least one strong entity** inside
+`CORRELATION_WINDOW_MINUTES`. Strong means `ip`, `user`, `host`, `hash` or `url` — a
+shared process name or domain is not enough, because half a fleet runs `powershell.exe`.
+Addresses from either end of a flow and an endpoint agent's own IP share one namespace,
+so a firewall alert and an EDR alert about the same machine actually meet.
+
+Correlation never joins on the text of a rule name: two tools describe the same host in
+completely different words, and use the same words for completely different hosts.
+
+The situation carries member detections, the entity graph they were joined on, the time
+span, the contributing tools, and a **risk score with its factors stored alongside it**:
+
+| Factor | Points |
+|--------|--------|
+| Highest member severity | 88 / 70 / 45 / 22 |
+| Cross-tool corroboration | +12 per additional tool, capped at +24 |
+| Detection volume | +2 per additional detection, capped at +10 |
+| ≥2 hosts (lateral movement shape) | +6 |
+| ≥2 accounts | +4 |
+| ≥2 tool-asserted techniques | +5 |
+| Source trust | whole score × mean trust of the contributing tools |
+
+This is deliberately **not** the model's confidence. Benchmarked across 14 local models,
+self-reported confidence sits at 75-98% on every input and is unstable run to run
+([`docs/MODEL-BENCHMARK.md`](../docs/MODEL-BENCHMARK.md)), so the number an analyst
+triages by is a countable fact instead — same members, same score, every time.
+
+A situation **stops absorbing detections** once its decision leaves `PENDING` or a human
+edits it. Rewriting a dispatched plan would break the audit trail, and overwriting a
+human's correction would delete the only label the autonomy ramp has. A late detection
+opens its own situation, and the analyst sees both.
+
+When a situation grows while still pending, the analysis is re-run and the verdict
+re-derived over the enlarged situation.
 
 The broker calls Ollama and parses a full enrichment payload: `threat_severity`, `incident_analysis`, `attack_timeline`, `evidence`, `mitre_techniques`, `recommended_actions`, `recommended_containment_steps`, and `tier2_decision` — all persisted to SQLite.
 
@@ -133,8 +217,16 @@ find decisions a degraded model or an offline Ollama produced.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/health` | Service liveness + config |
-| POST | `/splunk-alert` | Ingest Splunk alert → LLM → DB |
+| GET | `/health` | Service liveness + config (correlation, adapters and source policy included when authenticated) |
+| POST | `/detections?adapter=` | **The intake.** Adapter → detection → situation → decision. Omit `adapter` to auto-detect |
+| POST | `/splunk-alert` | Compatibility alias for `?adapter=splunk` |
+| GET | `/api/adapters` | Registered adapters: name, version, source tool |
+| GET | `/api/situations` | Correlated situations + correlation metrics |
+| GET | `/api/situations/{id}` | One situation with every member detection and its entity graph |
+| GET | `/api/alerts/{id}/situation` | The situation behind a decision (404 for pre-2.4 alerts, which were never correlated) |
+| GET | `/api/correlation/metrics` | Detections per situation, correlated and multi-source counts |
+| GET | `/api/detection-sources` | Registry: adapter, version, health, trust weight, detection count |
+| POST | `/api/detection-sources/{tool}/trust` | Set a source's trust weight (`decisions:act`) |
 | GET | `/api/alerts` | List alerts + severity/mitigation metrics |
 | GET | `/api/alerts/{id}` | Single alert with containment checklist |
 | POST | `/api/alerts/{id}/mitigate` | Mark alert CONTAINED, complete all steps |
@@ -264,7 +356,10 @@ the background, so `approve` returns immediately and the dashboard polls
 
 | Table | Purpose |
 |-------|---------|
-| `security_events` | Detections with AI analysis + `detection_source` (which tool raised it) |
+| `detections` | **Contract 1** — one row per detection, with its adapter, entities and the payload verbatim (Rule 4) |
+| `situations` | **Contract 2** — correlated situations: members, entity graph, sources, risk score and its factors |
+| `detection_sources` | Which tools feed us: adapter, version, health, trust weight |
+| `security_events` | The analysed record — one per **situation**, with `situation_id` and `detection_source` (`splunk+wazuh` when several tools contributed) |
 | `recommended_containment_steps` | **All AI actions** — one row per checklist step |
 | `tier2_decisions` | One Tier-2 verdict per alert + `decision_source` provenance (`llm` / `rules` / `human`) |
 | `alert_soar_actions` | Bundled SOAR plan with per-action execution status, risk class and policy verdict |
@@ -285,7 +380,8 @@ python test_broker.py
 Expected output:
 
 ```
-PASS: LLM Tier-2 decision, autopilot policy, and SOAR delivery all verified.
+PASS: Detection Intake contract, cross-tool correlation into one situation,
+situation-driven Tier-2 decision, autopilot policy and SOAR delivery all verified.
 ```
 
 It covers both decision paths — an LLM verdict honored end to end, an alert without a
@@ -302,3 +398,21 @@ rejected outright — plus the Phase A governance:
 - **corrections and outcomes**: an edited verdict is stored as a label with its delta,
   an undispatchable plan is refused, a settled decision cannot be edited, and outcomes
   roll up per detection source.
+
+…and the Phase B Definition of Done, as one scenario:
+
+- **the contract**: vendor severities normalise across four scales, offsets convert
+  rather than truncate, non-technique strings never reach the heatmap, placeholder
+  entities never become correlation keys, and a payload with neither a rule nor an
+  entity is refused rather than ingested;
+- **the score**: corroboration raises it, low trust lowers it, the same members always
+  produce the same number, and an empty situation scores nothing;
+- **the boundary**: no core module may import `adapters/`, and the broker may not name
+  an adapter class;
+- **the scenario**: five detections describing one account compromise — two from Splunk,
+  two from Wazuh, one from a firewall speaking the contract directly — collapse into
+  **one situation and one decision**, joined on the shared account and host rather than
+  on any shared wording. The prompt the model received says `5 detection(s) from 3
+  tool(s)` and carries the entity graph and the tools' own ATT&CK techniques. A human
+  then corrects the verdict, and a sixth detection opens its own situation instead of
+  overwriting what the analyst decided.
