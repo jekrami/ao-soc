@@ -30,7 +30,7 @@
   <!-- ================= Title ================= -->
   <text class="t1" x="830" y="52" text-anchor="middle">معماری نرم‌افزاری AI-SOC</text>
   <text class="t2" x="830" y="82" text-anchor="middle">مرکز عملیات امنیت مبتنی بر هوش مصنوعی — «لایهٔ تصمیم»</text>
-  <text class="t3" x="830" y="106" text-anchor="middle">نسخهٔ ۲.۱ — تابستان ۱۴۰۵</text>
+  <text class="t3" x="830" y="106" text-anchor="middle">نسخهٔ ۲.۲ — تابستان ۱۴۰۵</text>
 
   <!-- ================= External: detection sources (right) ================= -->
   <rect x="1330" y="160" width="290" height="292" rx="10" fill="#ffffff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="7 5"/>
@@ -121,17 +121,17 @@
 
   <!-- L5 human -->
   <rect x="348" y="614" width="712" height="76" rx="9" fill="#b45309"/>
-  <circle cx="372" cy="638" r="7" fill="#f59e0b" stroke="#ffffff" stroke-width="1.5"/>
+  <circle cx="372" cy="638" r="7" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"/>
   <text class="box-title" x="704" y="643" text-anchor="middle">۵. تأیید و ویرایش انسانی</text>
-  <text class="box-sub" x="704" y="666" text-anchor="middle">تأیید / رد ← ساخته‌شده  |  ویرایش رأی و طرح اقدام ← ساخته‌نشده</text>
-  <text class="box-sub" x="704" y="684" text-anchor="middle">هر اصلاح انسانی باید به‌عنوان «برچسب» ذخیره شود — تنها پیکرهٔ آموزشی خودگردانی آینده</text>
+  <text class="box-sub" x="704" y="666" text-anchor="middle">تأیید · رد · ویرایش رأی و طرح اقدام — هر سه ساخته‌شده</text>
+  <text class="box-sub" x="704" y="684" text-anchor="middle">هر اصلاح انسانی به‌عنوان «برچسب» ذخیره می‌شود — تنها پیکرهٔ آموزشی خودگردانی آینده</text>
 
   <!-- L6 dispatch -->
   <rect x="348" y="712" width="712" height="76" rx="9" fill="#047857"/>
   <circle cx="372" cy="736" r="7" fill="#f59e0b" stroke="#ffffff" stroke-width="1.5"/>
   <text class="box-title" x="704" y="741" text-anchor="middle">۶. ارسال تصمیم به مجریِ بیرونی</text>
   <text class="box-sub" x="704" y="764" text-anchor="middle">طبقه‌بندی ریسک اقدام: خواندن · نوشتن کم‌خطر · نوشتن پرخطر · مخرب</text>
-  <text class="box-sub" x="704" y="782" text-anchor="middle">اعتبارسنجی شکل هدف پیش از ارسال · ثبت رسید تغییرناپذیر</text>
+  <text class="box-sub" x="704" y="782" text-anchor="middle">رده‌بندی و اعتبارسنجی شکل هدف پیش از ارسال · سقف خطر خلبان خودکار · ثبت رسید تغییرناپذیر</text>
 
   <!-- Side: decision store -->
   <rect x="1076" y="260" width="196" height="228" rx="9" fill="#1e293b"/>
@@ -139,7 +139,7 @@
   <text class="box-title" x="1174" y="289" text-anchor="middle">انبارهٔ تصمیم</text>
   <text class="box-sub" x="1174" y="318" text-anchor="middle">وضعیت‌های امنیتی</text>
   <text class="box-sub" x="1174" y="342" text-anchor="middle">تصمیم‌ها و دلایل</text>
-  <text class="box-sub" x="1174" y="366" text-anchor="middle">اصلاح‌های انسانی</text>
+  <text class="box-sub" x="1174" y="366" text-anchor="middle">اصلاح‌ها و نتایج</text>
   <text class="box-sub" x="1174" y="390" text-anchor="middle">رسیدهای اقدام</text>
   <text class="box-sub" x="1174" y="414" text-anchor="middle">اشاره‌گر به شواهد</text>
   <line x1="1096" y1="432" x2="1252" y2="432" stroke="#475569" stroke-width="1.5"/>
@@ -163,9 +163,9 @@
 
   <!-- Governance -->
   <rect x="348" y="806" width="924" height="58" rx="9" fill="#334155"/>
-  <circle cx="372" cy="835" r="7" fill="#dc2626" stroke="#ffffff" stroke-width="1.5"/>
+  <circle cx="372" cy="835" r="7" fill="#f59e0b" stroke="#ffffff" stroke-width="1.5"/>
   <text class="box-title" x="810" y="830" text-anchor="middle">حاکمیت و امنیت — احراز هویت · کنترل دسترسی نقش‌محور · مدیریت اسرار · ممیزی</text>
-  <text class="box-sub" x="810" y="852" text-anchor="middle">هنوز هیچ‌کدام ساخته نشده — اولویت نخست (فاز الف)، چون سامانه هم‌اکنون بدون احراز هویت فرمان اقدام صادر می‌کند</text>
+  <text class="box-sub" x="810" y="852" text-anchor="middle">فاز الف انجام شد — احراز هویت کلیدی و نقش‌ها روی همهٔ مسیرها، فهرست مجاز CORS، هویت تأییدکننده؛ باقی‌مانده: IdP/SSO، RBAC و مدیریت اسرار</text>
 
   <!-- ================= Arrows ================= -->
   <line x1="1330" y1="199" x2="1296" y2="199" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
@@ -204,5 +204,5 @@
   <text class="legend" x="560" y="946" text-anchor="start">خط‌چین = وابستگی بیرونی</text>
 
   <!-- ================= Footer ================= -->
-  <text class="foot" x="830" y="994" text-anchor="middle">نویسنده: J.Ekrami · هم‌نویسنده: Claude (Opus 5) · © J.Ekrami-Labs · تابستان ۱۴۰۵ · برابر با طرح نسخهٔ ۲.۱</text>
+  <text class="foot" x="830" y="994" text-anchor="middle">نویسنده: J.Ekrami · هم‌نویسنده: Claude (Opus 5) · © J.Ekrami-Labs · تابستان ۱۴۰۵ · برابر با طرح نسخهٔ ۲.۲</text>
 </svg>

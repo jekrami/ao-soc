@@ -80,6 +80,26 @@ $BrokerUrl = 'http://127.0.0.1:8500'
 $ApiUrl = 'http://127.0.0.1:4317'
 $DashboardUrl = 'http://localhost:5173'
 
+# --- Demo credentials (M14 / R1) ---
+# Nothing in the stack runs unauthenticated any more, so the launcher mints the
+# keys and wires them through: the UI API holds a service key for the broker,
+# and the operator signs in to the dashboard with the analyst key printed at
+# the end. Set AOSOC_DEMO_KEY / AOSOC_DEMO_SERVICE_KEY to pin them across runs.
+function New-DemoKey {
+    $bytes = New-Object 'System.Byte[]' 24
+    [System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+    return ([System.Convert]::ToBase64String($bytes) -replace '\+', '-' -replace '/', '_' -replace '=', '')
+}
+
+$OperatorKey = if ($env:AOSOC_DEMO_KEY) { $env:AOSOC_DEMO_KEY } else { New-DemoKey }
+$ServiceKey = if ($env:AOSOC_DEMO_SERVICE_KEY) { $env:AOSOC_DEMO_SERVICE_KEY } else { New-DemoKey }
+
+# Broker principals: the UI API (service — may name the operator it acts for)
+# and the AI runner / seeder (analyst).
+$BrokerKeys = "ui-api:service:$ServiceKey,demo-runner:analyst:$OperatorKey"
+# UI API principals: the human at the dashboard.
+$ApiKeys = "analyst:analyst:$OperatorKey"
+
 # --- Helpers ---
 
 function Write-Step([string]$Message) {
@@ -170,7 +190,7 @@ if (-not $SkipInstall) {
 
 Write-Step 'Starting Aegis-Link broker on port 8500'
 
-$brokerEnv = "`$env:BROKER_PORT='8500'; "
+$brokerEnv = "`$env:BROKER_PORT='8500'; `$env:BROKER_API_KEYS='$BrokerKeys'; "
 if ($Ai) {
     # AI mode: real inference, and high-confidence actionable verdicts execute
     # without waiting for a click.
@@ -186,7 +206,7 @@ Wait-HttpOk -Url "$BrokerUrl/health" -Label 'Broker /health'
 
 Write-Step 'Starting Express UI API on port 4317'
 
-$apiCmd = "`$env:BROKER_URL='$BrokerUrl'; npm start"
+$apiCmd = "`$env:BROKER_URL='$BrokerUrl'; `$env:BROKER_API_KEY='$ServiceKey'; `$env:AOSOC_API_KEYS='$ApiKeys'; npm start"
 $apiPid = Start-DemoWindow -Title 'AO-SOC API' -WorkingDirectory $BackendDir -Command $apiCmd
 
 Start-Sleep -Seconds 2
@@ -208,7 +228,7 @@ if ($Ai) {
     Write-Step "Starting AI test mode ($Count alerts through the real model, autopilot >= $Threshold%)"
 
     $aiArgs = @('run_ai_demo.py', '--count', $Count, '--interval', $SimInterval, '--seed', $Seed)
-    $aiCmdLine = "python $($aiArgs -join ' ')"
+    $aiCmdLine = "`$env:BROKER_API_KEY='$OperatorKey'; python $($aiArgs -join ' ')"
     $simPid = Start-DemoWindow -Title 'AO-SOC AI Runner' -WorkingDirectory $OrchestratorDir -Command $aiCmdLine
 } elseif ($Live) {
     Write-Step "Starting live alert simulation (${SimInterval}s interval, ${SimDuration}s duration)"
@@ -258,6 +278,9 @@ Write-Host "  UI API:        $ApiUrl/api/summary"
 Write-Host ''
 Write-Host "  Mode:          $(if ($Live) { 'Live simulation' } else { "Batch seed ($Count alerts)" })"
 Write-Host '  Stop all:      .\scripts\stop-demo.ps1'
+Write-Host ''
+Write-Host '  Sign in at the dashboard with this operator key:' -ForegroundColor Yellow
+Write-Host "      $OperatorKey" -ForegroundColor Yellow
 Write-Host ''
 Write-Host '  Broker/API/Dashboard run in separate PowerShell windows.' -ForegroundColor DarkGray
 Write-Host '  Mock incidents are hidden while the broker is up (LIVE posture).' -ForegroundColor DarkGray

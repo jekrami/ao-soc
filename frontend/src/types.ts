@@ -57,11 +57,20 @@ export interface PersistedAiExplanation extends AiExplanation {
   recommended_actions: RecommendedAction[];
 }
 
+/** Rule 7 action risk classes, least to most dangerous. */
+export type ActionRiskClass = 'READ' | 'LOW_WRITE' | 'HIGH_WRITE' | 'DESTRUCTIVE';
+
 export interface Tier2ActionStatus {
   id: string;
   action: string;
   target: string;
   reason: string;
+  /** Assigned at plan time; an unrecognised action is HIGH_WRITE, never READ. */
+  risk_class: ActionRiskClass;
+  /** What the target must parse as for this action (ip, ip_or_host, user…). */
+  target_kind: string;
+  /** Set when the action fails policy — it will be BLOCKED, not dispatched. */
+  policy_reason?: string | null;
   status: 'PENDING' | 'QUEUED' | 'EXECUTING' | 'DONE' | 'FAILED' | 'BLOCKED';
   result?: { execution_id?: string; status?: string; error?: string } | null;
   created_at?: string | null;
@@ -77,7 +86,36 @@ export type Tier2ApprovalStatus =
   | 'DONE'
   | 'FAILED';
 
-export type Tier2DecisionSource = 'llm' | 'rules';
+/** 'human' means an analyst overrode the machine and the delta was stored. */
+export type Tier2DecisionSource = 'llm' | 'rules' | 'human';
+
+export type DecisionOutcomeType = 'TRUE_POSITIVE' | 'FALSE_POSITIVE' | 'REOPENED';
+
+export interface DecisionOutcome {
+  outcome: DecisionOutcomeType;
+  reported_by: string;
+  note?: string | null;
+  detection_source: string;
+  created_at?: string | null;
+}
+
+/** Whether this decision can still be judged, and what has been reported. */
+export interface DecisionFeedback {
+  alert_id: string;
+  settled: boolean;
+  window_hours: number;
+  window_closes_at?: string | null;
+  window_open: boolean;
+  outcomes: DecisionOutcome[];
+}
+
+/** An analyst's edit of a proposed action, before it is sent to the broker. */
+export interface Tier2ActionEdit {
+  id?: string;
+  action: string;
+  target: string;
+  reason?: string;
+}
 
 export interface Tier2Decision {
   alert_id: string;

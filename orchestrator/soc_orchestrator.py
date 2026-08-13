@@ -6,9 +6,20 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
+from auth import (
+    DECISIONS_ACT,
+    DECISIONS_READ,
+    DETECTIONS_WRITE,
+    Principal,
+    auth_config,
+    authenticate,
+    configured_origins,
+    require,
+    resolve_actor,
+)
 from db import (
     DB_FILE,
     DATABASE_URL,
@@ -24,28 +35,43 @@ from db import (
     mitigate_alert,
 )
 from enrichment import build_enrichment
-from llm import MODEL_NAME, OLLAMA_ENDPOINT, call_ollama, parse_json_response
+from llm import parse_json_response
+from llm_provider import get_provider, provider_config
 from models import (
     AiExplanationPayload,
     ApproveDecisionRequest,
+    EditDecisionRequest,
     GenerateExplanationRequest,
+    RecordOutcomeRequest,
     RejectDecisionRequest,
     SplunkAlertPayload,
 )
 from soar import soar_config
 from tier2 import (
+    Tier2EditError,
     approve_tier2_decision,
     autopilot_config,
     autopilot_if_eligible,
     create_tier2_decision_for_alert,
+    edit_tier2_decision,
     ensure_tier2_decision,
+    get_decision_feedback,
     list_alert_actions,
+    list_corrections,
     list_decisions,
+    list_pending_feedback,
     normalize_tier2_proposal,
+    outcome_summary,
+    record_decision_outcome,
     reject_tier2_decision,
 )
 
 BROKER_PORT = int(os.getenv('BROKER_PORT', '8500'))
+
+# The identity this route reports as a detection source. It is the one place a
+# vendor name legitimately appears — /splunk-alert *is* the Splunk adapter, and
+# Phase B (B1) turns it into SplunkAdapter behind a generic route.
+SPLUNK_ADAPTER_SOURCE = os.getenv('DETECTION_SOURCE_DEFAULT', 'splunk')
 
 # Under uvicorn the root logger stays at WARNING, so every logger.info() in
 # tier2/soar is swallowed — the console shows bare 201s while autopilot is
@@ -71,11 +97,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# R1: '*' let any page on any host drive the decision layer from a browser.
+# The allow-list is configuration, and '*' is refused outright (see auth.py).
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=['*'],
+    allow_origins=configured_origins(),
     allow_methods=['GET', 'POST', 'OPTIONS'],
-    allow_headers=['*'],
+    allow_headers=['Content-Type', 'Authorization', 'X-API-Key', 'X-Actor'],
 )
 
 
@@ -130,11 +158,25 @@ def _extract_alert_fields(body: Dict[str, Any]) -> Dict[str, Any]:
         merged.get('timestamp') or merged.get('_time') or merged.get('event_time')
     )
 
+    # R8: which tool detected this. Taken from the payload where the sender
+    # says so, otherwise the route's own adapter identity. Recorded on every
+    # event so outcomes can be attributed per detection source rather than
+    # blamed on the AI — and so Phase B's intake contract has somewhere to land.
+    detection_source = _coalesce(
+        merged.get('detection_source'),
+        merged.get('source_tool'),
+        merged.get('vendor'),
+        merged.get('sourcetype'),
+        merged.get('source'),
+        default=SPLUNK_ADAPTER_SOURCE,
+    )[:64]
+
     return {
         'source_ip': source_ip,
         'dest_ip': dest_ip,
         'signature': signature,
         'timestamp': timestamp,
+        'detection_source': detection_source,
         'raw': merged,
     }
 
@@ -321,17 +363,40 @@ def normalize_explanation(data: Dict[str, Any]) -> Dict[str, Any]:
 
 
 @app.get('/health')
-async def health() -> dict:
-    return {
+async def health(request: Request) -> dict:
+    """Liveness is open; the configuration behind it is not.
+
+    Start-up probes and the UI API's reachability check need an unauthenticated
+    ping, but the model, the database path, the SOAR sink and the autopilot
+    policy are a map of the deployment and are only shown to a caller holding a
+    key. Nothing here can cause an action either way.
+    """
+    liveness = {
         'ok': True,
         'service': 'aegis-link-broker',
         'version': '1.0.0',
         'port': BROKER_PORT,
+        'authenticated': False,
+    }
+    principal = authenticate(
+        request.headers.get('X-API-Key')
+        or (request.headers.get('Authorization') or '')[7:].strip() or None
+    )
+    if principal is None or not principal.can(DECISIONS_READ):
+        return liveness
+
+    llm_config = provider_config()
+    return {
+        **liveness,
+        'authenticated': True,
+        'principal': {'name': principal.name, 'role': principal.role},
         'db': 'sqlite',
         'db_file': DB_FILE,
-        'ollama_endpoint': OLLAMA_ENDPOINT,
-        'model': MODEL_NAME,
+        'llm': llm_config,
+        # Kept flat for the UI API's health panel, which reads .model.
+        'model': llm_config.get('model') or llm_config.get('provider'),
         'database_url': DATABASE_URL,
+        'auth': auth_config(),
         'autopilot': autopilot_config(),
         'soar': soar_config(),
     }
@@ -341,8 +406,15 @@ async def health() -> dict:
 
 
 @app.post('/splunk-alert', status_code=201)
-async def splunk_alert(request: Request) -> dict:
-    """Splunk | sendalert webhook: infer via Ollama, persist alert + containment steps."""
+async def splunk_alert(
+    request: Request,
+    _principal: Principal = Depends(require(DETECTIONS_WRITE)),
+) -> dict:
+    """Splunk | sendalert webhook: infer, persist alert + containment steps.
+
+    R1: this is the path that, with autopilot on, ends in a dispatched action.
+    It requires a detections:write key — the ingest role holds nothing else.
+    """
     try:
         body = await request.json()
     except Exception as exc:
@@ -355,7 +427,7 @@ async def splunk_alert(request: Request) -> dict:
     alert_id = f'ALT-{uuid.uuid4().hex[:12].upper()}'
 
     try:
-        raw_output = await call_ollama(build_splunk_analysis_prompt(fields))
+        raw_output = await get_provider().complete(build_splunk_analysis_prompt(fields))
         parsed = parse_json_response(raw_output)
         analysis = normalize_threat_analysis(parsed, fields, alert_id)
     except Exception as exc:
@@ -372,6 +444,7 @@ async def splunk_alert(request: Request) -> dict:
         raw_payload=json.dumps(body, default=str),
         alert_id=alert_id,
         enrichment=analysis['enrichment'],
+        detection_source=fields['detection_source'],
     )
     tier2_decision = await create_tier2_decision_for_alert(event)
     # Stage 3 preview: a high-confidence actionable verdict executes without
@@ -381,14 +454,17 @@ async def splunk_alert(request: Request) -> dict:
 
 
 @app.get('/api/alerts')
-async def api_list_alerts() -> dict:
+async def api_list_alerts(_principal: Principal = Depends(require(DECISIONS_READ))) -> dict:
     items = await list_alerts()
     metrics = await alert_metrics()
     return {'count': len(items), 'metrics': metrics, 'items': items}
 
 
 @app.get('/api/alerts/{alert_id}')
-async def api_get_alert(alert_id: str) -> dict:
+async def api_get_alert(
+    alert_id: str,
+    _principal: Principal = Depends(require(DECISIONS_READ)),
+) -> dict:
     alert = await get_alert(alert_id)
     if alert is None:
         raise HTTPException(status_code=404, detail='Alert not found')
@@ -396,7 +472,10 @@ async def api_get_alert(alert_id: str) -> dict:
 
 
 @app.post('/api/alerts/{alert_id}/mitigate')
-async def api_mitigate_alert(alert_id: str) -> dict:
+async def api_mitigate_alert(
+    alert_id: str,
+    _principal: Principal = Depends(require(DECISIONS_ACT)),
+) -> dict:
     alert = await mitigate_alert(alert_id)
     if alert is None:
         raise HTTPException(status_code=404, detail='Alert not found')
@@ -404,7 +483,10 @@ async def api_mitigate_alert(alert_id: str) -> dict:
 
 
 @app.get('/api/alerts/{alert_id}/decision')
-async def api_get_tier2_decision(alert_id: str) -> dict:
+async def api_get_tier2_decision(
+    alert_id: str,
+    _principal: Principal = Depends(require(DECISIONS_READ)),
+) -> dict:
     decision = await ensure_tier2_decision(alert_id)
     if decision is None:
         raise HTTPException(status_code=404, detail='Alert not found')
@@ -412,18 +494,30 @@ async def api_get_tier2_decision(alert_id: str) -> dict:
 
 
 @app.post('/api/alerts/{alert_id}/decision/approve', status_code=202)
-async def api_approve_tier2_decision(alert_id: str, body: ApproveDecisionRequest) -> dict:
-    decision = await approve_tier2_decision(alert_id, approved_by=body.approved_by)
+async def api_approve_tier2_decision(
+    alert_id: str,
+    body: ApproveDecisionRequest,
+    principal: Principal = Depends(require(DECISIONS_ACT)),
+) -> dict:
+    # The approver is the authenticated identity, never a string the caller
+    # chose: an audit trail that records whatever the body claimed is not one.
+    decision = await approve_tier2_decision(
+        alert_id, approved_by=resolve_actor(principal, body.approved_by)
+    )
     if decision is None:
         raise HTTPException(status_code=404, detail='Alert not found')
     return decision
 
 
 @app.post('/api/alerts/{alert_id}/decision/reject')
-async def api_reject_tier2_decision(alert_id: str, body: RejectDecisionRequest) -> dict:
+async def api_reject_tier2_decision(
+    alert_id: str,
+    body: RejectDecisionRequest,
+    principal: Principal = Depends(require(DECISIONS_ACT)),
+) -> dict:
     decision = await reject_tier2_decision(
         alert_id,
-        rejected_by=body.rejected_by,
+        rejected_by=resolve_actor(principal, body.rejected_by),
         note=body.note,
     )
     if decision is None:
@@ -431,14 +525,105 @@ async def api_reject_tier2_decision(alert_id: str, body: RejectDecisionRequest) 
     return decision
 
 
+@app.post('/api/alerts/{alert_id}/decision/edit')
+async def api_edit_tier2_decision(
+    alert_id: str,
+    body: EditDecisionRequest,
+    principal: Principal = Depends(require(DECISIONS_ACT)),
+) -> dict:
+    """Correct the machine's verdict and/or its action plan.
+
+    Approve/Reject records that the model was wrong; only an edit records what
+    right looks like. The delta is persisted as a label (plan §7, phase 2).
+    """
+    try:
+        decision = await edit_tier2_decision(
+            alert_id,
+            edited_by=resolve_actor(principal, body.edited_by),
+            decision=body.decision,
+            rationale=body.rationale,
+            risk_of_action=body.risk_of_action,
+            actions=[item.model_dump() for item in body.actions] if body.actions is not None else None,
+            note=body.note,
+        )
+    except Tier2EditError as exc:
+        raise HTTPException(status_code=409 if exc.conflict else 422, detail=str(exc))
+    if decision is None:
+        raise HTTPException(status_code=404, detail='Alert not found')
+    return decision
+
+
+@app.post('/api/alerts/{alert_id}/decision/outcome', status_code=201)
+async def api_record_outcome(
+    alert_id: str,
+    body: RecordOutcomeRequest,
+    principal: Principal = Depends(require(DECISIONS_ACT)),
+) -> dict:
+    """Report what actually happened, inside the feedback window (R5, R8)."""
+    try:
+        feedback = await record_decision_outcome(
+            alert_id,
+            outcome=body.outcome,
+            reported_by=resolve_actor(principal, body.reported_by),
+            note=body.note,
+        )
+    except Tier2EditError as exc:
+        raise HTTPException(status_code=409 if exc.conflict else 422, detail=str(exc))
+    if feedback is None:
+        raise HTTPException(status_code=404, detail='Alert not found')
+    return feedback
+
+
+@app.get('/api/alerts/{alert_id}/decision/feedback')
+async def api_get_feedback(
+    alert_id: str,
+    _principal: Principal = Depends(require(DECISIONS_READ)),
+) -> dict:
+    feedback = await get_decision_feedback(alert_id)
+    if feedback is None:
+        raise HTTPException(status_code=404, detail='Alert not found')
+    return feedback
+
+
+@app.get('/api/decisions/pending-feedback')
+async def api_pending_feedback(
+    limit: int = 200,
+    _principal: Principal = Depends(require(DECISIONS_READ)),
+) -> dict:
+    items = await list_pending_feedback(limit=max(1, min(limit, 1000)))
+    return {'count': len(items), 'items': items}
+
+
+@app.get('/api/decisions/outcomes')
+async def api_outcome_summary(
+    _principal: Principal = Depends(require(DECISIONS_READ)),
+) -> dict:
+    return await outcome_summary()
+
+
+@app.get('/api/corrections')
+async def api_list_corrections(
+    limit: int = 200,
+    _principal: Principal = Depends(require(DECISIONS_READ)),
+) -> dict:
+    items = await list_corrections(limit=max(1, min(limit, 1000)))
+    return {'count': len(items), 'items': items}
+
+
 @app.get('/api/decisions')
-async def api_list_decisions(limit: int = 200) -> dict:
+async def api_list_decisions(
+    limit: int = 200,
+    _principal: Principal = Depends(require(DECISIONS_READ)),
+) -> dict:
     items = await list_decisions(limit=max(1, min(limit, 1000)))
     return {'count': len(items), 'items': items}
 
 
 @app.get('/api/alerts/{alert_id}/actions')
-async def api_list_alert_actions(alert_id: str) -> dict:
+async def api_list_alert_actions(
+    alert_id: str,
+    _principal: Principal = Depends(require(DECISIONS_READ)),
+) -> dict:
     actions = await list_alert_actions(alert_id)
     return {'count': len(actions), 'items': actions}
 
@@ -447,7 +632,10 @@ async def api_list_alert_actions(alert_id: str) -> dict:
 
 
 @app.post('/v2/explanations', status_code=201)
-async def persist_explanation(payload: AiExplanationPayload) -> dict:
+async def persist_explanation(
+    payload: AiExplanationPayload,
+    _principal: Principal = Depends(require(DECISIONS_ACT)),
+) -> dict:
     explanation_id = await create_explanation(payload.model_dump())
     explanation = await get_explanation_by_id(explanation_id)
     if explanation is None:
@@ -456,8 +644,11 @@ async def persist_explanation(payload: AiExplanationPayload) -> dict:
 
 
 @app.post('/v2/explanations/generate', status_code=201)
-async def generate_explanation(payload: GenerateExplanationRequest) -> dict:
-    raw_output = await call_ollama(build_prompt(payload))
+async def generate_explanation(
+    payload: GenerateExplanationRequest,
+    _principal: Principal = Depends(require(DECISIONS_ACT)),
+) -> dict:
+    raw_output = await get_provider().complete(build_prompt(payload))
     try:
         generated = parse_json_response(raw_output)
     except ValueError as exc:
@@ -482,7 +673,10 @@ async def generate_explanation(payload: GenerateExplanationRequest) -> dict:
 
 
 @app.get('/v2/explanations/{incident_id}')
-async def read_explanation(incident_id: str) -> dict:
+async def read_explanation(
+    incident_id: str,
+    _principal: Principal = Depends(require(DECISIONS_READ)),
+) -> dict:
     explanation = await get_explanation(incident_id)
     if explanation is None:
         raise HTTPException(status_code=404, detail='AI explanation not found')
@@ -490,7 +684,7 @@ async def read_explanation(incident_id: str) -> dict:
 
 
 @app.get('/v2/explanations')
-async def list_explanations() -> dict:
+async def list_explanations(_principal: Principal = Depends(require(DECISIONS_READ))) -> dict:
     items = await list_explanations_db()
     return {'count': len(items), 'items': items}
 

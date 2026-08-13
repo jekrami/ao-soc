@@ -76,6 +76,23 @@ DASHBOARD_URL="http://localhost:5173"
 
 mkdir -p "$LOG_DIR"
 
+# --- Demo credentials (M14 / R1) ---
+# Nothing in the stack runs unauthenticated any more, so the launcher mints the
+# keys and wires them through: the UI API holds a service key for the broker,
+# and the operator signs in to the dashboard with the analyst key printed at
+# the end. Set AOSOC_DEMO_KEY / AOSOC_DEMO_SERVICE_KEY to pin them across runs.
+new_key() {
+  head -c 24 /dev/urandom | base64 | tr '+/' '-_' | tr -d '='
+}
+OPERATOR_KEY="${AOSOC_DEMO_KEY:-$(new_key)}"
+SERVICE_KEY="${AOSOC_DEMO_SERVICE_KEY:-$(new_key)}"
+
+# Broker principals: the UI API (service — may name the operator it acts for)
+# and the AI runner / seeder (analyst). UI API principal: the human.
+export BROKER_API_KEYS="ui-api:service:${SERVICE_KEY},demo-runner:analyst:${OPERATOR_KEY}"
+export BROKER_API_KEY="$SERVICE_KEY"
+export AOSOC_API_KEYS="analyst:analyst:${OPERATOR_KEY}"
+
 # --- Helpers ---
 
 step() {
@@ -199,7 +216,8 @@ sleep 4
 
 if [[ $AI -eq 1 ]]; then
   step "Starting AI test mode ($COUNT alerts through the real model, autopilot >= ${THRESHOLD}%)"
-  start_bg ai-runner "$ORCHESTRATOR_DIR"     "$PYTHON" run_ai_demo.py       --count "$COUNT"       --interval "$SIM_INTERVAL"       --seed "$SEED"
+  # run_ai_demo talks to the broker over HTTP, so it needs its own analyst key.
+  BROKER_API_KEY="$OPERATOR_KEY" start_bg ai-runner "$ORCHESTRATOR_DIR"     "$PYTHON" run_ai_demo.py       --count "$COUNT"       --interval "$SIM_INTERVAL"       --seed "$SEED"
 elif [[ $LIVE -eq 1 ]]; then
   step "Starting live alert simulation (${SIM_INTERVAL}s interval, ${SIM_DURATION}s duration)"
   start_bg simulator "$ORCHESTRATOR_DIR" \
@@ -234,6 +252,9 @@ else
 fi
 echo "  Logs:          $LOG_DIR/"
 echo "  Stop all:      ./scripts/stop-demo.sh"
+echo ""
+echo "  Sign in at the dashboard with this operator key:"
+echo "      $OPERATOR_KEY"
 echo ""
 echo "  Mock incidents are hidden while the broker is up (LIVE posture)."
 echo ""

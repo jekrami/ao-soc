@@ -1,6 +1,9 @@
 import { create } from 'zustand';
 import { api } from '@/lib/api';
-import type { ArchivedIncident, Incident, Summary, MitrePayload, SystemHealth, Entity, PersistedAiExplanation, Tier2Decision } from '@/types';
+import type {
+  ArchivedIncident, DecisionFeedback, DecisionOutcomeType, Entity, Incident, MitrePayload,
+  PersistedAiExplanation, Summary, SystemHealth, Tier2ActionEdit, Tier2Decision, Tier2DecisionType,
+} from '@/types';
 
 type SystemState = 'splunk' | 'broker' | 'llm' | 'soar';
 
@@ -14,6 +17,7 @@ interface AoSocState {
   selectedIncident: Incident | null;
   selectedExplanation: PersistedAiExplanation | null;
   selectedTier2Decision: Tier2Decision | null;
+  selectedFeedback: DecisionFeedback | null;
   mitre: MitrePayload | null;
   systemHealth: SystemHealth | null;
   highRiskUsers: Entity[];
@@ -48,6 +52,17 @@ interface AoSocState {
   refreshTier2Decision: (id: string) => Promise<void>;
   approveTier2Decision: (id: string) => Promise<boolean>;
   rejectTier2Decision: (id: string, note?: string) => Promise<boolean>;
+  editTier2Decision: (id: string, patch: Tier2DecisionPatch) => Promise<boolean>;
+  recordDecisionOutcome: (id: string, outcome: DecisionOutcomeType, note?: string) => Promise<boolean>;
+}
+
+/** A human correction: any subset of the verdict, its wording, and the plan. */
+export interface Tier2DecisionPatch {
+  decision?: Tier2DecisionType;
+  rationale?: string;
+  risk_of_action?: string;
+  actions?: Tier2ActionEdit[];
+  note?: string;
 }
 
 export const useAoSoc = create<AoSocState>((set, get) => ({
@@ -59,6 +74,7 @@ export const useAoSoc = create<AoSocState>((set, get) => ({
   selectedIncident: null,
   selectedExplanation: null,
   selectedTier2Decision: null,
+  selectedFeedback: null,
   mitre: null,
   systemHealth: null,
   highRiskUsers: [],
@@ -240,6 +256,7 @@ export const useAoSoc = create<AoSocState>((set, get) => ({
       selectedIncident: null,
       selectedExplanation: null,
       selectedTier2Decision: null,
+      selectedFeedback: null,
     }));
     try {
       const [inc, explanation] = await Promise.all([
@@ -247,10 +264,17 @@ export const useAoSoc = create<AoSocState>((set, get) => ({
         api<PersistedAiExplanation>(`/api/incidents/${id}/explanations`).catch(() => null)
       ]);
       let tier2: Tier2Decision | null = null;
+      let feedback: DecisionFeedback | null = null;
       if (inc.source === 'broker') {
         tier2 = await api<Tier2Decision>(`/api/incidents/${id}/decision`).catch(() => null);
+        feedback = await api<DecisionFeedback>(`/api/incidents/${id}/decision/feedback`).catch(() => null);
       }
-      set({ selectedIncident: inc, selectedExplanation: explanation, selectedTier2Decision: tier2 });
+      set({
+        selectedIncident: inc,
+        selectedExplanation: explanation,
+        selectedTier2Decision: tier2,
+        selectedFeedback: feedback,
+      });
     } catch (e) {
       set({
         error: (e as Error).message,
@@ -258,6 +282,7 @@ export const useAoSoc = create<AoSocState>((set, get) => ({
         selectedIncident: null,
         selectedExplanation: null,
         selectedTier2Decision: null,
+        selectedFeedback: null,
       });
     } finally {
       set(s => ({ loading: { ...s.loading, incident: false, incidentExplanation: false } }));
@@ -296,6 +321,11 @@ export const useAoSoc = create<AoSocState>((set, get) => ({
       const previous = get().selectedTier2Decision;
       const tier2 = await api<Tier2Decision>(`/api/incidents/${id}/decision`);
       set({ selectedTier2Decision: tier2 });
+      // A settled decision can still be judged — pull the window state so the
+      // panel can ask "was this right?" while the answer is still knowable.
+      const feedback = await api<DecisionFeedback>(`/api/incidents/${id}/decision/feedback`)
+        .catch(() => null);
+      set({ selectedFeedback: feedback });
       // Execution just finished: the incident is contained, so pull it out of
       // the active queue now instead of waiting for the 15s poll.
       const settled = tier2.approval_status === 'DONE' || tier2.approval_status === 'FAILED';
@@ -340,6 +370,42 @@ export const useAoSoc = create<AoSocState>((set, get) => ({
         body: JSON.stringify({ rejected_by: 'analyst', note: note || undefined }),
       });
       set({ selectedTier2Decision: decision });
+      return true;
+    } catch (e) {
+      set({ error: (e as Error).message });
+      return false;
+    } finally {
+      set(s => ({ loading: { ...s.loading, tier2Decision: false } }));
+    }
+  },
+
+  async editTier2Decision(id, patch) {
+    set(s => ({ loading: { ...s.loading, tier2Decision: true }, error: null }));
+    try {
+      const decision = await api<Tier2Decision>(`/api/incidents/${id}/decision/edit`, {
+        method: 'POST',
+        body: JSON.stringify(patch),
+      });
+      set({ selectedTier2Decision: decision });
+      return true;
+    } catch (e) {
+      // The broker's refusals are written for the analyst — a target that
+      // cannot be dispatched to, or a plan that has already executed.
+      set({ error: (e as Error).message });
+      return false;
+    } finally {
+      set(s => ({ loading: { ...s.loading, tier2Decision: false } }));
+    }
+  },
+
+  async recordDecisionOutcome(id, outcome, note) {
+    set(s => ({ loading: { ...s.loading, tier2Decision: true }, error: null }));
+    try {
+      const feedback = await api<DecisionFeedback>(`/api/incidents/${id}/decision/outcome`, {
+        method: 'POST',
+        body: JSON.stringify({ outcome, note: note || undefined }),
+      });
+      set({ selectedFeedback: feedback });
       return true;
     } catch (e) {
       set({ error: (e as Error).message });

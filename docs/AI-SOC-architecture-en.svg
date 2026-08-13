@@ -29,7 +29,7 @@
   <!-- ================= Title ================= -->
   <text class="t1" x="830" y="52" text-anchor="middle">AI-SOC SOFTWARE ARCHITECTURE</text>
   <text class="t2" x="830" y="82" text-anchor="middle">AI-Powered Security Operations Center — the Decision Layer</text>
-  <text class="t3" x="830" y="106" text-anchor="middle">Version 2.1 — Summer 2026</text>
+  <text class="t3" x="830" y="106" text-anchor="middle">Version 2.2 — Summer 2026</text>
 
   <!-- ================= External: detection sources (left) ================= -->
   <rect x="30" y="160" width="290" height="292" rx="10" fill="#ffffff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="7 5"/>
@@ -119,17 +119,17 @@
 
   <!-- L5 human -->
   <rect x="560" y="614" width="712" height="76" rx="9" fill="#b45309"/>
-  <circle cx="1248" cy="638" r="7" fill="#f59e0b" stroke="#ffffff" stroke-width="1.5"/>
+  <circle cx="1248" cy="638" r="7" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"/>
   <text class="box-title" x="916" y="643" text-anchor="middle">5. Human approval &amp; edit</text>
-  <text class="box-sub" x="916" y="666" text-anchor="middle">Approve / Reject → built   |   Edit verdict and action plan → not built</text>
-  <text class="box-sub" x="916" y="684" text-anchor="middle">every human correction must be stored as a label — the only training corpus for later autonomy</text>
+  <text class="box-sub" x="916" y="666" text-anchor="middle">Approve · Reject · Edit the verdict and the action plan — all built</text>
+  <text class="box-sub" x="916" y="684" text-anchor="middle">every human correction is stored as a label — the only training corpus for later autonomy</text>
 
   <!-- L6 dispatch -->
   <rect x="560" y="712" width="712" height="76" rx="9" fill="#047857"/>
   <circle cx="1248" cy="736" r="7" fill="#f59e0b" stroke="#ffffff" stroke-width="1.5"/>
   <text class="box-title" x="916" y="741" text-anchor="middle">6. Dispatch the decision to an external executor</text>
   <text class="box-sub" x="916" y="764" text-anchor="middle">Action risk class: READ · LOW_WRITE · HIGH_WRITE · DESTRUCTIVE</text>
-  <text class="box-sub" x="916" y="782" text-anchor="middle">target-shape validation before dispatch · immutable receipt</text>
+  <text class="box-sub" x="916" y="782" text-anchor="middle">classified and target-shape validated before dispatch · autopilot risk ceiling · immutable receipt</text>
 
   <!-- Side: decision store -->
   <rect x="348" y="260" width="196" height="228" rx="9" fill="#1e293b"/>
@@ -137,7 +137,7 @@
   <text class="side-title" x="446" y="289" text-anchor="middle">DECISION STORE</text>
   <text class="box-sub" x="446" y="318" text-anchor="middle">Security situations</text>
   <text class="box-sub" x="446" y="342" text-anchor="middle">Decisions &amp; rationale</text>
-  <text class="box-sub" x="446" y="366" text-anchor="middle">Human corrections</text>
+  <text class="box-sub" x="446" y="366" text-anchor="middle">Corrections + outcomes</text>
   <text class="box-sub" x="446" y="390" text-anchor="middle">Action receipts</text>
   <text class="box-sub" x="446" y="414" text-anchor="middle">Evidence pointers</text>
   <line x1="368" y1="432" x2="524" y2="432" stroke="#475569" stroke-width="1.5"/>
@@ -161,9 +161,9 @@
 
   <!-- Governance -->
   <rect x="348" y="806" width="924" height="58" rx="9" fill="#334155"/>
-  <circle cx="1248" cy="835" r="7" fill="#dc2626" stroke="#ffffff" stroke-width="1.5"/>
+  <circle cx="1248" cy="835" r="7" fill="#f59e0b" stroke="#ffffff" stroke-width="1.5"/>
   <text class="box-title" x="810" y="830" text-anchor="middle">GOVERNANCE &amp; SECURITY — authentication · RBAC · secrets management · audit</text>
-  <text class="box-sub" x="810" y="852" text-anchor="middle">none of it built yet — first priority (Phase A), because the system already dispatches actions with no authentication</text>
+  <text class="box-sub" x="810" y="852" text-anchor="middle">Phase A delivered — API-key auth and roles on every route, CORS allow-list, authenticated approver; IdP/SSO, RBAC and secrets remain</text>
 
   <!-- ================= Arrows ================= -->
   <line x1="296" y1="199" x2="330" y2="199" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
@@ -202,5 +202,5 @@
   <text class="legend" x="1010" y="946">dashed line = external dependency</text>
 
   <!-- ================= Footer ================= -->
-  <text class="foot" x="830" y="994" text-anchor="middle">Written by J.Ekrami · Co-written with Claude (Opus 5) · © J.Ekrami-Labs · Summer 2026 · matches plan v2.1</text>
+  <text class="foot" x="830" y="994" text-anchor="middle">Written by J.Ekrami · Co-written with Claude (Opus 5) · © J.Ekrami-Labs · Summer 2026 · matches plan v2.2</text>
 </svg>

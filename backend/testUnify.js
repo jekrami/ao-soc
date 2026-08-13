@@ -27,7 +27,13 @@ async function main() {
   try {
     alerts = await brokerFetch('/api/alerts');
   } catch (err) {
-    console.error('FAIL: broker not reachable at BROKER_URL — start uvicorn on port 8500');
+    if (err.status === 401 || err.status === 403) {
+      console.error('FAIL: broker rejected the API key (R1 — no unauthenticated path).');
+      console.error('      Start the broker with BROKER_API_KEYS="ui-api:service:<secret>" and');
+      console.error('      export the same secret here as BROKER_API_KEY.');
+    } else {
+      console.error('FAIL: broker not reachable at BROKER_URL — start uvicorn on port 8500');
+    }
     console.error(err.message);
     process.exit(1);
   }

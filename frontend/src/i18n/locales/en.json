@@ -19,6 +19,14 @@
     "title": "AO-SOC Command Center",
     "pipeline": "Splunk → AI Broker → Local LLM (Qwen) → SOAR"
   },
+  "auth": {
+    "title": "AO-SOC sign-in",
+    "subtitle": "This console can approve actions that run on the network. Every request is authenticated.",
+    "keyLabel": "Operator API key",
+    "keyPlaceholder": "Paste your API key",
+    "signIn": "Sign in",
+    "hint": "The key is held for this browser tab only and is cleared when the tab closes."
+  },
   "common": {
     "refresh": "Refresh",
     "refreshAlerts": "Refresh alerts",
@@ -250,9 +258,41 @@
       "llm": "AI verdict",
       "llmHint": "Decision, confidence and rationale returned by the model",
       "rules": "Rule fallback",
-      "rulesHint": "Model gave no usable verdict — derived from alert severity"
+      "rulesHint": "Model gave no usable verdict — derived from alert severity",
+      "human": "Analyst corrected",
+      "humanHint": "An analyst overrode the machine — the change is stored as a label"
+    },
+    "edit": {
+      "start": "Edit",
+      "title": "Correct the plan",
+      "why": "Approve or reject records that the machine was wrong. Editing records what right looks like — the change is kept as a label the system learns from.",
+      "verdict": "Verdict",
+      "plan": "Actions",
+      "addAction": "Add action",
+      "removeAction": "Remove action",
+      "actionPlaceholder": "Action (e.g. Block IP)",
+      "targetPlaceholder": "Target (e.g. 185.220.101.7)",
+      "reasonPlaceholder": "Why this action",
+      "note": "What the machine got wrong (optional)",
+      "notePlaceholder": "e.g. read the severity, missed the approved change ticket",
+      "save": "Save correction"
+    },
+    "outcome": {
+      "title": "What actually happened",
+      "prompt": "Reportable for {{hours}}h after the decision settles.",
+      "closed": "The feedback window has closed for this decision.",
+      "TRUE_POSITIVE": "True positive",
+      "FALSE_POSITIVE": "False positive",
+      "REOPENED": "Reopened"
     },
     "actionPlan": "Bundled action plan",
+    "risk": {
+      "READ": "Read",
+      "LOW_WRITE": "Low-risk write",
+      "HIGH_WRITE": "High-risk write",
+      "DESTRUCTIVE": "Destructive",
+      "hint": "Action risk class — target must be a valid {{kind}}"
+    },
     "approvePlan": "Approve plan",
     "rejectPlan": "Reject",
     "rejectNote": "Rejection note (optional)",

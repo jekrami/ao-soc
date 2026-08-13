@@ -22,6 +22,15 @@ python soc_orchestrator.py
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
+| `BROKER_API_KEYS` | *(mints one and logs it)* | `name:role:secret` triples, comma-separated. Roles: `ingest`, `viewer`, `analyst`, `service`, `admin`. **Required in any real deployment** — see [Authentication](#authentication) |
+| `BROKER_CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173,http://localhost:4317` | Allow-list. `'*'` is refused, not honoured |
+| `LLM_PROVIDER` | `ollama` | `ollama` or `echo` (model-free mode: full pipeline, no inference, no verdict) |
+| `DETECTION_SOURCE_DEFAULT` | `splunk` | What `/splunk-alert` records as the detecting tool when the payload does not say |
+| `ACTION_MAX_AUTOPILOT_RISK` | `HIGH_WRITE` | Highest risk class autopilot may execute. `DESTRUCTIVE` is never reachable here |
+| `ACTION_ALLOW_DESTRUCTIVE` | *(off)* | Allow `DESTRUCTIVE` actions to dispatch at all, even with human approval |
+| `ACTION_RISK_OVERRIDES` | *(none)* | Site verbs, e.g. `reboot switch=DESTRUCTIVE` |
+| `PROTECTED_TARGETS` | loopback | Extra targets no action may ever touch |
+| `DECISION_FEEDBACK_WINDOW_HOURS` | `72` | How long after a decision settles an outcome may be recorded |
 | `OLLAMA_HOST` | `localhost` | Ollama host (`<ollama-host>`); set to your LAN IP/hostname. `WORKSTATION_IP` still honored as a fallback. Bind addresses (`0.0.0.0`, `::`) resolve to `localhost` — they are where Ollama *listens*, not somewhere you can dial. |
 | `OLLAMA_PORT` | `11434` | Ollama port |
 | `OLLAMA_ENDPOINT` | `http://{OLLAMA_HOST}:{OLLAMA_PORT}/api/generate` | Full inference API URL (overrides host/port) |
@@ -40,6 +49,39 @@ python soc_orchestrator.py
 | `SOAR_DRIVER` | `log` | `log` (JSONL sink) or `noop` |
 | `SOAR_LOG_FILE` | `data/soar-actions.jsonl` | Where the `log` driver writes deliveries |
 | `SOAR_STEP_DELAY` | `0.35` | Seconds between actions, so the UI can render each transition |
+
+## Authentication
+
+**No route but `GET /health` is reachable without a key.** The broker dispatches to
+tools that act on the network, so an open ingest path is an unauthenticated remote
+"isolate host" primitive (risk R1). Present the key as `X-API-Key: <secret>` or
+`Authorization: Bearer <secret>` — the second is there so an IdP token replaces the
+shared secret later without changing a single call site.
+
+| Role | Scopes |
+|------|--------|
+| `ingest` | `detections:write` — post detections, nothing else |
+| `viewer` | `decisions:read` |
+| `analyst` | `decisions:read`, `decisions:act` |
+| `service` | all of the above plus `actor:assert` — a confidential client (the UI API) that may name the operator it is acting for |
+| `admin` | everything |
+
+```bash
+export BROKER_API_KEYS="ui-api:service:$(openssl rand -base64 24),splunk-prod:ingest:$(openssl rand -base64 24)"
+```
+
+Two properties worth knowing:
+
+- **The approver is the authenticated identity.** `approved_by` in the request body is
+  ignored unless the caller holds `actor:assert`; an audit trail that records whatever
+  the body claimed is not an audit trail.
+- **`GET /health` is open for liveness and closed for content.** Unauthenticated it
+  returns `{ok, service, version, port, authenticated: false}`. The model, database
+  path, SOAR sink and autopilot policy are a map of the deployment, and need a key.
+
+With `BROKER_API_KEYS` unset the broker mints a single admin key and logs it at
+startup rather than serving open. That keeps a local run one command while making an
+accidentally unauthenticated deployment impossible.
 
 ## Splunk Hook
 
@@ -99,8 +141,14 @@ find decisions a degraded model or an offline Ollama produced.
 | GET | `/api/alerts/{id}/decision` | Tier-2 decision + bundled action plan |
 | POST | `/api/alerts/{id}/decision/approve` | Approve → policy-gated SOAR auto-execution |
 | POST | `/api/alerts/{id}/decision/reject` | Reject the plan |
+| POST | `/api/alerts/{id}/decision/edit` | Correct the verdict and/or the plan; the delta is stored as a label |
+| POST | `/api/alerts/{id}/decision/outcome` | `TRUE_POSITIVE` / `FALSE_POSITIVE` / `REOPENED` inside the feedback window |
+| GET | `/api/alerts/{id}/decision/feedback` | Window state and any outcome recorded |
 | GET | `/api/alerts/{id}/actions` | Action plan with live execution status |
 | GET | `/api/decisions` | All Tier-2 decisions + plans (drives the dashboard archive) |
+| GET | `/api/decisions/outcomes` | Outcome counts and precision per detection source and per decision source |
+| GET | `/api/decisions/pending-feedback` | Settled decisions still inside the window with nothing reported |
+| GET | `/api/corrections` | The human-correction label corpus |
 
 ### Dashboard v2 (React adapter)
 
@@ -114,14 +162,81 @@ find decisions a degraded model or an offline Ollama produced.
 ## Autopilot (Stage 3 preview)
 
 Off by default — Stage 2 means a human confirms. When `TIER2_AUTOPILOT=1`, a
-verdict is auto-approved and executed at ingest only if **both** hold:
+verdict is auto-approved and executed at ingest only if **all three** hold:
 
-1. the decision is in `TIER2_AUTOPILOT_DECISIONS` (default `CONTAIN`/`ESCALATE`), and
-2. confidence ≥ `TIER2_AUTOPILOT_MIN_CONFIDENCE`.
+1. the decision is in `TIER2_AUTOPILOT_DECISIONS` (default `CONTAIN`/`ESCALATE`),
+2. confidence ≥ `TIER2_AUTOPILOT_MIN_CONFIDENCE`, and
+3. **every action in the plan passes `action_policy`** — classified at or below
+   `ACTION_MAX_AUTOPILOT_RISK`, with a target that parses as the thing the action
+   needs it to be.
+
+Gate 3 is the one that protects the network. Confidence is a self-report, is not
+calibrated, and is unstable run to run — benchmarked across 14 models, one returned
+91% for a C2 beacon and 87% for an active credential compromise. The risk class of
+what would be dispatched is a *fact about the plan*, not an opinion about it.
+
+The plan is all-or-nothing: one action above the ceiling, or one target that does
+not parse, sends the whole thing to an analyst. Half-executing a containment plan
+is worse than not starting.
 
 Confidence alone is never sufficient. A 99%-confident `MONITOR` means *do not
 act*, so it stays PENDING for an analyst — executing a containment plan against
 a verdict that said "watch this" would be wrong at any confidence.
+
+## Action risk policy (`action_policy.py`)
+
+Every action is classified from its verb and validated against its target before it
+can be dispatched:
+
+| Class | Example verbs | Target must be |
+|-------|---------------|----------------|
+| `READ` | lookup, enrich, check reputation, hunt | any identifier |
+| `LOW_WRITE` | add to watchlist, open ticket, collect memory dump, tag | any identifier / case ref |
+| `HIGH_WRITE` | block IP, isolate host, disable account, kill process | an IP, host, user, hash or URL — parsed |
+| `DESTRUCTIVE` | wipe, reimage, delete | refused unless `ACTION_ALLOW_DESTRUCTIVE` |
+
+**An unrecognised verb is `HIGH_WRITE`, never `READ`.** An action nobody modelled is a
+reason for caution, not for trust.
+
+Target validation is what stops free-form model output reaching a connector. A real
+Ollama run produced these alongside valid IPs, and all three are now rejected as
+non-addresses:
+
+```text
+"Network Segment / Firewall Rules"
+"Suricata/Splunk Indexer"
+"10.4.103.18 (PID of PowerShell)"
+```
+
+Nothing is deleted: a refused action keeps its row, its position in the plan and its
+reason, in `alert_soar_actions.risk_class` / `target_kind` / `policy_reason`, and is
+shown to the analyst before they approve.
+
+## Corrections and outcomes
+
+`POST /api/alerts/{id}/decision/edit` lets an analyst change the verdict and rewrite
+the action plan while it is still `PENDING`. The change is written to
+`decision_corrections` *before* the decision row is overwritten — original verdict and
+its source, corrected verdict, the actions added and removed, and the analyst's note —
+and the decision is stamped `decision_source='human'`.
+
+This is the point of the whole table: Approve/Reject records *that* the machine was
+wrong; only an edit records *what right looks like*, and that triple (detection,
+proposal, correction) is the training corpus for RAG and precedent-gated autonomy.
+It is capturable only while a human is still in the loop.
+
+An edit is refused with **422** if any action could never dispatch (same policy the
+executor applies — storing it would show the analyst a plan that silently blocks),
+and with **409** once the plan has been approved: at that point the row is the record
+of what was sent, and rewriting it would break the audit trail.
+
+Once a decision settles (`DONE` / `FAILED` / `REJECTED`), `POST .../decision/outcome`
+accepts `TRUE_POSITIVE`, `FALSE_POSITIVE` or `REOPENED` for
+`DECISION_FEEDBACK_WINDOW_HOURS` (default 72). The window exists because the judgement
+perishes — an analyst can tell you in three days whether an isolation was a false
+positive, and cannot in three months. `GET /api/decisions/outcomes` reports precision
+**per detection source** as well as per decision source: a bad upstream rule and a bad
+model produce the same symptom, and only the attribution tells them apart (R8).
 
 Skips are logged with the reason, so a demo operator can explain why a given
 alert is still waiting. Autopilot approvals are recorded as
@@ -149,10 +264,12 @@ the background, so `approve` returns immediately and the dashboard polls
 
 | Table | Purpose |
 |-------|---------|
-| `security_events` | Splunk alerts with AI analysis |
+| `security_events` | Detections with AI analysis + `detection_source` (which tool raised it) |
 | `recommended_containment_steps` | **All AI actions** — one row per checklist step |
-| `tier2_decisions` | One Tier-2 verdict per alert + `decision_source` provenance |
-| `alert_soar_actions` | Bundled SOAR plan with per-action execution status |
+| `tier2_decisions` | One Tier-2 verdict per alert + `decision_source` provenance (`llm` / `rules` / `human`) |
+| `alert_soar_actions` | Bundled SOAR plan with per-action execution status, risk class and policy verdict |
+| `decision_corrections` | **The label corpus** — what a human changed, and what the machine had proposed |
+| `decision_outcomes` | What actually happened, attributed to the detection source |
 | `ai_explanations` | Dashboard v2 explanation records |
 | `ai_evidence` | Structured evidence for v2 |
 | `recommended_actions` | SOAR-style actions for v2 |
@@ -168,9 +285,20 @@ python test_broker.py
 Expected output:
 
 ```
-PASS: Broker persists enriched LLM output and an LLM-sourced Tier-2 decision.
+PASS: LLM Tier-2 decision, autopilot policy, and SOAR delivery all verified.
 ```
 
-It covers both decision paths: an LLM verdict is honored end to end, an alert
-without a usable proposal falls back to the severity rule, and an out-of-vocabulary
-decision is rejected outright.
+It covers both decision paths — an LLM verdict honored end to end, an alert without a
+usable proposal falling back to the severity rule, and an out-of-vocabulary decision
+rejected outright — plus the Phase A governance:
+
+- **auth** driven through the real ASGI app: unauthenticated ingest is 401, a viewer
+  key reads but cannot act (403), an ingest key cannot read, `Bearer` works, `/health`
+  discloses nothing until authenticated, and `actor:assert` is not implied by acting;
+- **action policy**: unknown verbs classify HIGH_WRITE, the three measured malformed
+  targets are rejected, DESTRUCTIVE is off, and one bad action fails the whole plan;
+- **provider**: `echo` runs the pipeline with no model and returns no verdict, and an
+  unknown provider name raises rather than silently defaulting;
+- **corrections and outcomes**: an edited verdict is stored as a label with its delta,
+  an undispatchable plan is refused, a settled decision cannot be edited, and outcomes
+  roll up per detection source.

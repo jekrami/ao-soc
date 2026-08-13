@@ -120,7 +120,7 @@ ao-soc/
 
 ## Run It
 
-**Version:** 2.2.1 — see `VERSION` at repo root (bump on every release).
+**Version:** 2.3.0 — see `VERSION` at repo root (bump on every release).
 
 One-time setup (each machine):
 
@@ -129,6 +129,39 @@ cd orchestrator && python -m pip install -r requirements.txt
 cd ../backend && npm install
 cd ../frontend && npm install
 ```
+
+---
+
+### Authentication (required since 2.3.0)
+
+**There is no unauthenticated path.** The broker can dispatch actions to tools
+that act on the network, so every route that can cause one requires a key — and
+so does every route that reads a decision. Keys are pre-shared and carry a role;
+M14 replaces them with a real IdP without changing what the API expects, because
+`Authorization: Bearer <token>` is already accepted alongside `X-API-Key`.
+
+```bash
+# name : role : secret        (comma-separated)
+export BROKER_API_KEYS="ui-api:service:$(openssl rand -base64 24),splunk-prod:ingest:$(openssl rand -base64 24)"
+export AOSOC_API_KEYS="jek:analyst:$(openssl rand -base64 24)"   # UI API — the humans
+export BROKER_API_KEY="<the ui-api secret>"                      # UI API → broker
+```
+
+| Role | May do |
+| ---- | ------ |
+| `ingest` | post detections — nothing else |
+| `viewer` | read decisions; cannot cause an action |
+| `analyst` | read and act: approve, reject, **edit**, record an outcome |
+| `service` | a confidential client (the UI API) acting for a named operator |
+| `admin` | everything |
+
+If no keys are configured the service **mints a random one and prints it** rather
+than serving without auth — a local demo still runs, an unauthenticated
+deployment is not reachable by accident. `scripts/start-demo.ps1` / `.sh`
+generate the whole set and print the operator key to sign in with.
+
+CORS is an allow-list (`BROKER_CORS_ORIGINS`, `AOSOC_CORS_ORIGINS`), defaulting
+to localhost. `'*'` is refused, not honoured.
 
 ---
 
@@ -202,8 +235,8 @@ Seed flags: `--count 12`, `--seed 42` (reproducible), `--keep` (append without r
 
 #### Option C — AI test mode (real inference, real SOAR delivery)
 
-The scripts above fake the *model*: they patch `call_ollama` with canned JSON,
-so nothing reasons about anything and the GPU stays idle. AI test mode fakes
+The scripts above fake the *model*: they install a `ScriptedProvider` with canned
+JSON, so nothing reasons about anything and the GPU stays idle. AI test mode fakes
 only the **source** — synthetic Suricata alerts instead of Splunk — and sends
 them to a running broker over HTTP, so Ollama really reads each alert, writes
 the enrichment, and returns its own Tier-2 verdict.
@@ -230,7 +263,7 @@ Stage 2.
 | **1** | Broker (autopilot on) | `cd orchestrator`<br>`TIER2_AUTOPILOT=1 python -m uvicorn soc_orchestrator:app --host 0.0.0.0 --port 8500` |
 | **2** | UI API | `cd backend`<br>`npm start` |
 | **3** | Dashboard | `cd frontend`<br>`npm run dev` |
-| **4** | AI runner | `cd orchestrator`<br>`python run_ai_demo.py --count 6 --interval 5` |
+| **4** | AI runner | `cd orchestrator`<br>`BROKER_API_KEY=<analyst secret> python run_ai_demo.py --count 6 --interval 5` |
 
 Windows PowerShell terminal 1: `$env:TIER2_AUTOPILOT='1'; python -m uvicorn soc_orchestrator:app --host 0.0.0.0 --port 8500`
 
@@ -260,7 +293,7 @@ Use on shift with real ingestion. **Do not** run `seed_demo_alert.py` or `simula
 
 - Ollama reachable at `http://<ollama-host>:11434` (model `qwen3.5:latest`); `<ollama-host>` defaults to `localhost` — set `OLLAMA_HOST` to your LAN IP/hostname
 - Splunk `| sendalert` or scheduled search POSTing to the broker webhook
-- Env vars as needed (see `orchestrator/README.md`): `OLLAMA_HOST`, `OLLAMA_PORT`, `OLLAMA_ENDPOINT`, `MODEL_NAME`, `ORCHESTRATOR_DB_FILE`, `BROKER_PORT`
+- Env vars as needed (see `orchestrator/README.md`): `BROKER_API_KEYS`, `BROKER_CORS_ORIGINS`, `LLM_PROVIDER`, `OLLAMA_HOST`, `OLLAMA_PORT`, `OLLAMA_ENDPOINT`, `MODEL_NAME`, `ORCHESTRATOR_DB_FILE`, `BROKER_PORT`, `ACTION_MAX_AUTOPILOT_RISK`, `DECISION_FEEDBACK_WINDOW_HOURS`
 
 | Terminal | Service | Command |
 | -------- | ------- | ------- |
@@ -268,7 +301,9 @@ Use on shift with real ingestion. **Do not** run `seed_demo_alert.py` or `simula
 | **2** | UI API | `cd backend`<br>`npm start` |
 | **3** | Dashboard | `cd frontend`<br>`npm run dev` (or production build behind nginx) |
 
-**Splunk webhook:** `POST http://<broker-host>:8500/splunk-alert`
+**Splunk webhook:** `POST http://<broker-host>:8500/splunk-alert` — send the
+ingest key as `X-API-Key`. Splunk's `| sendalert` supports custom headers; a
+detection posted without one is rejected with 401 and never reaches the model.
 
 **Manual single alert (smoke test, Windows PowerShell):**
 
@@ -315,11 +350,16 @@ uvicorn soc_orchestrator:app --host 0.0.0.0 --port 8500 --reload
 
 The **Aegis-Link broker** stores Splunk alerts + AI containment steps in `orchestrator/soc_matrix.db`.
 
-**Broker API:**
+**Broker API** (every route but `GET /health` requires a key):
 
-- `GET /health`
+- `GET /health` — open for liveness; the deployment config only with a key
 - `GET /api/alerts` — alert log + severity/mitigation metrics
 - `POST /api/alerts/{id}/mitigate`
+- `GET /api/alerts/{id}/decision` · `POST .../decision/{approve,reject,edit,outcome}`
+- `GET /api/alerts/{id}/decision/feedback` — feedback window state
+- `GET /api/corrections` — the human-correction label corpus
+- `GET /api/decisions/outcomes` — outcomes per detection source (R8)
+- `GET /api/decisions/pending-feedback` — settled decisions still inside the window
 - `POST /v2/explanations`
 - `POST /v2/explanations/generate`
 - `GET /v2/explanations/{incident_id}`
@@ -331,7 +371,7 @@ See `orchestrator/README.md` for Splunk field mapping and environment variables.
 
 | Document | Purpose |
 | -------- | ------- |
-| [`docs/AI-SOC-PLAN.md`](docs/AI-SOC-PLAN.md) | Master plan v2.0 — milestone status, roadmap phases, risk register, autonomy ramp |
+| [`docs/AI-SOC-PLAN.md`](docs/AI-SOC-PLAN.md) | Master plan v2.2 — milestone status, roadmap phases, risk register, autonomy ramp |
 | [`docs/MODEL-BENCHMARK.md`](docs/MODEL-BENCHMARK.md) | Local LLM benchmark for the Tier-2 decision — 14 models, selection, and why confidence must not gate automation |
 | [`orchestrator/README.md`](orchestrator/README.md) | Broker API, environment variables, autopilot and SOAR policy |
 | [`backend/README.md`](backend/README.md) | UI API endpoints |
@@ -363,6 +403,11 @@ See `orchestrator/README.md` for Splunk field mapping and environment variables.
 | GET    | `/api/incidents/:id/decision`                       | Tier-2 decision + live action status |
 | POST   | `/api/incidents/:id/decision/approve`               | Approve plan → SOAR auto-execution   |
 | POST   | `/api/incidents/:id/decision/reject`                | Reject the Tier-2 plan               |
+| POST   | `/api/incidents/:id/decision/edit`                  | Correct the verdict and/or plan; stored as a label. 422 if an action could never dispatch, 409 once executed |
+| POST   | `/api/incidents/:id/decision/outcome`               | `TRUE_POSITIVE` / `FALSE_POSITIVE` / `REOPENED`, inside the feedback window |
+| GET    | `/api/incidents/:id/decision/feedback`              | Window state and any outcome recorded |
+| GET    | `/api/corrections`                                  | Human-correction label corpus        |
+| GET    | `/api/decisions/outcomes`                           | Outcomes per detection source and per decision source |
 | GET    | `/api/incidents/:id/actions`                        | Action plan with execution status    |
 | POST   | `/api/incidents/:id/mitigate`                       | Mark a broker incident CONTAINED     |
 | POST   | `/api/incidents/:id/actions/:actionId/execute`      | Mock incidents only — broker incidents return 409 `USE_DECISION_APPROVE` |
@@ -395,6 +440,12 @@ matches the types in `frontend/src/types.ts`.
 
 ## New Features
 
+- **v2.3.0 — Phase A: make what exists safe and modular.** The system could already dispatch actions to tools that act on a network, and did so with **no authentication at all** — R1, the highest item on the risk register, was scheduled last. Phase A moves it first and closes the four governance gaps around it.
+  - **A1 — Authentication.** Pre-shared API keys with roles (`ingest` / `viewer` / `analyst` / `service` / `admin`) on **both** the broker and the UI API; `Authorization: Bearer` accepted so an IdP drops in later without touching call sites. `allow_origins=['*']` is gone and `'*'` is now refused rather than honoured. `/health` stays open for liveness but discloses the model, database, SOAR sink and autopilot policy only to an authenticated caller. **The approver is the authenticated identity, never a name in the request body** — only a confidential client holding `actor:assert` (the UI API, which authenticated the human) may name the operator it acts for. With no keys configured a random one is minted and printed, so there is no unauthenticated mode to fall into.
+  - **A2 — Action risk classification (Rule 7).** Every action is classified `READ` / `LOW_WRITE` / `HIGH_WRITE` / `DESTRUCTIVE` from a keyword registry, and an action nobody recognises is **HIGH_WRITE, never READ**. Each class declares what its target must *be*, and the target is parsed against it before dispatch — the three malformed targets a real Ollama run produced (`Network Segment / Firewall Rules`, `Suricata/Splunk Indexer`, `10.4.103.18 (PID of PowerShell)`) are all rejected as non-addresses. `DESTRUCTIVE` is refused outright unless a site enables it deliberately. **Autopilot now gates on the risk class of the plan, not only on confidence** (benchmarked: confidence is uncalibrated and unstable), and one bad action sends the whole plan to a human.
+  - **A3 — `LLMProvider` abstraction (Rule 5).** `soc_orchestrator` no longer imports `llm` directly. `OllamaProvider` wraps the benchmarked local path; **`LLM_PROVIDER=echo`** runs ingest → decision → dispatch end-to-end with no model, and deliberately returns *no* verdict so the rules path decides — synthesising one would be output that parses cleanly while nothing reasoned about the detection.
+  - **A4 — Human edit, captured as a label.** Approve/Reject records *that* the model was wrong; only an edit records *what right looks like*. Analysts can now change the verdict and rewrite the action plan, and the delta (verdict before/after, actions added/removed, the analyst's note) is persisted to `decision_corrections` with `decision_source='human'`. This is the training corpus for RAG and precedent-gated autonomy, and it is capturable **only while a human is still in the loop**. A plan that could never dispatch is refused at edit time (422); an executed plan is not editable at all (409) because it is the record of what was sent.
+  - **A5 — Outcomes and the feedback window.** `TRUE_POSITIVE` / `FALSE_POSITIVE` / `REOPENED` recorded against a settled decision within `DECISION_FEEDBACK_WINDOW_HOURS` (default 72) — the judgement perishes, so it is asked for while it is still knowable. Every detection now carries a **`detection_source`**, and outcomes roll up per source as well as per decision source (R8): a bad upstream rule and a bad model produce the same symptom, and only the attribution tells them apart.
 - `orchestrator/` stores AI explanations (assessments, evidence, recommended actions) in SQLite.
 - New backend adapter exposes persisted explanations at `/api/incidents/:id/explanations`.
 - The dashboard can now retrieve both in-memory incident details and persisted explanation records.
@@ -414,6 +465,6 @@ matches the types in `frontend/src/types.ts`.
 
 ## Authorship
 
-**Version:** 2.2.1 (see `VERSION` — increment on each release commit)
+**Version:** 2.3.0 (see `VERSION` — increment on each release commit)
 
 Written by J.Ekrami, co-written with GitHub Copilot, Composer (Cursor AI), and Claude (Opus 5).

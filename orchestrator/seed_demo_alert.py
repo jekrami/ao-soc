@@ -13,6 +13,8 @@ import httpx
 
 import db
 import soc_orchestrator as broker
+from auth import API_KEY_HEADER, DECISIONS_ACT, DETECTIONS_WRITE, ensure_client_key
+from llm_provider import ScriptedProvider, set_provider
 
 
 async def reset_demo_data() -> None:
@@ -292,17 +294,21 @@ async def seed_alerts(count: int, seed: int | None, reset: bool = True) -> list[
     scenarios = [build_scenario(i, rng) for i in order]
     call_index = 0
 
-    async def mock_call_ollama(_prompt: str) -> str:
+    def scripted(_prompt: str) -> str:
         nonlocal call_index
         _, llm = scenarios[call_index]
         call_index += 1
         return json.dumps(llm)
 
-    broker.call_ollama = mock_call_ollama
+    set_provider(ScriptedProvider(scripted))
     transport = httpx.ASGITransport(app=broker.app)
     created_ids: list[str] = []
 
-    async with httpx.AsyncClient(transport=transport, base_url='http://test') as client:
+    # The seeder is a client like any other — it carries a key (R1).
+    headers = {API_KEY_HEADER: ensure_client_key(DETECTIONS_WRITE)}
+    act_headers = {API_KEY_HEADER: ensure_client_key(DECISIONS_ACT)}
+
+    async with httpx.AsyncClient(transport=transport, base_url='http://test', headers=headers) as client:
         for alert, _ in scenarios:
             response = await client.post('/splunk-alert', json=alert)
             if response.status_code != 201:
@@ -312,7 +318,7 @@ async def seed_alerts(count: int, seed: int | None, reset: bool = True) -> list[
 
         contain_count = max(1, count // 4)
         for alert_id in rng.sample(created_ids, k=min(contain_count, len(created_ids))):
-            mitigated = await client.post(f'/api/alerts/{alert_id}/mitigate')
+            mitigated = await client.post(f'/api/alerts/{alert_id}/mitigate', headers=act_headers)
             if mitigated.status_code != 200:
                 print(mitigated.text, file=sys.stderr)
                 sys.exit(1)

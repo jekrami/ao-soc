@@ -29,6 +29,10 @@ security_events = Table(
     Column('incident_analysis', String, nullable=False, default=''),
     Column('mitigation_status', String(16), nullable=False, default='PENDING'),
     Column('raw_payload', String, nullable=True),
+    # Which tool raised this detection. Rule 9 / R8: AI-SOC's decision quality
+    # is bounded by upstream detection quality, so every outcome has to be
+    # attributable to its source. Splunk is the first value, not the only one.
+    Column('detection_source', String(64), nullable=False, default='unknown'),
     Column('enrichment_json', String, nullable=True),
     Column('created_at', DateTime, nullable=False),
     Column('updated_at', DateTime, nullable=False),
@@ -76,10 +80,65 @@ alert_soar_actions = Table(
     Column('action_type', String(128), nullable=False),
     Column('target', String(128), nullable=False),
     Column('reason', String, nullable=False, default=''),
+    # Rule 7: every dispatched action is class-declared and shape-validated.
+    # Stamped when the plan is created, so a blocked action is visible before
+    # anyone clicks approve rather than only in the execution receipt.
+    Column('risk_class', String(16), nullable=False, default='HIGH_WRITE'),
+    Column('target_kind', String(16), nullable=False, default='any'),
+    Column('policy_reason', String, nullable=True),
     Column('status', String(32), nullable=False, default='PENDING'),
     Column('result_json', String, nullable=True),
     Column('created_at', DateTime, nullable=False),
     Column('completed_at', DateTime, nullable=True),
+)
+
+# --- Phase A: the label corpus -------------------------------------------
+# Approve/Reject records *that* the model was wrong, never *what right looks
+# like*. An edit records the correction, and the triple (situation, proposal,
+# human correction) is the only training corpus for RAG and precedent-gated
+# autonomy. It is capturable only while a human is still in the loop, which is
+# why it is built now and not with the RAG milestone that consumes it.
+
+decision_corrections = Table(
+    'decision_corrections',
+    metadata,
+    Column('id', Integer, primary_key=True, autoincrement=True),
+    Column('alert_id', String(64), nullable=False, index=True),
+    Column('decision_id', Integer, ForeignKey('tier2_decisions.id', ondelete='CASCADE'), nullable=False, index=True),
+    Column('corrected_by', String(128), nullable=False),
+    # What the machine proposed, and which path produced it.
+    Column('original_decision', String(32), nullable=False),
+    Column('original_source', String(16), nullable=False, default='rules'),
+    Column('original_confidence', Integer, nullable=False, default=0),
+    Column('corrected_decision', String(32), nullable=False),
+    Column('verdict_changed', Boolean, nullable=False, default=False),
+    Column('plan_changed', Boolean, nullable=False, default=False),
+    # Full before/after plans plus the computed delta — the delta is what a
+    # future evaluator reads, the snapshots are what makes it checkable.
+    Column('actions_before_json', String, nullable=True),
+    Column('actions_after_json', String, nullable=True),
+    Column('action_delta_json', String, nullable=True),
+    Column('note', String, nullable=True),
+    # R8: a correction is only interpretable against the tool that detected it.
+    Column('detection_source', String(64), nullable=False, default='unknown'),
+    Column('created_at', DateTime, nullable=False),
+)
+
+decision_outcomes = Table(
+    'decision_outcomes',
+    metadata,
+    Column('id', Integer, primary_key=True, autoincrement=True),
+    Column('alert_id', String(64), nullable=False, index=True),
+    Column('decision_id', Integer, ForeignKey('tier2_decisions.id', ondelete='CASCADE'), nullable=False, index=True),
+    Column('outcome', String(32), nullable=False),
+    Column('decision_type', String(32), nullable=False),
+    Column('decision_source', String(16), nullable=False, default='rules'),
+    # R8: attribute the outcome to the tool that raised the detection, or a bad
+    # upstream rule reads as bad AI.
+    Column('detection_source', String(64), nullable=False, default='unknown'),
+    Column('reported_by', String(128), nullable=False),
+    Column('note', String, nullable=True),
+    Column('created_at', DateTime, nullable=False),
 )
 
 # --- Dashboard v2 explanation tables ---
@@ -136,12 +195,19 @@ async def init_db() -> None:
         await conn.run_sync(metadata.create_all)
         await conn.run_sync(_migrate_security_events)
         await conn.run_sync(_migrate_tier2_decisions)
+        await conn.run_sync(_migrate_alert_soar_actions)
 
 
 def _migrate_security_events(conn) -> None:
     cols = {row[1] for row in conn.execute(text('PRAGMA table_info(security_events)')).fetchall()}
     if 'enrichment_json' not in cols:
         conn.execute(text('ALTER TABLE security_events ADD COLUMN enrichment_json TEXT'))
+    if cols and 'detection_source' not in cols:
+        # Pre-2.3 rows all arrived on the Splunk webhook, but nothing recorded
+        # it — 'unknown' says that honestly rather than asserting a vendor.
+        conn.execute(text(
+            "ALTER TABLE security_events ADD COLUMN detection_source TEXT NOT NULL DEFAULT 'unknown'"
+        ))
 
 
 def _migrate_tier2_decisions(conn) -> None:
@@ -151,6 +217,27 @@ def _migrate_tier2_decisions(conn) -> None:
         conn.execute(text(
             "ALTER TABLE tier2_decisions ADD COLUMN decision_source TEXT NOT NULL DEFAULT 'rules'"
         ))
+
+
+def _migrate_alert_soar_actions(conn) -> None:
+    """Pre-2.3 actions were dispatched unclassified.
+
+    They are backfilled as HIGH_WRITE rather than READ: nothing assessed them,
+    and an unassessed action is not a safe one (see action_policy).
+    """
+    cols = {row[1] for row in conn.execute(text('PRAGMA table_info(alert_soar_actions)')).fetchall()}
+    if not cols:
+        return
+    if 'risk_class' not in cols:
+        conn.execute(text(
+            "ALTER TABLE alert_soar_actions ADD COLUMN risk_class TEXT NOT NULL DEFAULT 'HIGH_WRITE'"
+        ))
+    if 'target_kind' not in cols:
+        conn.execute(text(
+            "ALTER TABLE alert_soar_actions ADD COLUMN target_kind TEXT NOT NULL DEFAULT 'any'"
+        ))
+    if 'policy_reason' not in cols:
+        conn.execute(text('ALTER TABLE alert_soar_actions ADD COLUMN policy_reason TEXT'))
 
 
 def _normalize_steps(steps: List) -> List[dict]:
@@ -211,6 +298,7 @@ def _serialize_event(row, steps: List[dict]) -> dict:
         'threat_severity': row['threat_severity'],
         'incident_analysis': row['incident_analysis'],
         'mitigation_status': row['mitigation_status'],
+        'detection_source': row.get('detection_source') or 'unknown',
         'recommended_containment_steps': steps,
         'created_at': row['created_at'].isoformat() if row['created_at'] else None,
         'updated_at': row['updated_at'].isoformat() if row['updated_at'] else None,
@@ -235,6 +323,7 @@ async def create_security_event(
     raw_payload: Optional[str] = None,
     alert_id: Optional[str] = None,
     enrichment: Optional[dict] = None,
+    detection_source: str = 'unknown',
 ) -> dict:
     now = _utcnow()
     alert_id = alert_id or f'ALT-{uuid.uuid4().hex[:12].upper()}'
@@ -252,6 +341,7 @@ async def create_security_event(
             incident_analysis=incident_analysis,
             mitigation_status='PENDING',
             raw_payload=raw_payload,
+            detection_source=(detection_source or 'unknown').strip() or 'unknown',
             enrichment_json=enrichment_json,
             created_at=now,
             updated_at=now,

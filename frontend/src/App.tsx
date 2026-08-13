@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { ApiKeyGate } from '@/components/layout/ApiKeyGate';
 import { TopNav } from '@/components/layout/TopNav';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { IncidentsListPage } from '@/pages/IncidentsListPage';
@@ -14,6 +15,7 @@ export default function App() {
   const { t } = useTranslation();
 
   return (
+    <ApiKeyGate>
     <div className="min-h-screen flex flex-col bg-bg text-fg">
       <TopNav />
       <main className="flex-1 px-4 lg:px-6 py-4 lg:py-5 max-w-[1800px] w-full mx-auto">
@@ -33,5 +35,6 @@ export default function App() {
         <span className="font-mono">{t('footer.pipeline')}</span>
       </footer>
     </div>
+    </ApiKeyGate>
   );
 }

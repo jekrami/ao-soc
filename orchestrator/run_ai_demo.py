@@ -1,8 +1,8 @@
 """AI test mode: mocked alerts, real inference, real SOAR delivery.
 
 The difference from ``seed_demo_alert.py`` / ``simulate_alerts.py`` is what is
-faked. Those patch ``call_ollama`` and hand the broker a canned answer — nothing
-reasons about anything. This script fakes only the *source* (synthetic Suricata
+faked. Those install a ``ScriptedProvider`` and hand the broker a canned answer —
+nothing reasons about anything. This script fakes only the *source* (synthetic Suricata
 alerts instead of Splunk) and then posts them to a **running broker over HTTP**,
 so the model on the GPU actually reads each alert, writes the enrichment, and
 returns its own Tier-2 verdict.
@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import random
 import sys
 import time
@@ -48,11 +49,21 @@ async def _preflight(client: httpx.AsyncClient, broker_url: str) -> dict:
         raise SystemExit(1)
 
     health = response.json()
+    if not health.get('authenticated'):
+        print(
+            f'ERROR: broker rejected the API key in BROKER_API_KEY.\n'
+            f'       Set it to a key the broker was started with '
+            f'(BROKER_API_KEYS="ai-demo:analyst:<secret>").',
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+
     autopilot = health.get('autopilot') or {}
     soar = health.get('soar') or {}
+    llm = health.get('llm') or {}
 
-    print(f'Broker      : {broker_url}')
-    print(f'Model       : {health.get("model")} @ {health.get("ollama_endpoint")}')
+    print(f'Broker      : {broker_url} (as {(health.get("principal") or {}).get("name")})')
+    print(f'Model       : {health.get("model")} @ {llm.get("endpoint") or llm.get("provider")}')
     print(f'SOAR sink   : {soar.get("driver")} -> {soar.get("log_file") or "(none)"}')
     if autopilot.get('enabled'):
         print(
@@ -84,8 +95,23 @@ async def run_ai_demo(
     pending = 0
     failures = 0
 
+    # This script drives a *separate* broker process, so it cannot mint its own
+    # key the way the in-process seeder does — the operator supplies one (R1).
+    api_key = (os.getenv('BROKER_API_KEY') or '').strip()
+    if not api_key:
+        print(
+            'ERROR: BROKER_API_KEY is not set. The broker requires an API key on\n'
+            '       every ingest, and this script posts over HTTP. Start the broker\n'
+            '       with BROKER_API_KEYS="ai-demo:analyst:<secret>" and export the\n'
+            '       same secret as BROKER_API_KEY here.',
+            file=sys.stderr,
+        )
+        return 1
+
     # Generous timeout: one alert = one full LLM generation on the broker.
-    async with httpx.AsyncClient(base_url=broker_url, timeout=300) as client:
+    async with httpx.AsyncClient(
+        base_url=broker_url, timeout=300, headers={'X-API-Key': api_key}
+    ) as client:
         await _preflight(client, broker_url)
 
         print(f'{"#":>3}  {"severity":<9} {"decision":<12} {"src":<6} {"conf":>5}  {"status":<10} {"secs":>6}  signature')

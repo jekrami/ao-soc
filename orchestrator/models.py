@@ -141,3 +141,37 @@ class ApproveDecisionRequest(BaseModel):
 class RejectDecisionRequest(BaseModel):
     rejected_by: str = 'analyst'
     note: Optional[str] = None
+
+
+class EditActionRequest(BaseModel):
+    """One action in an analyst-edited plan. Validated by action_policy."""
+
+    id: Optional[str] = None
+    action: str
+    target: str
+    reason: str = ''
+
+
+class EditDecisionRequest(BaseModel):
+    """A human correction of the machine's proposal.
+
+    Every field is optional so an analyst can change only the verdict, only the
+    plan, or both. ``actions=None`` means "leave the plan alone"; an explicit
+    empty list means "this verdict needs no action", which is a real and
+    different statement.
+    """
+
+    edited_by: str = 'analyst'
+    decision: Optional[str] = None
+    rationale: Optional[str] = None
+    risk_of_action: Optional[str] = None
+    actions: Optional[List[EditActionRequest]] = None
+    note: Optional[str] = None
+
+
+class RecordOutcomeRequest(BaseModel):
+    """What actually happened, reported back inside the feedback window."""
+
+    outcome: str
+    reported_by: str = 'analyst'
+    note: Optional[str] = None

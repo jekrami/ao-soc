@@ -4,10 +4,10 @@
 |---|---|
 | **Project** | AI-SOC / AO-SOC Command Center |
 | **Document** | Master Project Plan, Milestones & Coding-Agent Roadmap |
-| **Version** | 2.1 (replan of v1.0; system boundary corrected in v2.1) |
+| **Version** | 2.2 (replan of v1.0; boundary corrected in v2.1; **Phase A delivered in v2.2**) |
 | **Supersedes** | Plan v1.0, Summer 2026 |
 | **Date** | Summer 2026 |
-| **Status** | Re-sequenced against implemented reality, re-scoped against the tool boundary |
+| **Status** | Re-sequenced against implemented reality, re-scoped against the tool boundary; Phase A complete in `ao-soc` 2.3.0 |
 | **Writer** | J.Ekrami |
 | **Co-writer** | Claude (Opus 5) |
 | **Copyright** | © J.Ekrami-Labs |
@@ -124,13 +124,13 @@ integration, stated in the evidence column.
 | M05 | Detection Engine | 🔴 | **⬛ EXT** | **Removed from scope.** Detection is the upstream tool's job. Obligation: consume detections from ≥2 vendor shapes without special-casing |
 | M06 | Correlation Engine | 🔴 | 🔴 | **Stays in scope, redefined** — cross-tool correlation of detections into a situation. Today **1 alert = 1 incident, permanently** |
 | M07 | Threat Intelligence | 🔴 | ⬛→🔴 | Feeds/TIP **external**. In scope: a TI **client** to verify LLM-asserted IOCs and techniques. Today: MITRE mapping is LLM-asserted and unverified |
-| M08 | **AI Analysis Engine** | 🔴 | **🟢** | Structured output (severity, confidence, evidence, reasoning, MITRE, recommendations), validated, JSON-enforced, benchmarked across 14 local models |
+| M08 | **AI Analysis Engine** | 🔴 | **🟢** | Structured output (severity, confidence, evidence, reasoning, MITRE, recommendations), validated, JSON-enforced, benchmarked across 14 local models, **behind an `LLMProvider` abstraction with a model-free `echo` mode** (A3) |
 | M09 | RAG & Knowledge Base | 🔴 | 🔴 | None. **Core scope** — precedent is the autonomy gate (§7) |
-| M10 | **AI SOC Analyst / Tier-2** | 🔴 | **🟡→🟢** | Verdict (`CONTAIN`/`ESCALATE`/`INVESTIGATE`/`MONITOR`/`IGNORE`) + confidence + rationale + risk-of-action + bundled action plan + human approval + provenance. Missing: investigation & attack-reconstruction depth |
-| M11 | Incident & Case Management | 🔴 | 🟡 | Incident object, timeline, evidence, status lifecycle, archive, audit trail. Missing: assignment, escalation, analyst notes, **sync to the external system of record** |
-| M12 | Response & Integration | 🔴 | 🟡 | Playbook plan, policy gate, background executor, pluggable SOAR adapter, action audit with receipts. Missing: real connectors, **action risk classification** |
-| M13 | SOC Dashboard | 🔴 | **🟢** | 7 routes, EN/FA + RTL, executive KPIs, MITRE heatmap, live telemetry, Tier-2 panel, archive |
-| M14 | Security & Governance | 🔴 | 🔴 | **Zero authentication, zero RBAC, `allow_origins=['*']`, no secrets management** |
+| M10 | **AI SOC Analyst / Tier-2** | 🔴 | **🟡→🟢** | Verdict (`CONTAIN`/`ESCALATE`/`INVESTIGATE`/`MONITOR`/`IGNORE`) + confidence + rationale + risk-of-action + bundled action plan + human approval **+ human edit captured as a label** (A4) + provenance (`llm`/`rules`/`human`). Missing: investigation & attack-reconstruction depth |
+| M11 | Incident & Case Management | 🔴 | 🟡 | Incident object, timeline, evidence, status lifecycle, archive, audit trail, **`decision_outcomes` + feedback window** (A5). Missing: assignment, escalation, analyst notes, **sync to the external system of record** |
+| M12 | Response & Integration | 🔴 | 🟡 | Playbook plan, policy gate, background executor, pluggable SOAR adapter, action audit with receipts, **action risk classification + target-shape validation** (A2). Missing: real connectors |
+| M13 | SOC Dashboard | 🔴 | **🟢** | 7 routes, EN/FA + RTL, executive KPIs, MITRE heatmap, live telemetry, Tier-2 panel with edit + outcome capture, archive |
+| M14 | Security & Governance | 🔴 | 🟡 | **A1 delivered:** API-key authentication with roles on both services, CORS allow-list, authenticated approver identity, no unauthenticated path. Missing: real IdP/SSO, per-object RBAC, secrets management, TLS termination |
 | M15 | Production Hardening | 🔴 | 🔴 | No Docker, monitoring, backup, HA |
 | M16 | Pilot SOC | 🔴 | 🔴 | — |
 | M17 | Production Release | 🔴 | 🔴 | — |
@@ -146,19 +146,24 @@ Decision Store                 ████░░░░░░░░░░░░�
 Detection Engine               ────── external ──────  n/a
 Correlation → Situation        ░░░░░░░░░░░░░░░░░░░░   0%
 Threat-Intel Client            ░░░░░░░░░░░░░░░░░░░░   0%
-AI Analysis                    ██████████████████░░  90%
-RAG / Precedent                ░░░░░░░░░░░░░░░░░░░░   0%
-AI SOC Analyst                 ██████████████░░░░░░  70%
-Case Management                ██████████░░░░░░░░░░  50%
-Response Dispatch              ██████████░░░░░░░░░░  50%
+AI Analysis                    ███████████████████░  95%
+RAG / Precedent                ░░░░░░░░░░░░░░░░░░░░   0%  (corpus capture live)
+AI SOC Analyst                 ████████████████░░░░  80%
+Case Management                ████████████░░░░░░░░  60%
+Response Dispatch              █████████████░░░░░░░  65%
 Dashboard                      ██████████████████░░  90%
-Security / Governance          ░░░░░░░░░░░░░░░░░░░░   0%
+Security / Governance          ████████░░░░░░░░░░░░  40%
 Production                     ░░░░░░░░░░░░░░░░░░░░   0%
 ```
 
 **Two corrections, one profile.** The intelligence layer is the mature part; the gaps are
 (a) the integration surface where detections arrive and decisions leave, and (b) all
 governance. The log-platform work that dominated v1.0's critical path is no longer on it.
+
+**v2.2 update.** Phase A closed the governance half of (b) and started the corpus that
+M09 will consume. RAG itself remains 0% — but human corrections are now *being captured*,
+which was the perishable part (§7). The remaining gap is (a): the integration surface, and
+that is Phase B.
 
 ---
 
@@ -215,10 +220,10 @@ upper-layer features before contract 2 is frozen means rewriting the AI layer tw
 | 2 — Milestone by milestone | ⚠️ | v2.x shipped features across M08/M10/M12/M13 simultaneously. Reinstated below |
 | 3 — Never break existing functionality | ✅ | `test_broker.py`, `testUnify.js`, typecheck, build gate every change |
 | 4 — Preserve raw security evidence | ✅ | `raw_payload` stored verbatim; archive is append-only; SOAR receipts immutable |
-| 5 — **AI must be modular** | ❌ | `llm.py` is Ollama-specific and imported directly by `soc_orchestrator`. **No `LLMProvider` abstraction.** Cheap now, expensive after RAG |
-| 6 — AI output must be structured | ✅ | JSON-enforced (`format: json`), vocabulary-gated, `decision_source` provenance |
-| 7 — **Human approval for dangerous actions** | ⚠️ | Approval gate exists; **action risk classification (READ / LOW-RISK WRITE / HIGH-RISK WRITE / DESTRUCTIVE) does not.** Policy gate is 3 localhost strings |
-| 8 — Everything observable | ⚠️ | `/health` + INFO logging done. No metrics, no latency histograms |
+| 5 — **AI must be modular** | ✅ *(v2.2)* | `LLMProvider` abstraction with `OllamaProvider`, a model-free `EchoProvider` (`LLM_PROVIDER=echo`) and a `ScriptedProvider` for the demo tooling. `soc_orchestrator` no longer imports `llm` |
+| 6 — AI output must be structured | ✅ | JSON-enforced (`format: json`), vocabulary-gated, `decision_source` provenance (now `llm` / `rules` / `human`) |
+| 7 — **Human approval for dangerous actions** | ✅ *(v2.2)* | Approval gate plus `action_policy.py`: `READ` / `LOW_WRITE` / `HIGH_WRITE` / `DESTRUCTIVE`, unknown verbs default to HIGH_WRITE, per-class target-shape validation before dispatch, autopilot risk ceiling, DESTRUCTIVE off unless deliberately enabled |
+| 8 — Everything observable | ⚠️ | `/health` (auth-scoped) + INFO logging done; risk class, policy reason and correction/outcome trails are queryable. No metrics, no latency histograms |
 | **9 — Every external tool sits behind an adapter** *(new, v2.1)* | ⚠️ | Corollary of §2 and the sibling of Rule 5. SOAR already complies; **intake does not** — `/splunk-alert` names its vendor in the route. No tool name may appear in core logic |
 
 ### Rule 7 is not theoretical
@@ -243,14 +248,14 @@ validity of what it dispatches is not a detail.
 
 | # | Risk | Severity | Detail |
 |---|---|---|---|
-| **R1** | **Unauthenticated action execution** | **Critical** | Any host that can reach `:8500` can `POST /splunk-alert`. With `TIER2_AUTOPILOT=1` that ingest path executes a SOAR plan with no human and no credential. Today it appends JSONL; with a real connector it is an unauthenticated remote "isolate host" primitive. **M14 was scheduled last (Sprint 12).** |
-| **R2** | Correlation retrofit rewrites the AI layer | High | See §4. Mitigated by freezing both contracts before more upper-layer work |
-| **R3** | No LLM abstraction (Rule 5) | Medium | Provider swap or A/B evaluation currently requires editing the ingest path |
-| **R4** | Unverified MITRE / threat claims | Medium | Techniques are LLM-asserted with no feed to check against; they render in the heatmap as fact. Where the upstream tool asserts a technique, prefer it and mark the source |
-| **R5** | Human corrections are not captured | Medium | Approve/Reject discards the label needed for RAG and for the autonomy ramp (§7) |
-| **R6** | Confidence-only autonomy gate | Medium | Benchmarked: `llama3.2:3b` returns identical confidence on every alert including an authorized scanner |
+| ~~**R1**~~ | ~~**Unauthenticated action execution**~~ | **Closed v2.2** | API-key authentication with roles on the broker and the UI API; ingest, read and act are separate scopes; CORS is an allow-list and `'*'` is refused; the approver is the authenticated identity, not a body field. With no keys configured a key is minted and printed rather than serving open. *Residual:* pre-shared keys are not an IdP — M14 completes with SSO, per-object RBAC and TLS |
+| **R2** | Correlation retrofit rewrites the AI layer | High | See §4. Mitigated by freezing both contracts before more upper-layer work. **Now the top open risk** |
+| ~~**R3**~~ | ~~No LLM abstraction (Rule 5)~~ | **Closed v2.2** | `LLMProvider` + `OllamaProvider` / `EchoProvider`; provider swap is an env var |
+| **R4** | Unverified MITRE / threat claims | Medium | Techniques are LLM-asserted with no feed to check against; they render in the heatmap as fact. Where the upstream tool asserts a technique, prefer it and mark the source. Phase D |
+| ~~**R5**~~ | ~~Human corrections are not captured~~ | **Closed v2.2** | `decision_corrections` stores verdict before/after, the plan delta and the analyst's note, with `decision_source='human'`. `GET /api/corrections` exposes the corpus |
+| **R6** | Confidence-only autonomy gate | **Low** *(v2.2)* | Autopilot now also gates on the **action risk class** of the plan and on target-shape validity — factual properties of what would be dispatched, unlike the self-reported number. Still open in full until §7's precedent gate replaces the threshold (Phase D) |
 | **R7** | **Vendor coupling at the intake** *(v2.1)* | **High** | Rule 9. The route, the field extractor and the DB columns are Splunk/Suricata-shaped. A second detection source today means a second code path — which is the failure the whole §2 boundary is meant to prevent |
-| **R8** | **Decision quality is bounded by upstream detection quality** *(v2.1)* | Medium | AI-SOC cannot see what the SIEM did not alert on, and inherits its false-positive rate. Accepted deliberately — but outcomes must be attributed **per detection source**, or a bad upstream rule reads as bad AI |
+| **R8** | **Decision quality is bounded by upstream detection quality** *(v2.1)* | Medium | AI-SOC cannot see what the SIEM did not alert on, and inherits its false-positive rate. Accepted deliberately. **Now measurable (v2.2):** every detection carries a `detection_source`, and `GET /api/decisions/outcomes` reports precision per source as well as per decision source, so a bad upstream rule no longer reads as bad AI |
 
 ---
 
@@ -260,19 +265,25 @@ The intended production flow, and where each phase stands:
 
 ```text
 1. AI receives situation, produces verdict + playbook     ✅ built (on alerts, not situations)
-2. Human reads / EDITS                                    ❌ read + approve/reject only
-3. Confirmed → external SOAR / EDR                        ✅ built (stub connectors)
-4. Results → RAG                                          ❌ not built
-5. Human role diminishes                                  ⚠️ static threshold, nothing learns
-6. Autopilot on RAG-enriched precedent                    ❌ confidence-only today
+2. Human reads / EDITS                                    ✅ built v2.2 — edit + labelled correction
+3. Confirmed → external SOAR / EDR                        ✅ built (stub connectors, risk-classified)
+4. Results → RAG                                          ⚠️ outcomes captured; RAG not built
+5. Human role diminishes                                  ⚠️ risk-class ceiling added, nothing learns yet
+6. Autopilot on RAG-enriched precedent                    ❌ threshold + risk class today
 ```
 
-**Phase 2 is the perishable one.** Approve/Reject records *that* the model was wrong,
-never *what right looks like*. An edit records the correction — verdict `CONTAIN`→
-`INVESTIGATE`, action removed, target changed — and that triple (situation, proposal,
-human correction) is the only training corpus for phases 4-6. It can only be captured
-while a human is still in the loop. Running Stage 2 for months on Approve/Reject arrives
-at Stage 3 with an audit trail and no corpus.
+**Phase 2 was the perishable one, and it is now captured.** Approve/Reject records
+*that* the model was wrong, never *what right looks like*. An edit records the
+correction — verdict `CONTAIN`→`INVESTIGATE`, action removed, target changed — and that
+triple (situation, proposal, human correction) is the only training corpus for phases
+4-6. It can only be captured while a human is still in the loop. Running Stage 2 for
+months on Approve/Reject arrives at Stage 3 with an audit trail and no corpus.
+
+Since v2.2 every edit writes a `decision_corrections` row carrying the original verdict
+and its source, the corrected verdict, the added/removed actions and the analyst's note,
+and every settled decision can be judged `TRUE_POSITIVE` / `FALSE_POSITIVE` / `REOPENED`
+inside a 72-hour window. Phases 4-6 now have an input that is growing on every shift
+rather than one that has to be reconstructed later.
 
 **Phase 6 gate must be precedent, not confidence:**
 
@@ -289,24 +300,31 @@ before anything touching a domain controller.
 
 Phases replace v1.0 §24-35. Each ends with v1.0 §37's full Definition of Done.
 
-### Phase A — Make what exists safe and modular *(next)*
+### Phase A — Make what exists safe and modular ✅ *(delivered, `ao-soc` 2.3.0)*
 
 Rationale: the system can already dispatch actions to tools that act on the network.
 Governance cannot stay scheduled last.
 
-| Task | Milestone | Addresses |
-|---|---|---|
-| A1. API authentication on the broker + UI API; drop `allow_origins=['*']` | M14 | **R1** |
-| A2. Action risk classification `READ / LOW_WRITE / HIGH_WRITE / DESTRUCTIVE`; autopilot restricted to declared classes; target-shape validation before dispatch | M12/M14 | Rule 7, R1 |
-| A3. `LLMProvider` abstraction (`OllamaProvider` first); `soc_orchestrator` stops importing `llm` directly | M08 | **Rule 5**, R3 |
-| A4. Human **edit** of verdict and action plan; persist the delta as a labelled correction | M10/M11 | **R5**, Phase 2 |
-| A5. `decision_outcome` + feedback window (TRUE_POSITIVE / FALSE_POSITIVE / REOPENED), attributed to the detection source | M11 | R5, R8 |
+| Task | Milestone | Addresses | State |
+|---|---|---|---|
+| A1. API authentication on the broker + UI API; drop `allow_origins=['*']` | M14 | **R1** | ✅ Roles `ingest`/`viewer`/`analyst`/`service`/`admin`; `X-API-Key` or `Bearer`; approver is the authenticated identity; CORS allow-list, `'*'` refused; no unauthenticated mode exists |
+| A2. Action risk classification `READ / LOW_WRITE / HIGH_WRITE / DESTRUCTIVE`; autopilot restricted to declared classes; target-shape validation before dispatch | M12/M14 | Rule 7, R1 | ✅ `action_policy.py`; unknown verb ⇒ HIGH_WRITE; per-class target parsing; `ACTION_MAX_AUTOPILOT_RISK` ceiling; DESTRUCTIVE off by default; class + reason persisted per action |
+| A3. `LLMProvider` abstraction (`OllamaProvider` first); `soc_orchestrator` stops importing `llm` directly | M08 | **Rule 5**, R3 | ✅ Plus `EchoProvider` (model-free mode) and `ScriptedProvider` for the demo tooling |
+| A4. Human **edit** of verdict and action plan; persist the delta as a labelled correction | M10/M11 | **R5**, Phase 2 | ✅ `POST .../decision/edit`, `decision_corrections`, `decision_source='human'`, `GET /api/corrections`; refuses undispatchable plans (422) and executed ones (409) |
+| A5. `decision_outcome` + feedback window (TRUE_POSITIVE / FALSE_POSITIVE / REOPENED), attributed to the detection source | M11 | R5, R8 | ✅ `decision_outcomes`, 72h default window, `detection_source` on every event, precision per source |
 
 **DoD:** no unauthenticated path can cause an action; every dispatched action is
 class-declared and shape-validated; the provider is swappable; every human correction is
-stored as a label.
+stored as a label. — **Met.** Verified by `orchestrator/test_broker.py` (401/403 per role
+on the real ASGI app, the three measured malformed targets rejected, an edited verdict
+stored as a label, outcomes attributed) and `backend/testUnify.js`.
 
-### Phase B — Freeze both contracts, build cross-tool correlation
+**Deliberately deferred to M14 proper:** real IdP/SSO, per-object RBAC, secrets
+management and TLS termination. Pre-shared keys are the control that had to exist before
+the system could act on a network, not the final identity story — the scope vocabulary
+and the `Bearer` path are what an IdP attaches to without changing any call site.
+
+### Phase B — Freeze both contracts, build cross-tool correlation *(next)*
 
 | Task | Milestone | Note |
 |---|---|---|
@@ -377,12 +395,12 @@ The AI layer must remain provider-independent regardless (Rule 5, task A3).
 > dispatch, dashboard) are already built and working, while the integration surface and
 > all security governance are not. Do not rebuild the working upper layers, and do not
 > build a SIEM, a log store, a detection engine, a threat-intelligence platform or a SOAR
-> runtime. The immediate priority is Phase A: authentication, action risk classification,
-> LLM provider abstraction, and capturing human corrections as labels — because the system
-> can already dispatch actions that act on a network and currently does so without
-> authentication, and because human corrections are only capturable while a human is in
-> the loop. The next architectural artifacts are the Detection Intake contract and the
-> Security Situation contract; do not write adapters before the first is frozen, or
+> runtime. **Phase A is done** (2.3.0): every route is authenticated and role-scoped,
+> every action is risk-classified and shape-validated before dispatch, the model sits
+> behind an `LLMProvider`, and every human correction and outcome is stored as a label —
+> do not regress any of these, and add no route that can cause an action without a scope.
+> The immediate priority is now Phase B: the **Detection Intake contract** and the
+> **Security Situation contract**. Do not write adapters before the first is frozen, or
 > upper-layer features before the second is. Preserve raw detection evidence, require
 > structured AI output, classify every action by risk, and consider a milestone complete
 > only after implementation, testing, documentation, logging, error handling and
@@ -409,4 +427,5 @@ instead of to log parsers.
 |---|---|---|---|
 | 1.0 | Summer 2026 | Initial master plan, milestones M00-M17 | J.Ekrami |
 | 2.0 | Summer 2026 | Replan against implemented reality: corrected status (intelligence layers built, data foundation and governance not), Security Situation contract as next architectural artifact, governance moved from last to first, autonomy ramp with edit-capture, measured model selection | J.Ekrami / Claude (Opus 5) |
+| 2.2 | Summer 2026 | **Phase A delivered** (`ao-soc` 2.3.0). A1 API-key authentication with roles on the broker and the UI API, CORS allow-list, approver taken from the authenticated identity; A2 action risk classes (`READ`/`LOW_WRITE`/`HIGH_WRITE`/`DESTRUCTIVE`) with per-class target-shape validation and an autopilot risk ceiling; A3 `LLMProvider` abstraction with a model-free `echo` provider; A4 human edit of verdict and plan persisted to `decision_corrections` with `decision_source='human'`; A5 `decision_outcomes` with a feedback window and per-detection-source attribution. Status table, rule audit and risk register updated; R1 and R5 closed, R3 closed, R6 mitigated, R8 now measurable | J.Ekrami / Claude (Opus 5) |
 | 2.1 | Summer 2026 | **System boundary drawn (§2):** detection, log storage, threat-intel feeds and action execution are external market tools; AI-SOC owns the decision. M05 removed from scope; M04/M07 reduced to decision store and TI client; M03 re-scoped from a raw-log event model to a vendor-neutral Detection Intake contract; M06 redefined as cross-tool correlation and promoted to the primary differentiator. Added Rule 9 (every external tool behind an adapter), R7 (vendor coupling at intake), R8 (decision quality bounded by upstream detection quality). Phase B/C rewritten around the two frozen contracts; Master Rule reinterpreted | J.Ekrami / Claude (Opus 5) |

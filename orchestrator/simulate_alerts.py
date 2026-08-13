@@ -25,6 +25,8 @@ from typing import Any
 import httpx
 
 import soc_orchestrator as broker
+from auth import API_KEY_HEADER, DECISIONS_ACT, DETECTIONS_WRITE, ensure_client_key
+from llm_provider import ScriptedProvider, set_provider
 from seed_demo_alert import SCENARIO_TEMPLATES, build_scenario, reset_demo_data
 
 
@@ -49,10 +51,7 @@ async def run_simulation(
 
     pending_llm: dict[str, Any] = {}
 
-    async def mock_call_ollama(_prompt: str) -> str:
-        return json.dumps(pending_llm)
-
-    broker.call_ollama = mock_call_ollama
+    set_provider(ScriptedProvider(lambda _prompt: json.dumps(pending_llm)))
     transport = httpx.ASGITransport(app=broker.app)
 
     total_created = 0
@@ -65,7 +64,11 @@ async def run_simulation(
         f'every {interval:g}s for {duration:g}s. Press Ctrl+C to stop early.'
     )
 
-    async with httpx.AsyncClient(transport=transport, base_url='http://test') as client:
+    # The simulator is a client like any other — it carries a key (R1).
+    headers = {API_KEY_HEADER: ensure_client_key(DETECTIONS_WRITE)}
+    act_headers = {API_KEY_HEADER: ensure_client_key(DECISIONS_ACT)}
+
+    async with httpx.AsyncClient(transport=transport, base_url='http://test', headers=headers) as client:
         while time.monotonic() - start < duration:
             tick += 1
             batch = rng.randint(min_per_tick, max_per_tick)
@@ -90,7 +93,7 @@ async def run_simulation(
 
                 # Occasionally auto-contain an alert to make status metrics move.
                 if rng.random() < contain_chance:
-                    mitigated = await client.post(f'/api/alerts/{alert_id}/mitigate')
+                    mitigated = await client.post(f'/api/alerts/{alert_id}/mitigate', headers=act_headers)
                     if mitigated.status_code == 200:
                         total_contained += 1
 
