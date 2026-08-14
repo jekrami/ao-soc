@@ -7,6 +7,7 @@ import { RecommendedActions } from '@/components/dashboard/RecommendedActions';
 import { AiExplanation } from '@/components/dashboard/AiExplanation';
 import { SituationPanel } from '@/components/dashboard/SituationPanel';
 import { IntelPrecedentPanel } from '@/components/dashboard/IntelPrecedentPanel';
+import { CasePanel } from '@/components/dashboard/CasePanel';
 import { useAoSoc } from '@/store/useAoSoc';
 import { api } from '@/lib/api';
 import type { Incident } from '@/types';
@@ -91,6 +92,7 @@ export const IncidentDetailsPage: React.FC = () => {
 
           <SituationPanel />
           <IntelPrecedentPanel />
+          <CasePanel />
           <AiExplanation />
         </div>
 

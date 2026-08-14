@@ -13,6 +13,14 @@ import {
   highRiskIps,
 } from './mockData.js';
 import { getExplanationByIncidentId } from './explanationStore.js';
+import {
+  addBrokerCaseNote,
+  assignBrokerCase,
+  escalateBrokerCase,
+  getBrokerCase,
+  listBrokerCases,
+  setBrokerCaseState,
+} from './cases.js';
 import { isBrokerIncident, mitigateBrokerIncident } from './alertStore.js';
 import {
   approveBrokerDecision,
@@ -288,6 +296,79 @@ app.post('/api/incidents/:id/actions/:actionId/execute', requireScope(DECISIONS_
     target: action.target,
     queued_at: new Date().toISOString()
   });
+});
+
+// --- E5. Case management (M11/M13) ---------------------------------------
+// Reads are open to any authenticated viewer; every write needs decisions:act
+// and carries the operator's identity to the broker. None of these can approve
+// a decision or dispatch an action — the broker refuses that structurally (E2).
+
+const caseError = (res, err, code) => {
+  const status = [404, 409, 422].includes(err.status) ? err.status : 502;
+  return res.status(status).json({ error: err.message, code });
+};
+
+app.get('/api/cases', async (req, res) => {
+  try {
+    res.json(await listBrokerCases({
+      state: req.query.state,
+      assignee: req.query.assignee,
+      priority: req.query.priority,
+      unassigned: req.query.unassigned,
+      limit: req.query.limit,
+    }));
+  } catch (err) {
+    caseError(res, err, 'BROKER_CASES_FAILED');
+  }
+});
+
+app.get('/api/incidents/:id/case', async (req, res) => {
+  if (!(await isBrokerIncident(req.params.id))) {
+    return res.status(404).json({ error: 'broker incident not found', code: 'NOT_BROKER' });
+  }
+  try {
+    res.json(await getBrokerCase(req.params.id));
+  } catch (err) {
+    caseError(res, err, 'BROKER_CASE_FAILED');
+  }
+});
+
+app.post('/api/cases/:caseId/assign', requireScope(DECISIONS_ACT), async (req, res) => {
+  try {
+    res.json(await assignBrokerCase(
+      req.params.caseId, actorOf(req), req.body?.assignee ?? '', req.body?.note || ''
+    ));
+  } catch (err) {
+    caseError(res, err, 'BROKER_CASE_ASSIGN_FAILED');
+  }
+});
+
+app.post('/api/cases/:caseId/state', requireScope(DECISIONS_ACT), async (req, res) => {
+  try {
+    res.json(await setBrokerCaseState(
+      req.params.caseId, actorOf(req), req.body?.state, req.body?.note || ''
+    ));
+  } catch (err) {
+    caseError(res, err, 'BROKER_CASE_STATE_FAILED');
+  }
+});
+
+app.post('/api/cases/:caseId/escalate', requireScope(DECISIONS_ACT), async (req, res) => {
+  try {
+    res.json(await escalateBrokerCase(
+      req.params.caseId, actorOf(req), req.body?.tier, req.body?.to || '', req.body?.reason || ''
+    ));
+  } catch (err) {
+    caseError(res, err, 'BROKER_CASE_ESCALATE_FAILED');
+  }
+});
+
+app.post('/api/cases/:caseId/notes', requireScope(DECISIONS_ACT), async (req, res) => {
+  try {
+    res.status(201).json(await addBrokerCaseNote(req.params.caseId, actorOf(req), req.body?.note));
+  } catch (err) {
+    caseError(res, err, 'BROKER_CASE_NOTE_FAILED');
+  }
 });
 
 app.listen(port, () => {

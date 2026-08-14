@@ -29,7 +29,7 @@
   <!-- ================= Title ================= -->
   <text class="t1" x="830" y="52" text-anchor="middle">AI-SOC SOFTWARE ARCHITECTURE</text>
   <text class="t2" x="830" y="82" text-anchor="middle">AI-Powered Security Operations Center — the Decision Layer</text>
-  <text class="t3" x="830" y="106" text-anchor="middle">Version 2.5 — Summer 2026</text>
+  <text class="t3" x="830" y="106" text-anchor="middle">Version 2.6 — Summer 2026</text>
 
   <!-- ================= External: detection sources (left) ================= -->
   <rect x="30" y="160" width="290" height="292" rx="10" fill="#ffffff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="7 5"/>
@@ -61,23 +61,23 @@
   <rect x="1330" y="160" width="290" height="38" rx="10" fill="#e2e8f0"/>
   <text class="ext-title" x="1475" y="185" text-anchor="middle">EXTERNAL TOOLS — EXECUTION</text>
 
-  <text class="ext-item" x="1350" y="228">SOAR platforms</text>
+  <text class="ext-item" x="1350" y="228">SOAR platforms — driven by a connector</text>
   <text class="ext-note" x="1350" y="248">Shuffle · Cortex XSOAR · Tines</text>
   <text class="ext-item" x="1350" y="278">EDR response — isolate host</text>
   <text class="ext-item" x="1350" y="306">Firewall — block address</text>
   <text class="ext-item" x="1350" y="334">Identity (IdP) — revoke session</text>
   <line x1="1350" y1="356" x2="1600" y2="356" stroke="#e2e8f0" stroke-width="1.5"/>
-  <text class="ext-note" x="1350" y="398">AI-SOC decides and dispatches;</text>
-  <text class="ext-note" x="1350" y="416">execution belongs to these tools.</text>
+  <text class="ext-note" x="1350" y="398">One connector per role; the action</text>
+  <text class="ext-note" x="1350" y="416">class chooses it. Execution still</text>
 
   <!-- External: system of record -->
   <rect x="1330" y="472" width="290" height="150" rx="10" fill="#ffffff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="7 5"/>
   <rect x="1330" y="472" width="290" height="34" rx="10" fill="#e2e8f0"/>
   <text class="ext-title" x="1475" y="495" text-anchor="middle">SYSTEM OF RECORD</text>
   <text class="ext-note" x="1350" y="532">Jira · ServiceNow · TheHive</text>
-  <text class="ext-item" x="1350" y="562">Bidirectional case sync</text>
-  <text class="ext-note" x="1350" y="586">the decision and its evidence are</text>
-  <text class="ext-note" x="1350" y="606">pushed to the org's system of record.</text>
+  <text class="ext-item" x="1350" y="562">Bidirectional case sync — built</text>
+  <text class="ext-note" x="1350" y="586">it owns the workflow, we own the</text>
+  <text class="ext-note" x="1350" y="606">decision; inbound can never act.</text>
 
   <!-- ================= Boundary ================= -->
   <rect x="330" y="110" width="960" height="774" rx="14" fill="#ffffff" stroke="#1e3a8a" stroke-width="3"/>
@@ -127,9 +127,9 @@
   <!-- L6 dispatch -->
   <rect x="560" y="712" width="712" height="76" rx="9" fill="#047857"/>
   <circle cx="1248" cy="736" r="7" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"/>
-  <text class="box-title" x="916" y="741" text-anchor="middle">6. Dispatch the decision to an external executor</text>
+  <text class="box-title" x="916" y="741" text-anchor="middle">6. Dispatch the decision to the executor that performs that class of action</text>
   <text class="box-sub" x="916" y="764" text-anchor="middle">Action risk class: READ · LOW_WRITE · HIGH_WRITE · DESTRUCTIVE</text>
-  <text class="box-sub" x="916" y="782" text-anchor="middle">classified and target-shape validated · precedent gate, not confidence · immutable receipt</text>
+  <text class="box-sub" x="916" y="782" text-anchor="middle">routed per class · idempotent · dry run until read · unverified delivery is never DONE</text>
 
   <!-- Side: decision store -->
   <rect x="348" y="260" width="196" height="228" rx="9" fill="#1e293b"/>
@@ -163,7 +163,7 @@
   <rect x="348" y="806" width="924" height="58" rx="9" fill="#334155"/>
   <circle cx="1248" cy="835" r="7" fill="#f59e0b" stroke="#ffffff" stroke-width="1.5"/>
   <text class="box-title" x="810" y="830" text-anchor="middle">GOVERNANCE &amp; SECURITY — authentication · RBAC · secrets management · audit</text>
-  <text class="box-sub" x="810" y="852" text-anchor="middle">Phase A delivered — API-key auth and roles on every route, CORS allow-list, authenticated approver, observable queue; IdP/SSO and RBAC remain</text>
+  <text class="box-sub" x="810" y="852" text-anchor="middle">Auth and roles on every route · metrics with latency histograms · start-up preflight · verified backups · containers; IdP/SSO and RBAC remain</text>
 
   <!-- ================= Arrows ================= -->
   <line x1="296" y1="199" x2="330" y2="199" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
@@ -202,5 +202,5 @@
   <text class="legend" x="1010" y="946">dashed line = external dependency</text>
 
   <!-- ================= Footer ================= -->
-  <text class="foot" x="830" y="994" text-anchor="middle">Written by J.Ekrami · Co-written with Claude (Opus 5) · © J.Ekrami-Labs · Summer 2026 · matches plan v2.5</text>
+  <text class="foot" x="830" y="994" text-anchor="middle">Written by J.Ekrami · Co-written with Claude (Opus 5) · © J.Ekrami-Labs · Summer 2026 · matches plan v2.6</text>
 </svg>

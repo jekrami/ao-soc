@@ -307,6 +307,11 @@
       "EXECUTING": "Executing",
       "DONE": "Complete",
       "FAILED": "Failed"
+    },
+    "delivery": {
+      "simulated": "Dry run — nothing was sent to any executor",
+      "via": "via {{connector}}",
+      "attempts": "{{count}} attempts"
     }
   },
   "archive": {
@@ -366,5 +371,48 @@
     "offered": "{{count}} similar past decision(s) were put in front of the model; it cited {{cited}}.",
     "noPrecedent": "No sufficiently similar past decision — this one waits for an analyst by construction.",
     "fabricated": "The model cited case id(s) it was never given: {{ids}}. They were dropped, not stored."
+  },
+  "cases": {
+    "title": "Case",
+    "subtitle": "Who is working this, and what state it is in",
+    "loading": "Loading the case…",
+    "none": "No case for this record. Situations analysed before case management was added have none, and one is not created retroactively.",
+    "state": {
+      "NEW": "New",
+      "ASSIGNED": "Assigned",
+      "IN_PROGRESS": "In progress",
+      "ESCALATED": "Escalated",
+      "RESOLVED": "Resolved",
+      "CLOSED": "Closed",
+      "REOPENED": "Reopened"
+    },
+    "assignedTo": "Assigned to {{assignee}} by {{by}}",
+    "unassigned": "Nobody owns this case yet",
+    "assigneePlaceholder": "Assign to…",
+    "assign": "Assign",
+    "returnToQueue": "Return to the queue",
+    "escalate": "Escalate a tier",
+    "escalatedTo": "Tier {{tier}} · {{to}}",
+    "notePlaceholder": "Add a note to the case file…",
+    "addNote": "Add note",
+    "timeline": "Case file",
+    "emptyTimeline": "Nothing recorded yet",
+    "refresh": "Refresh",
+    "sync": "System of record",
+    "syncLocal": "No ticketing system is configured. This case lives here only — it is not out of sync, there is nothing to be in sync with.",
+    "syncedWith": "{{system}} · {{ref}}",
+    "syncPushed": "Last pushed {{at}}",
+    "syncError": "Last sync failed: {{error}}",
+    "fromSor": "from the system of record",
+    "event": {
+      "created": "Case opened for situation {{situation}}",
+      "assigned": "Assigned to {{to}}",
+      "unassignedEvent": "Returned to the queue",
+      "state": "{{from}} → {{to}}",
+      "escalated": "Escalated to tier {{tier}} · {{to}}",
+      "syncOut": "Pushed to the system of record as {{ref}}",
+      "syncIn": "Inbound change: {{changes}}",
+      "syncInRefused": "Inbound change refused: {{refused}}"
+    }
   }
 }

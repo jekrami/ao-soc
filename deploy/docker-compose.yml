@@ -1,0 +1,94 @@
+# AI-SOC — the whole decision layer, three services (E4, M15).
+#
+# Copyright (c) 2026 Ekrami-Labs. All rights reserved.
+#
+#   docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d
+#
+# Deliberate properties:
+#
+#   * **Only the dashboard is published.** The broker holds the credentials for
+#     an EDR and a firewall; it is reachable from the compose network and from
+#     nowhere else. A site that needs its SIEM to POST detections publishes
+#     8500 explicitly, behind TLS, and says so in the runbook.
+#   * **The decision store is a named volume**, not a bind mount into the
+#     repository, so a `git clean` cannot delete a year of decisions.
+#   * **No secret is written here.** Everything sensitive comes from the env
+#     file, which is gitignored.
+#   * **Ollama is not a service.** The model runs where the GPU is, which is
+#     rarely the container host; `LLM_ENDPOINT` points at it, and
+#     `LLM_PROVIDER=echo` runs the whole layer with no model at all.
+
+name: ao-soc
+
+services:
+  broker:
+    build:
+      context: ..
+      dockerfile: deploy/orchestrator.Dockerfile
+    image: ao-soc/broker:2.7.0
+    restart: unless-stopped
+    environment:
+      # --- identity and access (A1) ---
+      BROKER_API_KEYS: ${BROKER_API_KEYS:?set BROKER_API_KEYS in deploy/.env}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8080}
+      # --- the model (Rule 5) ---
+      LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
+      LLM_ENDPOINT: ${LLM_ENDPOINT:-http://host.docker.internal:11434}
+      LLM_MODEL: ${LLM_MODEL:-qwen2.5:7b}
+      # --- verification (D1) ---
+      TI_PROVIDER: ${TI_PROVIDER:-none}
+      TI_LOCAL_FILE: ${TI_LOCAL_FILE:-reference/intel-indicators.json}
+      # --- autonomy (D4) — off unless a site turns it on, and gated on
+      #     precedent rather than confidence even then ---
+      TIER2_AUTOPILOT: ${TIER2_AUTOPILOT:-false}
+      # --- response (E1) — dry run by default. A first deployment must not be
+      #     able to touch a network before anybody has read what it would send.
+      RESPONSE_DRY_RUN: ${RESPONSE_DRY_RUN:-true}
+      RESPONSE_ROUTES: ${RESPONSE_ROUTES:-*=soar}
+      # --- system of record (E3) ---
+      CASE_SYNC_PROVIDER: ${CASE_SYNC_PROVIDER:-none}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - decision-store:/data
+    extra_hosts:
+      # So LLM_ENDPOINT can name the GPU host on a Linux daemon too.
+      - "host.docker.internal:host-gateway"
+    networks: [ao-soc]
+
+  ui-api:
+    build:
+      context: ..
+      dockerfile: deploy/ui-api.Dockerfile
+    image: ao-soc/ui-api:2.7.0
+    restart: unless-stopped
+    depends_on:
+      broker:
+        condition: service_healthy
+    environment:
+      PORT: 4000
+      BROKER_URL: http://broker:8500
+      BROKER_API_KEY: ${UI_API_BROKER_KEY:?set UI_API_BROKER_KEY in deploy/.env}
+      DASHBOARD_API_KEYS: ${DASHBOARD_API_KEYS:-}
+    networks: [ao-soc]
+
+  dashboard:
+    build:
+      context: ..
+      dockerfile: deploy/frontend.Dockerfile
+    image: ao-soc/dashboard:2.7.0
+    restart: unless-stopped
+    depends_on:
+      - ui-api
+    ports:
+      - "${DASHBOARD_PORT:-8080}:8080"
+    networks: [ao-soc]
+
+volumes:
+  decision-store:
+    # Every decision, correction, outcome and receipt. Nothing upstream can
+    # reproduce these — back it up (orchestrator/backup.py).
+    name: ao-soc-decision-store
+
+networks:
+  ao-soc:
+    driver: bridge

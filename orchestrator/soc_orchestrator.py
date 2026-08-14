@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import os
@@ -11,12 +12,17 @@ from fastapi.middleware.cors import CORSMiddleware
 import adapters  # noqa: F401 — importing registers the built-in adapters (Rule 9)
 import analysis_queue
 import attack_catalog
+import case_sync
+import cases
+import connectors  # noqa: F401 — importing registers the built-in connectors (Rule 9)
 import decision_store
 import intel  # noqa: F401 — importing registers the built-in intel providers (Rule 9)
+import metrics
 import precedent
 import situation as situations
 import source_registry
 import threat_intel
+import ticketing  # noqa: F401 — importing registers the built-in sync providers (Rule 9)
 from auth import (
     DECISIONS_ACT,
     DECISIONS_READ,
@@ -50,13 +56,18 @@ from llm_provider import get_provider, provider_config
 from models import (
     AiExplanationPayload,
     ApproveDecisionRequest,
+    AssignCaseRequest,
+    CaseNoteRequest,
+    CaseStateRequest,
     EditDecisionRequest,
+    EscalateCaseRequest,
     GenerateExplanationRequest,
     RecordOutcomeRequest,
     RejectDecisionRequest,
     SetTrustWeightRequest,
 )
-from soar import soar_config
+from preflight import preflight_report, startup_problems
+from response import response_config
 from tier2 import (
     Tier2EditError,
     approve_tier2_decision,
@@ -113,9 +124,29 @@ async def lifespan(_app: FastAPI):
     # a process driving the ASGI app directly (the seeder, the tests) runs
     # everything inline and stays deterministic.
     await analysis_queue.start_workers(run_analysis)
+
+    # E4: every reason a configured integration cannot work, logged once at
+    # start-up. A route pointing at a connector nobody configured must be
+    # visible on the day it is deployed, not on the night it is needed.
+    for problem in startup_problems():
+        logger.error('Configuration problem: %s', problem)
+
+    # E3: the conversation with the system of record. Only started when one is
+    # configured, so the default deployment runs no extra task at all.
+    sync_stop = asyncio.Event()
+    sync_task = (
+        asyncio.create_task(case_sync.sync_worker(sync_stop))
+        if case_sync.enabled() else None
+    )
     try:
         yield
     finally:
+        if sync_task is not None:
+            sync_stop.set()
+            try:
+                await asyncio.wait_for(sync_task, timeout=10)
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                sync_task.cancel()
         await analysis_queue.stop_workers()
 
 
@@ -603,7 +634,7 @@ async def health(request: Request) -> dict:
     """Liveness is open; the configuration behind it is not.
 
     Start-up probes and the UI API's reachability check need an unauthenticated
-    ping, but the model, the database path, the SOAR sink and the autopilot
+    ping, but the model, the database path, the response routes and the autopilot
     policy are a map of the deployment and are only shown to a caller holding a
     key. Nothing here can cause an action either way.
     """
@@ -634,7 +665,7 @@ async def health(request: Request) -> dict:
         'database_url': DATABASE_URL,
         'auth': auth_config(),
         'autopilot': autopilot_config(),
-        'soar': soar_config(),
+        'response': response_config(),
         'correlation': situations.correlation_config(),
         'detection_sources': source_registry.registry_config(),
         'adapters': [adapter.describe() for adapter in list_adapters()],
@@ -643,7 +674,56 @@ async def health(request: Request) -> dict:
         'threat_intel': threat_intel.intel_config(),
         'attack_catalog': attack_catalog.catalog_config(),
         'precedent': precedent.precedent_config(),
+        'cases': {**cases.case_config(), 'metrics': await cases.case_metrics()},
+        'case_sync': case_sync.sync_config(),
+        # E4. Everything configured that will silently do less than it claims.
+        'preflight': preflight_report(),
     }
+
+
+@app.get('/metrics')
+async def prometheus_metrics(request: Request) -> Response:
+    """Prometheus exposition (E4, Rule 8's named residual).
+
+    Authenticated like the rest of ``/health``'s detail: queue depth, verdict
+    counts and case load are a map of what the SOC is dealing with, and a
+    scraper is a client like any other. Nothing here can cause an action.
+    """
+    principal = authenticate(
+        request.headers.get('X-API-Key')
+        or (request.headers.get('Authorization') or '')[7:].strip() or None
+    )
+    if principal is None or not principal.can(DECISIONS_READ):
+        raise HTTPException(status_code=401, detail='Metrics require a key with decisions:read')
+    if not metrics.enabled():
+        raise HTTPException(status_code=404, detail='Metrics are disabled (METRICS_ENABLED)')
+
+    # Gauges are sampled at scrape time rather than maintained: they are
+    # properties of the database, and a counter kept in memory beside it would
+    # drift the first time a second process wrote a row.
+    queue = await analysis_queue.queue_stats()
+    metrics.gauge(
+        metrics.QUEUE_DEPTH, queue.get('pending', 0),
+        'Analyses waiting to run', {'state': 'pending'},
+    )
+    metrics.gauge(
+        metrics.QUEUE_DEPTH, queue.get('running', 0),
+        'Analyses waiting to run', {'state': 'running'},
+    )
+    metrics.gauge(
+        metrics.QUEUE_DEAD_LETTERS, queue.get('dead_letters', 0),
+        'Analyses that exhausted their attempt budget',
+    )
+
+    case_stats = await cases.case_metrics()
+    for state, count in (case_stats.get('by_state') or {}).items():
+        metrics.gauge(metrics.CASES_OPEN, count, 'Cases by state', {'state': state})
+    metrics.gauge(
+        metrics.CASES_UNASSIGNED, case_stats.get('unassigned_open', 0),
+        'Open cases nobody owns',
+    )
+
+    return Response(content=metrics.render(), media_type='text/plain; version=0.0.4; charset=utf-8')
 
 
 # --- Aegis-Link broker (original pipeline) ---
@@ -678,17 +758,30 @@ async def analyze_situation(situation: situations.Situation) -> dict:
         logger.warning('Precedent retrieval failed for %s: %s', situation.situation_id, exc)
         precedents = []
 
-    try:
-        raw_output = await get_provider().complete(
-            build_situation_analysis_prompt(situation, intel_report, precedents)
-        )
-        parsed = parse_json_response(raw_output)
-        analysis = normalize_threat_analysis(
-            parsed, fields, alert_id, situation=situation,
-            intel_report=intel_report, precedents=precedents,
-        )
-    except Exception as exc:
-        raise AnalysisError(f'LLM inference failed: {exc}') from exc
+    # E4: the latency histogram Rule 8 has carried as a residual since v2.2.
+    # Labelled by outcome, because a timer that records only successes makes an
+    # inference outage look like an idle period.
+    with metrics.timer(metrics.ANALYSIS_SECONDS, 'Time to analyse one situation') as analysis_timer:
+        try:
+            raw_output = await get_provider().complete(
+                build_situation_analysis_prompt(situation, intel_report, precedents)
+            )
+            parsed = parse_json_response(raw_output)
+            analysis = normalize_threat_analysis(
+                parsed, fields, alert_id, situation=situation,
+                intel_report=intel_report, precedents=precedents,
+            )
+        except Exception as exc:
+            analysis_timer.label(outcome='error')
+            metrics.counter(metrics.ANALYSIS_TOTAL, 'Situation analyses', {'outcome': 'error'})
+            raise AnalysisError(f'LLM inference failed: {exc}') from exc
+        analysis_timer.label(outcome='ok')
+
+    metrics.counter(
+        metrics.ANALYSIS_TOTAL, 'Situation analyses',
+        {'outcome': 'ok', 'source': analysis['enrichment'].get('decision_source') or 'unknown'}
+        if isinstance(analysis.get('enrichment'), dict) else {'outcome': 'ok'},
+    )
 
     event = None
     if existing_alert_id:
@@ -735,6 +828,21 @@ async def analyze_situation(situation: situations.Situation) -> dict:
         )
         await situations.attach_alert(situation.situation_id, alert_id)
         decision = await create_tier2_decision_for_alert(event)
+
+    # E2. Every analysed situation is somebody's work, so it gets a case the
+    # moment it exists rather than when an analyst first opens it — a case
+    # created on first view cannot answer "what came in overnight and who has
+    # it". Idempotent, and never fatal: a case is the workflow around the
+    # decision, and failing to open one must not lose the decision.
+    try:
+        await cases.ensure_case(
+            situation_id=situation.situation_id,
+            alert_id=event['id'],
+            title=situation.title,
+            severity=analysis['threat_severity'],
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning('Could not open a case for %s: %s', situation.situation_id, exc)
 
     # Stage 3 preview: a high-confidence actionable verdict executes without
     # waiting for a click. No-op unless TIER2_AUTOPILOT is enabled.
@@ -785,6 +893,10 @@ async def ingest_detection(
     # B5: health and trust bookkeeping, before anything can fail downstream.
     await source_registry.record_detection(
         detection.source_tool, detection.adapter, detection.adapter_version
+    )
+    metrics.counter(
+        metrics.DETECTIONS_TOTAL, 'Detections accepted, by source tool',
+        {'source': detection.source_tool, 'severity': detection.severity},
     )
     outcome = await situations.correlate(detection)
     situation_id = outcome.situation.situation_id
@@ -988,6 +1100,138 @@ async def api_correlation_metrics(
     _principal: Principal = Depends(require(DECISIONS_READ)),
 ) -> dict:
     return await situations.situation_metrics()
+
+
+# --- E2. Case management -------------------------------------------------
+# Every write here takes its actor from the authenticated principal (A1), and
+# none of them has a code path to a decision, an action or a receipt (E2).
+
+
+@app.get('/api/cases')
+async def api_list_cases(
+    state: str = Query('', max_length=16),
+    assignee: str = Query('', max_length=128),
+    priority: str = Query('', max_length=4),
+    unassigned: bool = Query(False),
+    limit: int = Query(100, ge=1, le=500),
+    _principal: Principal = Depends(require(DECISIONS_READ)),
+) -> dict:
+    items = await cases.list_cases(
+        state=state, assignee=assignee, priority=priority, unassigned=unassigned, limit=limit,
+    )
+    return {'count': len(items), 'items': items, 'metrics': await cases.case_metrics()}
+
+
+@app.get('/api/cases/metrics')
+async def api_case_metrics(_principal: Principal = Depends(require(DECISIONS_READ))) -> dict:
+    return await cases.case_metrics()
+
+
+@app.get('/api/cases/{case_id}')
+async def api_get_case(
+    case_id: str,
+    _principal: Principal = Depends(require(DECISIONS_READ)),
+) -> dict:
+    case = await cases.get_case(case_id)
+    if case is None:
+        raise HTTPException(status_code=404, detail=f'No case {case_id}')
+    return {**case, 'timeline': await cases.get_timeline(case_id)}
+
+
+@app.get('/api/alerts/{alert_id}/case')
+async def api_case_for_alert(
+    alert_id: str,
+    _principal: Principal = Depends(require(DECISIONS_READ)),
+) -> dict:
+    case = await cases.get_case_for_alert(alert_id)
+    if case is None:
+        raise HTTPException(status_code=404, detail=f'No case for alert {alert_id}')
+    return {**case, 'timeline': await cases.get_timeline(case['case_id'])}
+
+
+def _case_error(exc: cases.CaseError) -> HTTPException:
+    return HTTPException(status_code=exc.code, detail=str(exc))
+
+
+@app.post('/api/cases/{case_id}/assign')
+async def api_assign_case(
+    case_id: str,
+    payload: AssignCaseRequest,
+    principal: Principal = Depends(require(DECISIONS_ACT)),
+) -> dict:
+    try:
+        return await cases.assign_case(
+            case_id,
+            assignee=payload.assignee,
+            actor=resolve_actor(principal),
+            note=payload.note or '',
+        )
+    except cases.CaseError as exc:
+        raise _case_error(exc) from exc
+
+
+@app.post('/api/cases/{case_id}/state')
+async def api_set_case_state(
+    case_id: str,
+    payload: CaseStateRequest,
+    principal: Principal = Depends(require(DECISIONS_ACT)),
+) -> dict:
+    try:
+        return await cases.set_case_state(
+            case_id, state=payload.state, actor=resolve_actor(principal), note=payload.note or '',
+        )
+    except cases.CaseError as exc:
+        raise _case_error(exc) from exc
+
+
+@app.post('/api/cases/{case_id}/escalate')
+async def api_escalate_case(
+    case_id: str,
+    payload: EscalateCaseRequest,
+    principal: Principal = Depends(require(DECISIONS_ACT)),
+) -> dict:
+    try:
+        return await cases.escalate_case(
+            case_id,
+            tier=payload.tier,
+            to=payload.to or '',
+            actor=resolve_actor(principal),
+            reason=payload.reason or '',
+        )
+    except cases.CaseError as exc:
+        raise _case_error(exc) from exc
+
+
+@app.post('/api/cases/{case_id}/notes', status_code=201)
+async def api_add_case_note(
+    case_id: str,
+    payload: CaseNoteRequest,
+    principal: Principal = Depends(require(DECISIONS_ACT)),
+) -> dict:
+    try:
+        return await cases.add_note(case_id, note=payload.note, actor=resolve_actor(principal))
+    except cases.CaseError as exc:
+        raise _case_error(exc) from exc
+
+
+# --- E3. The system of record --------------------------------------------
+
+
+@app.post('/api/cases/{case_id}/sync', status_code=202)
+async def api_push_case(
+    case_id: str,
+    _principal: Principal = Depends(require(DECISIONS_ACT)),
+) -> dict:
+    """Push one case outward now, rather than waiting for the interval."""
+    return await case_sync.push_case(case_id, reason='manual')
+
+
+@app.post('/api/case-sync/run', status_code=202)
+async def api_run_case_sync(
+    _principal: Principal = Depends(require(DECISIONS_ACT)),
+) -> dict:
+    """One full pass, on demand. Cannot approve, dispatch or alter a decision."""
+    return await case_sync.sync_once()
 
 
 @app.get('/api/detection-sources')

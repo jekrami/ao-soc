@@ -11,3 +11,7 @@ bench_results.json
 # Cursor — keep project rules, ignore local state
 .cursor/*
 !.cursor/rules/
+
+# Deployment secrets (E4). The example is checked in; the real one never is —
+# it holds the key that can approve a containment.
+deploy/.env

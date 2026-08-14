@@ -14,7 +14,7 @@ This dashboard is **not** a raw-log SIEM. It answers five questions for the huma
 
 AO-SOC evolves in three autonomy stages. **v2.0** implements **Stage 2**; **v3.0** is reserved for **Stage 3**.
 
-### Current pipeline (v2.5 — Stage 2, correlated)
+### Current pipeline (v2.7 — Stage 2, correlated, verified and routed)
 
 ```
 Detection tools (external)      Splunk · Wazuh · Elastic · Sentinel · CrowdStrike · CEF
@@ -27,19 +27,23 @@ SECURITY SITUATION               N detections from M tools = one thing to decide
     ↓
 Analysis queue                   retry · dead letters · back-pressure
     ↓                            (stored and correlated first, so nothing is lost)
+Verification + precedent         indicators checked against a feed · techniques checked
+    ↓                            against a catalogue · what this SOC decided before
 Local LLM (Qwen via Ollama)      reasons over the situation, not the alert
     ↓
 AI Tier-2 Decision Agent
     ↓
-Human Confirmer (Approve / Edit / Reject plan)
-    ↓
+Human Confirmer (Approve / Edit / Reject plan)     ←→  CASE: owner · state · notes
+    ↓                                                   ←→ system of record (external)
 Policy Guardrails                risk class + target shape
     ↓
-SOAR Auto-Execution (external)
+Response routing                 per action class → SOAR · EDR · firewall · IdP
+    ↓                            idempotent · retried only on transport failure
+External executors               dry run until a human has read what would be sent
     ↓
-Python Orchestrator + SQLite (detections, situations, decisions, actions, audit)
+Python Orchestrator + SQLite (detections, situations, decisions, actions, cases, audit)
     ↓
-Dashboard (Command Center)
+Dashboard (Command Center)       + /metrics for Prometheus
 ```
 
 **AI-SOC does not collect logs, store logs, detect, or execute.** Those are mature
@@ -151,7 +155,7 @@ ao-soc/
 
 ## Run It
 
-**Version:** 2.6.0 — see `VERSION` at repo root (bump on every release).
+**Version:** 2.7.0 — see `VERSION` at repo root (bump on every release).
 
 One-time setup (each machine):
 
@@ -489,6 +493,13 @@ matches the types in `frontend/src/types.ts`.
 
 ## New Features
 
+- **v2.7.0 — Phase E: production. Somewhere for an action to actually go, and somebody to own the case.** Through v2.6 the decision layer reasoned well and dispatched to a JSON file. Phase E gives it real executors, the human workflow around a decision, and the operational surface a site needs before it depends on any of it.
+  - **E1 — Real response connectors (M12).** `response.py` is the delivery contract and `connectors/<tool>.py` is the only place an executor is named — the third boundary after `adapters/` and `intel/`, enforced by the same structural test. Ships a generic authenticated `webhook` (which is what every SOAR platform, orchestration runner and home-grown response service accepts) and a vendor one, `wazuh` active response, written to prove the boundary the way the Wazuh *adapter* proved the intake's. An action is routed by the **policy rule name** `action_policy` already assigns it — `block-ip` to the firewall, `isolate` to the EDR, `disable-account` to the IdP — which is a closed vocabulary a model cannot extend by rephrasing. Five properties, each because the alternative is an incident rather than a bug: a connector **declares what it performs** and anything else is `BLOCKED` before a packet leaves; every action carries an **idempotency key** stable across retries, because "retry on timeout" otherwise means "isolate the host twice"; a **4xx is an answer** and is delivered once, while only a timeout, a reset or a 5xx is repeated; **2xx is not delivery** — the Wazuh connector reads the envelope, because Wazuh answers `200` with `total_affected_items: 0` for a request it accepted and did nothing with; and a dry run reports **`SIMULATED`, never `DONE`**, does not mitigate the alert, and is drawn in amber, because a simulated containment rendered as a completed one is the most dangerous thing this system could show.
+  - **E2 — Case management (M11).** Assignment, escalation, analyst notes and a case lifecycle — the gap M11 named. A case is a third thing, separate from the situation (what the tools observed) and the decision (what was concluded): it is *who is working it and what state the humans consider it in*, and those three change on different clocks. The timeline is append-only, transitions are a **whitelist** (C3's lesson: a gate listing the states that block it is approvable by omission the day a state is added), the actor is the authenticated identity rather than a body field, and **nothing here can approve, reject, dispatch or alter a decision**.
+  - **E3 — Bidirectional sync with the system of record (M11).** `case_sync.py` plus `ticketing/<tool>.py` — the fourth boundary — with an offline `file` drop and `thehive`. Three mechanics make it survivable: **echo suppression** (every push stamps a revision, and a change quoting one we already sent is our own writing coming back); **ownership per field** — AI-SOC owns what it derived, the system of record owns who has it and what state it is in, so "last writer wins" never has to be asked; and an **unlisted transition is refused and recorded**, not forced. The load-bearing rule is structural: `case_sync` and every ticketing provider have no import path to `tier2` or `response`, so closing a ticket cannot approve a decision, and the test asserts it by reading the source. Without that, an account on the ticketing system is an account that can contain a host.
+  - **E4 — Production hardening (M15).** `/metrics` in Prometheus exposition, including the **analysis latency histogram** Rule 8 has carried as a named residual since v2.2 — hand-written rather than a dependency, because an air-gapped site should not need a wheel to see how long its analyses take, and labelled only by closed vocabularies so the monitoring system does not fall over during the incident it was installed for. `preflight.py` answers one question at start-up and on `/health`: *is anything configured in a way that will silently do less than it claims?* — the shape of every failure this project has actually shipped. `backup.py` takes a consistent copy of a live SQLite database, records a manifest with a SHA-256 and the row counts of everything unrecoverable, **raises rather than returning something plausible** when the hash does not match, and never overwrites in place. Plus Docker images and a compose file that publishes only the dashboard, keeps the decision store on a named volume, and defaults to `RESPONSE_DRY_RUN=true`.
+  - **E5 — The case in the dashboard (M13).** Owner, state, priority, escalation, the note timeline and the sync state — including `LOCAL`, which is a complete state and not an error, and a refused inbound transition, which is a real condition rather than something to paper over. Per-action delivery shows which connector carried it, the executor's own reference and how many attempts it took. EN/FA with RTL.
+  - **E6 — The pilot runbook and release checklist (M16/M17).** `docs/PILOT-RUNBOOK.md`: the order to turn things on (nothing, then a model, then one connector in dry run, then one class of action, then the ticketing system push-first, then autonomy only if the corpus earns it), what to watch at each stage, what to roll back with, and what closes M16. It says plainly that a pilot is an engagement rather than a build artifact, and that a pilot producing no analyst corrections has not been run whatever its uptime was.
 - **v2.6.0 — Phase D: verification, precedent, and autonomy that is earned rather than configured.** Through v2.5 the decision layer was fast, reliable and completely credulous. A technique the model asserted was *recorded* with its provenance and never *checked*; an indicator was never checked at all; and autopilot fired on a confidence number that 14 benchmarked models all report at 75-98% regardless of input. Phase D closes both, and replaces the number with the gate §7 always asked for.
   - **D1 — The threat-intelligence client (M07).** A client, not a platform: `threat_intel.py` is the contract and every feed lives in `intel/<tool>.py`, exactly as detection adapters do (Rule 9). Ships `local` (a file of indicators — a CERT export, a customer blocklist, a hunt team's sheet; offline, hot-reloading and what the tests verify against) and `misp` (an on-prem instance's attribute index). Three rules are built into the shape of the module because the opposite is the easy mistake: **UNKNOWN is not BENIGN** — the report has four buckets, not three, and separates *malicious* from *checked and not found* from *never checked*; **a failed lookup is visible** — a feed that times out yields `status=degraded` with the error, never an empty-and-therefore-clean report; and **internal addresses are never sent to a feed**, because a reputation service has nothing to say about RFC1918 and asking publishes the site's topology to whoever runs the feed. Observations are cached with a TTL, misses included, so one busy address does not re-ask the TIP once per situation.
   - **D1 — The ATT&CK catalogue, and the other half of R4.** A model that invents `T1099.007` produces a heatmap cell, a MITRE column and a sentence in a report, all of which render exactly like the real ones. Every technique is now checked against a local catalogue and stamped `verified` / `unlisted` / `unknown` / `malformed`, and the **catalogue's name and tactic win over the model's** — the ID is the identity and the prose around it is the part most likely to be wrong. The bundled snapshot is deliberately marked incomplete, so a missing ID reads as *unlisted*, never as *fabricated*; point `TI_ATTACK_CATALOG` at a full export and set `"complete": true` to make absence meaningful.
@@ -537,6 +548,6 @@ matches the types in `frontend/src/types.ts`.
 
 ## Authorship
 
-**Version:** 2.6.0 (see `VERSION` — increment on each release commit)
+**Version:** 2.7.0 (see `VERSION` — increment on each release commit)
 
 Written by J.Ekrami, co-written with GitHub Copilot, Composer (Cursor AI), and Claude (Opus 5).

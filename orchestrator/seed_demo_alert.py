@@ -42,6 +42,11 @@ async def reset_demo_data() -> None:
             db.situations,
             db.detection_sources,
             db.security_events,
+            # Phase E: a case belongs to a situation, so it goes with it. Left
+            # behind, the next run's `unassigned_open` counts a previous demo's
+            # work as this one's backlog.
+            db.case_events,
+            db.cases,
         ):
             await conn.execute(table.delete())
 
@@ -468,6 +473,29 @@ async def seed_alerts(count: int, seed: int | None, reset: bool = True) -> list[
             if mitigated.status_code != 200:
                 print(mitigated.text, file=sys.stderr)
                 sys.exit(1)
+
+            # E2: a worked incident had somebody working it. A demo where every
+            # case sits unowned in NEW shows the case panel's empty state and
+            # nothing else, which is the same mistake as seeding a CONTAINED
+            # incident nobody approved.
+            case = await client.get(f'/api/alerts/{alert_id}/case', headers=act_headers)
+            if case.status_code == 200:
+                case_id = case.json()['case_id']
+                await client.post(
+                    f'/api/cases/{case_id}/assign',
+                    headers={**act_headers, 'X-Actor': 'demo.analyst'},
+                    json={'assignee': 'demo.analyst'},
+                )
+                await client.post(
+                    f'/api/cases/{case_id}/notes',
+                    headers={**act_headers, 'X-Actor': 'demo.analyst'},
+                    json={'note': 'Containment plan approved and dispatched; monitoring for recurrence.'},
+                )
+                await client.post(
+                    f'/api/cases/{case_id}/state',
+                    headers={**act_headers, 'X-Actor': 'demo.analyst'},
+                    json={'state': 'RESOLVED', 'note': 'Host contained, no further egress observed.'},
+                )
 
     return created_ids
 

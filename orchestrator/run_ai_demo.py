@@ -59,12 +59,13 @@ async def _preflight(client: httpx.AsyncClient, broker_url: str) -> dict:
         raise SystemExit(1)
 
     autopilot = health.get('autopilot') or {}
-    soar = health.get('soar') or {}
+    response = health.get('response') or {}
     llm = health.get('llm') or {}
 
     print(f'Broker      : {broker_url} (as {(health.get("principal") or {}).get("name")})')
     print(f'Model       : {health.get("model")} @ {llm.get("endpoint") or llm.get("provider")}')
-    print(f'SOAR sink   : {soar.get("driver")} -> {soar.get("log_file") or "(none)"}')
+    routes = ', '.join(f'{rule}->{name}' for rule, name in sorted((response.get('routes') or {}).items()))
+    print(f'Response    : {routes or "(unrouted)"}{" [DRY RUN]" if response.get("dry_run") else ""}')
     if autopilot.get('enabled'):
         print(
             f'Autopilot   : ON - {"/".join(autopilot.get("decisions") or [])} '

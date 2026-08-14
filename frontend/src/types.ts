@@ -80,8 +80,25 @@ export interface Tier2ActionStatus {
   target_kind: string;
   /** Set when the action fails policy — it will be BLOCKED, not dispatched. */
   policy_reason?: string | null;
-  status: 'PENDING' | 'QUEUED' | 'EXECUTING' | 'DONE' | 'FAILED' | 'BLOCKED';
-  result?: { execution_id?: string; status?: string; error?: string } | null;
+  /** E1: which class of action this is — and therefore which executor got it. */
+  policy_rule?: string;
+  status: 'PENDING' | 'QUEUED' | 'EXECUTING' | 'DONE' | 'FAILED' | 'BLOCKED' | 'SIMULATED';
+  /** E1: the executor that carried it, its own id for the action, and attempts. */
+  connector?: string;
+  external_ref?: string;
+  attempts?: number;
+  result?: {
+    execution_id?: string;
+    status?: string;
+    error?: string;
+    connector?: string;
+    driver?: string;
+    attempts?: number;
+    idempotency_key?: string;
+    external_ref?: string;
+    /** Present only on a dry run: exactly what would have been sent. */
+    preview?: Record<string, unknown>;
+  } | null;
   created_at?: string | null;
   completed_at?: string | null;
 }
@@ -93,7 +110,11 @@ export type Tier2ApprovalStatus =
   | 'REJECTED'
   | 'EXECUTING'
   | 'DONE'
-  | 'FAILED';
+  | 'FAILED'
+  /** C3: the situation behind it was merged away. */
+  | 'SUPERSEDED'
+  /** E1: approved and run against a dry-run connector — nothing was sent. */
+  | 'SIMULATED';
 
 /** 'human' means an analyst overrode the machine and the delta was stored. */
 export type Tier2DecisionSource = 'llm' | 'rules' | 'human';
@@ -373,4 +394,57 @@ export interface SystemHealth {
   gpu:    { status: string; utilization_pct: number; vram_used_gb: number; vram_total_gb: number; temperature_c: number };
   soar:   { status: string; playbooks_running: number; playbooks_queued: number; success_rate: number };
   generated_at: string;
+}
+
+
+// --- Phase E: the case, and the system of record
+
+export type CaseState =
+  | 'NEW' | 'ASSIGNED' | 'IN_PROGRESS' | 'ESCALATED' | 'RESOLVED' | 'CLOSED' | 'REOPENED';
+
+/** One append-only entry in the case file. Never edited, never deleted. */
+export interface CaseEvent {
+  seq: number;
+  kind: 'created' | 'assigned' | 'state' | 'note' | 'escalated' | 'sync_out' | 'sync_in';
+  actor: string;
+  /** 'sync' means it arrived from the system of record, not from this SOC. */
+  origin: 'human' | 'system' | 'sync';
+  body: string;
+  data?: Record<string, unknown> | null;
+  at: string | null;
+}
+
+/** The state of the conversation with the external ticketing system (E3). */
+export interface CaseSyncState {
+  system: string | null;
+  ref: string | null;
+  url: string | null;
+  external_state: string | null;
+  status: 'LOCAL' | 'OK' | 'ERROR';
+  error: string | null;
+  revision: number;
+  pushed_at: string | null;
+  pulled_at: string | null;
+}
+
+export interface SocCase {
+  case_id: string;
+  situation_id: string;
+  alert_id: string | null;
+  title: string;
+  severity: string;
+  priority: 'P1' | 'P2' | 'P3' | 'P4';
+  state: CaseState;
+  assignee: string | null;
+  assigned_by: string | null;
+  assigned_at: string | null;
+  escalation: { tier: number; to: string | null; at: string | null } | null;
+  closed_by: string | null;
+  closed_at: string | null;
+  closure_reason: string | null;
+  sync: CaseSyncState;
+  created_at: string | null;
+  updated_at: string | null;
+  /** Only on the single-case read, never on the list. */
+  timeline?: CaseEvent[];
 }

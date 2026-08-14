@@ -93,7 +93,7 @@ AUTOPILOT_APPROVER = os.getenv('TIER2_AUTOPILOT_APPROVER') or 'tier2-autopilot'
 
 #: A decision nobody has settled is not precedent. PENDING is still in front of
 #: an analyst; SUPERSEDED (C3) belongs to a situation that was merged away.
-SETTLED_STATUSES = frozenset({'APPROVED', 'EXECUTING', 'DONE', 'FAILED', 'REJECTED'})
+SETTLED_STATUSES = frozenset({'APPROVED', 'EXECUTING', 'DONE', 'FAILED', 'REJECTED', 'SIMULATED'})
 
 #: An outcome that says the decision was wrong, or that it came back.
 REVERSING_OUTCOMES = frozenset({'FALSE_POSITIVE', 'REOPENED'})

@@ -171,3 +171,31 @@ class RecordOutcomeRequest(BaseModel):
     outcome: str
     reported_by: str = 'analyst'
     note: Optional[str] = None
+
+
+# --- E2. Case management -------------------------------------------------
+# None of these carries an actor field. The actor is the authenticated
+# principal (A1) — a body that could name its own author would make the case
+# timeline unusable as a record of who did what.
+
+
+class AssignCaseRequest(BaseModel):
+    """Give the case to somebody. An empty assignee returns it to the queue."""
+
+    assignee: str = ''
+    note: Optional[str] = None
+
+
+class CaseStateRequest(BaseModel):
+    state: str
+    note: Optional[str] = None
+
+
+class EscalateCaseRequest(BaseModel):
+    tier: int
+    to: Optional[str] = None
+    reason: Optional[str] = None
+
+
+class CaseNoteRequest(BaseModel):
+    note: str

@@ -17,6 +17,7 @@ from action_policy import (
     action_policy_config,
     assess_action,
     autopilot_allows,
+    classify_action,
     policy_allows_action,
 )
 from db import (
@@ -28,7 +29,7 @@ from db import (
     mitigate_alert,
     tier2_decisions,
 )
-from soar import deliver as soar_deliver
+from response import deliver as response_deliver
 
 logger = logging.getLogger(__name__)
 
@@ -39,8 +40,14 @@ APPROVAL_STATUSES = frozenset({
     # another. Distinct from REJECTED on purpose — nobody rejected it, and
     # recording a human verdict nobody gave would poison the label corpus.
     'SUPERSEDED',
+    # E1: the plan ran against a dry-run connector. The *decision* is as real as
+    # any other — a human approved it — but nothing reached a network, so it is
+    # not DONE and the alert is not mitigated.
+    'SIMULATED',
 })
-ACTION_STATUSES = frozenset({'PENDING', 'QUEUED', 'EXECUTING', 'DONE', 'FAILED', 'BLOCKED'})
+ACTION_STATUSES = frozenset({
+    'PENDING', 'QUEUED', 'EXECUTING', 'DONE', 'FAILED', 'BLOCKED', 'SIMULATED',
+})
 # 'human' is not a third guess at the verdict — it means a person overrode
 # what the machine proposed, and the correction row says what they changed.
 DECISION_SOURCES = frozenset({'llm', 'rules', 'human'})
@@ -280,8 +287,15 @@ def _format_action(row) -> dict:
         'reason': row['reason'],
         'risk_class': row.get('risk_class') or 'HIGH_WRITE',
         'target_kind': row.get('target_kind') or 'any',
+        'policy_rule': row.get('policy_rule') or 'unclassified',
         'policy_reason': row.get('policy_reason'),
         'status': row['status'],
+        # E1: where it went, what the executor called it, and how hard it was
+        # to get there. Empty on a pre-2.7 row, which is honest — nothing
+        # recorded a route because there was only one.
+        'connector': row.get('connector') or '',
+        'external_ref': row.get('external_ref') or '',
+        'attempts': row.get('attempts') or 0,
         'result': result,
         'created_at': row['created_at'].isoformat() if row['created_at'] else None,
         'completed_at': row['completed_at'].isoformat() if row['completed_at'] else None,
@@ -334,6 +348,7 @@ def _action_row(alert_id: str, decision_id: int, item: dict, now: datetime) -> d
         'reason': item['reason'],
         'risk_class': assessment.risk_class,
         'target_kind': assessment.target_kind,
+        'policy_rule': assessment.rule,
         'policy_reason': assessment.reason,
         'status': 'PENDING',
         'created_at': now,
@@ -726,7 +741,7 @@ try:
 except ValueError:
     FEEDBACK_WINDOW_HOURS = 72
 
-SETTLED_STATUSES = frozenset({'DONE', 'FAILED', 'REJECTED'})
+SETTLED_STATUSES = frozenset({'DONE', 'FAILED', 'REJECTED', 'SIMULATED'})
 
 
 def _window_closes_at(row) -> Optional[datetime]:
@@ -941,8 +956,15 @@ async def reject_tier2_decision(
 
 
 async def _execute_soar_plan(alert_id: str, decision_id: int) -> dict:
-    """Run all queued actions sequentially, delivering each to the SOAR sink."""
+    """Run all queued actions sequentially, delivering each to its executor.
+
+    E1 changed what "its executor" means: an action is routed by its policy
+    rule, so one plan can reach an EDR, a firewall and a ticketing system. Two
+    outcomes are now distinguished from success, and neither may read as one —
+    a ``BLOCKED`` action never left, and a ``SIMULATED`` one was a dry run.
+    """
     any_failed = False
+    any_simulated = False
 
     async with async_session() as session:
         await session.execute(
@@ -999,19 +1021,25 @@ async def _execute_soar_plan(alert_id: str, decision_id: int) -> dict:
 
         await asyncio.sleep(EXECUTION_STEP_DELAY)
 
-        receipt = await soar_deliver(
+        receipt = await response_deliver(
             alert_id=alert_id,
             decision_id=decision_id,
             action_id=action_row['action_id'],
             action_type=action_row['action_type'],
             target=action_row['target'],
             reason=action_row['reason'],
+            rule=action_row.get('policy_rule') or classify_action(action_row['action_type'])[2],
+            risk_class=action_row.get('risk_class') or 'HIGH_WRITE',
+            target_kind=action_row.get('target_kind') or 'any',
             decision_type=decision_row['decision_type'],
             confidence=decision_row['confidence'],
             decision_source=decision_row.get('decision_source') or 'rules',
             approved_by=decision_row['approved_by'],
         )
-        if receipt.get('status') != 'DONE':
+        status = receipt.get('status', 'FAILED')
+        if status == 'SIMULATED':
+            any_simulated = True
+        elif status != 'DONE':
             any_failed = True
 
         async with async_session() as session:
@@ -1019,17 +1047,24 @@ async def _execute_soar_plan(alert_id: str, decision_id: int) -> dict:
                 update(alert_soar_actions)
                 .where(alert_soar_actions.c.id == action_row['id'])
                 .values(
-                    status=receipt.get('status', 'DONE'),
+                    status=status,
                     result_json=json.dumps(receipt),
+                    connector=str(receipt.get('connector') or ''),
+                    external_ref=str(receipt.get('external_ref') or ''),
+                    idempotency_key=str(receipt.get('idempotency_key') or ''),
+                    attempts=int(receipt.get('attempts') or 0),
                     completed_at=_utcnow(),
                 )
             )
             await session.commit()
 
-    if not any_failed:
+    # A dry run contained nothing, so the alert is not mitigated and the
+    # decision does not read DONE. Rendering a simulation as a completed
+    # containment is the most dangerous thing this system could get wrong.
+    if not any_failed and not any_simulated:
         await mitigate_alert(alert_id)
 
-    final_status = 'FAILED' if any_failed else 'DONE'
+    final_status = 'FAILED' if any_failed else ('SIMULATED' if any_simulated else 'DONE')
     completed = _utcnow()
 
     async with async_session() as session:

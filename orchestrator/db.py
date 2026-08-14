@@ -95,8 +95,19 @@ alert_soar_actions = Table(
     Column('risk_class', String(16), nullable=False, default='HIGH_WRITE'),
     Column('target_kind', String(16), nullable=False, default='any'),
     Column('policy_reason', String, nullable=True),
+    # E1: the routing vocabulary. Which *class* of action this is decides which
+    # executor performs it, and it is stamped at plan time so an approval can be
+    # read as "this will go to the firewall" rather than discovered afterwards.
+    Column('policy_rule', String(32), nullable=False, default='unclassified'),
     Column('status', String(32), nullable=False, default='PENDING'),
     Column('result_json', String, nullable=True),
+    # E1: which executor carried it, its own identifier for the action, and how
+    # many attempts it took. Columns rather than only receipt fields, because
+    # "what did the firewall actually accept last week" is a query.
+    Column('connector', String(64), nullable=False, default=''),
+    Column('external_ref', String(128), nullable=False, default=''),
+    Column('idempotency_key', String(128), nullable=False, default=''),
+    Column('attempts', Integer, nullable=False, default=0),
     Column('created_at', DateTime, nullable=False),
     Column('completed_at', DateTime, nullable=True),
 )
@@ -207,6 +218,77 @@ situations = Table(
     Column('risk_factors_json', String, nullable=True),
     Column('created_at', DateTime, nullable=False),
     Column('updated_at', DateTime, nullable=False),
+)
+
+# --- E2. The case: the human workflow around a situation ------------------
+# Deliberately a separate table from `situations` and from `tier2_decisions`.
+# A situation is what the tools observed; a decision is what the layer (and
+# then a human) concluded; a case is *who is working it and what state the
+# humans consider it to be in*. Those three change on different clocks, and
+# folding the third into either of the others means a shift handover rewrites
+# a record of what was decided.
+#
+# Nothing in this table can approve, reject, execute or alter a decision. That
+# is the property the whole design rests on: a case may be closed by somebody
+# in another system (E3) without a single action leaving AO-SOC.
+cases = Table(
+    'cases',
+    metadata,
+    Column('id', Integer, primary_key=True, autoincrement=True),
+    Column('case_id', String(64), nullable=False, unique=True, index=True),
+    Column('situation_id', String(64), nullable=False, unique=True, index=True),
+    Column('alert_id', String(64), nullable=True, index=True),
+    Column('title', String(255), nullable=False, default=''),
+    Column('severity', String(16), nullable=False, default='MEDIUM'),
+    Column('priority', String(4), nullable=False, default='P3', index=True),
+    Column('state', String(16), nullable=False, default='NEW', index=True),
+    Column('assignee', String(128), nullable=False, default='', index=True),
+    Column('assigned_by', String(128), nullable=False, default=''),
+    Column('assigned_at', DateTime, nullable=True),
+    # 0 = nobody escalated. The tier is a site's own ladder, so it is a number
+    # with a name beside it rather than an enum this layer invents.
+    Column('escalation_tier', Integer, nullable=False, default=0),
+    Column('escalated_to', String(128), nullable=False, default=''),
+    Column('escalated_at', DateTime, nullable=True),
+    Column('closed_by', String(128), nullable=False, default=''),
+    Column('closed_at', DateTime, nullable=True),
+    Column('closure_reason', String, nullable=True),
+    # E3. The system of record's own identity for this case, and the state of
+    # the conversation with it. `sync_revision` is what the last push carried;
+    # an inbound change quoting that revision is our own echo, not news.
+    Column('external_system', String(64), nullable=False, default=''),
+    Column('external_ref', String(128), nullable=False, default='', index=True),
+    Column('external_url', String(512), nullable=False, default=''),
+    Column('external_state', String(64), nullable=False, default=''),
+    Column('sync_status', String(16), nullable=False, default='LOCAL', index=True),
+    Column('sync_error', String, nullable=True),
+    Column('sync_revision', Integer, nullable=False, default=0),
+    Column('pushed_at', DateTime, nullable=True),
+    Column('pulled_at', DateTime, nullable=True),
+    Column('created_at', DateTime, nullable=False),
+    Column('updated_at', DateTime, nullable=False),
+)
+
+# E2. The case timeline: append-only, and the only place a case's history
+# lives. Rows are never updated and never deleted — a note an analyst regrets
+# is followed by another note, exactly as a paper case file works. Retention
+# (C4) drops copies of a vendor's payload and has no code path here.
+case_events = Table(
+    'case_events',
+    metadata,
+    Column('id', Integer, primary_key=True, autoincrement=True),
+    Column('case_id', String(64), nullable=False, index=True),
+    Column('seq', Integer, nullable=False, default=0),
+    # created · assigned · state · note · escalated · sync_out · sync_in
+    Column('kind', String(24), nullable=False, default='note', index=True),
+    Column('actor', String(128), nullable=False, default=''),
+    # human · system · sync. Provenance again (playbook §7.5): a state change
+    # that arrived from the ticketing system must never be indistinguishable
+    # from one an analyst made here.
+    Column('origin', String(16), nullable=False, default='human'),
+    Column('body', String, nullable=False, default=''),
+    Column('data_json', String, nullable=True),
+    Column('created_at', DateTime, nullable=False, index=True),
 )
 
 # C2. The reliable decision path. Ingest stores the detection and correlates it
@@ -407,6 +489,20 @@ def _migrate_alert_soar_actions(conn) -> None:
         ))
     if 'policy_reason' not in cols:
         conn.execute(text('ALTER TABLE alert_soar_actions ADD COLUMN policy_reason TEXT'))
+    # Pre-2.7 actions all went to the single sink. 'unclassified' and '' say
+    # that nothing recorded a route or an executor, which is true — naming a
+    # connector retroactively would assert a delivery path that never existed.
+    if 'policy_rule' not in cols:
+        conn.execute(text(
+            "ALTER TABLE alert_soar_actions ADD COLUMN policy_rule TEXT NOT NULL DEFAULT 'unclassified'"
+        ))
+    for column in ('connector', 'external_ref', 'idempotency_key'):
+        if column not in cols:
+            conn.execute(text(
+                f"ALTER TABLE alert_soar_actions ADD COLUMN {column} TEXT NOT NULL DEFAULT ''"
+            ))
+    if 'attempts' not in cols:
+        conn.execute(text('ALTER TABLE alert_soar_actions ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0'))
 
 
 def _normalize_steps(steps: List) -> List[dict]:

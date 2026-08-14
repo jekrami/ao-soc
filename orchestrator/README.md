@@ -80,9 +80,25 @@ python soc_orchestrator.py
 | `PRECEDENT_MIN_SIMILARITY` | `35` | Retrieval floor (%) — lower than the autonomy gate, because context worth *showing* is not context worth *acting on* |
 | `PRECEDENT_PROMPT_LIMIT` | `4` | Past decisions put in front of the model |
 | `PRECEDENT_CANDIDATE_POOL` | `200` | Newest settled decisions considered per query |
-| `SOAR_DRIVER` | `log` | `log` (JSONL sink) or `noop` |
+| `RESPONSE_ROUTES` | `*=soar` | `rule=connector` pairs deciding which executor performs which class of action, e.g. `block-ip=firewall, isolate=edr, *=soar` |
+| `RESPONSE_DRY_RUN` | `false` | Nothing is sent; each connector's exact payload is recorded and the action reports `SIMULATED`. **Start a deployment here** |
+| `RESPONSE_MAX_ATTEMPTS` | `3` | Attempts per action. Only transport failures are retried — a refusal is an answer |
+| `RESPONSE_RETRY_BACKOFF` | `1.5` | Seconds, doubling per attempt |
+| `RESPONSE_SITE_ID` | `ao-soc` | Idempotency namespace, so two installations feeding one SOAR platform cannot collide |
+| `CONNECTOR_<NAME>_DRIVER` | *(unset)* | `log`, `noop`, `webhook` or `wazuh`. A routed connector with no driver **fails** its actions rather than silently writing them to a file |
+| `CONNECTOR_<NAME>_VERBS` | *(all)* | Policy rule names this executor performs. Anything else routed to it is `BLOCKED` before a packet leaves |
+| `CONNECTOR_<NAME>_URL` / `_TOKEN_ENV` | *(unset)* | Endpoint, and the **name of the variable** holding its secret — never the secret itself, because settings are reported on `/health` |
+| `SOAR_DRIVER` | `log` | Back-compatible default for the connector named `soar`: `log` (JSONL sink) or `noop` |
 | `SOAR_LOG_FILE` | `data/soar-actions.jsonl` | Where the `log` driver writes deliveries |
 | `SOAR_STEP_DELAY` | `0.35` | Seconds between actions, so the UI can render each transition |
+| `CASE_SYNC_PROVIDER` | `none` | System of record: `none`, `file`, `thehive`. `none` is a complete deployment, not a broken one |
+| `CASE_SYNC_DIR` | `data/case-sync` | `outbox/` and `inbox/` for `CASE_SYNC_PROVIDER=file` |
+| `CASE_SYNC_INTERVAL_SECONDS` | `60` | How often the background pass pushes and pulls |
+| `CASE_SYNC_STATE_MAP` | *(built-in)* | External workflow vocabulary → case state, e.g. `Pending Vendor=IN_PROGRESS` |
+| `CASE_SYNC_ALLOW_INBOUND_STATE` / `_ASSIGNEE` | `true` | Turn either off for a read-only mirror. Neither can ever cause an action |
+| `THEHIVE_URL` / `THEHIVE_API_KEY` | *(unset)* | On-prem TheHive 5 instance |
+| `METRICS_ENABLED` | `true` | Serve `GET /metrics` in Prometheus exposition format |
+| `BACKUP_DIR` | `data/backups` | Where `backup.py` writes archives and their manifests |
 
 ## Authentication
 
@@ -307,7 +323,7 @@ find decisions a degraded model or an offline Ollama produced.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/health` | Service liveness + config (correlation, adapters, source policy, threat-intel provider, ATT&CK catalogue and the precedent gate when authenticated) |
+| GET | `/health` | Service liveness + config (correlation, adapters, source policy, threat-intel provider, ATT&CK catalogue, the precedent gate, response routes, case sync and the **preflight** report when authenticated) |
 | POST | `/detections?adapter=` | **The intake.** Adapter → detection → situation → decision. Omit `adapter` to auto-detect |
 | POST | `/splunk-alert` | Compatibility alias for `?adapter=splunk` |
 | GET | `/api/adapters` | Registered adapters: name, version, source tool |
@@ -338,6 +354,16 @@ find decisions a degraded model or an offline Ollama produced.
 | GET | `/api/decisions/outcomes` | Outcome counts and precision per detection source and per decision source |
 | GET | `/api/decisions/pending-feedback` | Settled decisions still inside the window with nothing reported |
 | GET | `/api/corrections` | The human-correction label corpus |
+| GET | `/api/cases` | The case queue: filter by state, assignee, priority or unassigned, plus load metrics |
+| GET | `/api/cases/{id}` | One case with its append-only timeline |
+| GET | `/api/alerts/{id}/case` | The case behind a decision |
+| POST | `/api/cases/{id}/assign` | Take it, hand it over, or return it to the queue (`decisions:act`) |
+| POST | `/api/cases/{id}/state` | Move it along the lifecycle. An unlisted transition is refused with the allowed set |
+| POST | `/api/cases/{id}/escalate` | Raise the tier. Escalation only moves upward, and pages nobody by itself |
+| POST | `/api/cases/{id}/notes` | Append an analyst note — allowed even on a closed case |
+| POST | `/api/cases/{id}/sync` | Push this case to the system of record now (`decisions:act`) |
+| POST | `/api/case-sync/run` | One full sync pass. Cannot approve, dispatch or alter a decision |
+| GET | `/metrics` | Prometheus exposition, including the analysis latency histogram (`decisions:read`) |
 
 ### Dashboard v2 (React adapter)
 
@@ -549,23 +575,139 @@ Skips are logged with the reason, so a demo operator can explain why a given
 alert is still waiting. Autopilot approvals are recorded as
 `approved_by = tier2-autopilot`, which is what the dashboard archive shows.
 
-## SOAR delivery
+## Response delivery (E1 — M12)
 
-Approved actions run through `soar.py`. The `log` driver appends one JSON line
-per delivered action:
+`response.py` is the contract; `connectors/<tool>.py` is the only package where an
+executor is named (Rule 9, the third boundary after `adapters/` and `intel/`).
 
-```json
-{"execution_id":"exec_a1eb351592","driver":"log","status":"DONE","action":"Block IP",
- "target":"185.220.101.7","delivered_at":"2026-08-12T16:12:32Z","alert_id":"ALT-…",
- "decision":"CONTAIN","decision_source":"llm","confidence":95,"approved_by":"tier2-autopilot"}
+**Routing is by action class, not by deployment.** An action is routed on the policy
+rule name `action_policy` already assigned it — a closed vocabulary a model cannot
+extend by rephrasing:
+
+```bash
+RESPONSE_ROUTES="block-ip=firewall, isolate=edr, disable-account=idp, *=soar"
 ```
 
-Tail it during a demo: `tail -f orchestrator/data/soar-actions.jsonl`.
+| Driver | What it is |
+|---|---|
+| `log` | Append one JSON line per action. The default, and the whole layer runs end to end with it and no external system |
+| `noop` | Records nothing, reports `DONE`. Offline unit tests only — never route production traffic here |
+| `webhook` | Authenticated JSON POST. What every SOAR platform, orchestration runner and home-grown response service accepts |
+| `wazuh` | Wazuh active response: resolves the target to an agent, runs a command, and reads the result envelope |
 
-A sink that cannot be written fails the action rather than reporting success —
-an unrecorded containment is worse than a visibly failed one. Execution runs in
-the background, so `approve` returns immediately and the dashboard polls
+Five properties, each because the alternative is an incident rather than a bug:
+
+1. **Capability preflight.** A connector declares which rules it performs. Asking a
+   firewall to disable an account is `BLOCKED` here, with the reason recorded, before
+   a packet leaves.
+2. **Idempotency.** Every action carries `<site>:<decision>:<action>`, stable across
+   retries. Without it, "retry on timeout" means "isolate the host twice".
+3. **Retry only on transport failure.** A 4xx means the executor understood and
+   declined — an *answer*, delivered once. A timeout, a reset or a 5xx means nobody
+   answered, which is the only case worth repeating.
+4. **2xx is not delivery.** Wazuh answers `200` with `total_affected_items: 0` for a
+   request it accepted and did nothing with; the connector reads the envelope and
+   reports `FAILED`. A connector that cannot observe success never reports `DONE`.
+5. **A dry run is `SIMULATED`, never `DONE`.** `RESPONSE_DRY_RUN=true` records the
+   exact payload each connector would have sent, does not mitigate the alert, and
+   leaves the decision reading `SIMULATED`. Start every deployment here.
+
+```json
+{"execution_id":"exec_a1eb351592","status":"DONE","connector":"firewall","driver":"webhook",
+ "action":"Block IP","target":"185.220.101.7","risk_class":"HIGH_WRITE","attempts":2,
+ "idempotency_key":"ao-soc:41:a3","external_ref":"FW-991","delivered_at":"2026-08-14T16:12:32Z"}
+```
+
+Tail the `log` driver during a demo: `tail -f orchestrator/data/soar-actions.jsonl`.
+A sink that cannot be written fails the action rather than reporting success — an
+unrecorded containment is worse than a visibly failed one. Execution runs in the
+background, so `approve` returns immediately and the dashboard polls
 `PENDING → APPROVED → EXECUTING → DONE`.
+
+## Cases (E2 — M11)
+
+A case is a third thing, deliberately separate from both of the others:
+
+    a situation is what the tools observed
+    a decision  is what the layer, and then a human, concluded
+    a case      is who is working it and what state the humans consider it in
+
+Those change on different clocks, and folding the third into either of the others
+means a shift handover rewrites the record of what was decided.
+
+One case per situation, opened the moment the situation is analysed — a case created
+on first view cannot answer *"what came in overnight and who has it"*. States are
+`NEW · ASSIGNED · IN_PROGRESS · ESCALATED · RESOLVED · CLOSED · REOPENED`, and the
+transitions are a **whitelist**: C3 found an approval gate that listed the states
+which *block* it and was therefore approvable by omission the day a state was added.
+
+The timeline is append-only. A note nobody should have written is followed by another
+note, the way a paper case file works. Every entry records its `origin` —
+`human`, `system` or `sync` — so a change that arrived from the ticketing system is
+never indistinguishable from one an analyst made here.
+
+**Nothing in this module can approve, reject, dispatch or alter a decision.**
+
+## The system of record (E3 — M11)
+
+`case_sync.py` is the contract; `ticketing/<tool>.py` is the fourth boundary package.
+`file` is a directory drop (offline, and what the tests use — segmented sites really
+do move tickets as files); `thehive` speaks TheHive 5's REST API.
+
+Three mechanics make bidirectional sync survivable:
+
+- **Echo suppression.** Every push stamps a monotonic revision into the external
+  record. A change quoting one we have already sent is our own writing coming back.
+  Without it, two systems politely update each other forever.
+- **Ownership per field.** AI-SOC owns what it derived — severity, verdict, evidence.
+  The system of record owns the workflow — who has it, what state it is in, when it
+  closed. Neither overwrites the other's, so "last writer wins" never has to be asked.
+- **An unlisted transition is refused and recorded**, not forced. A case whose ticket
+  has walked somewhere the local machine does not allow is a condition an analyst
+  needs to see.
+
+> **An inbound message can never cause an action.** It moves a case, names an
+> assignee, adds a note. It cannot approve a decision, dispatch an action, or alter a
+> correction, an outcome or a receipt — and the guarantee is structural: this module
+> has no import path to `tier2` or `response`, and `test_broker.check_case_sync_isolation`
+> fails the build if one appears. Without it, an account on the ticketing system is an
+> account that can contain a host.
+
+## Observability and operations (E4 — M15)
+
+`GET /metrics` serves Prometheus exposition, including the **analysis latency
+histogram** Rule 8 has carried as a named residual since v2.2. Written by hand rather
+than against a library: the format is a hundred lines of text, and an air-gapped site
+should not need a wheel to see how long its analyses take. Labels are closed
+vocabularies only — a metric labelled by alert id is a cardinality bomb that takes the
+monitoring system down during the incident it was installed for.
+
+`/health` gains a **`preflight`** block answering one question: *is anything
+configured in a way that will silently do less than it claims?* That is the shape of
+every failure this project has actually shipped — a truncated response the tolerant
+parser "rescued", a thinking model returning an empty string, a blacklist gate that
+admitted a state added later. None of them raised. It never refuses to start: a
+decision layer that will not boot because a firewall connector is misconfigured has
+turned a degraded response path into a total detection outage.
+
+```bash
+python backup.py create
+```
+
+```bash
+python backup.py verify data/backups/ao-soc-20260814T101500Z.db
+```
+
+A decision, a human correction, an outcome and a receipt exist in exactly one place
+and nothing upstream can reproduce them — that is the whole of what the backup
+protects. It uses SQLite's own backup API (a live database copied with `cp` is a
+database that will not open), records a manifest with a SHA-256 and the row counts of
+everything unrecoverable, **raises rather than returning something plausible** when
+the hash does not match, and never overwrites in place.
+
+Containers are in `deploy/`. The compose file publishes only the dashboard, keeps the
+decision store on a named volume, and defaults to `RESPONSE_DRY_RUN=true`. The
+rollout order is in [`docs/PILOT-RUNBOOK.md`](../docs/PILOT-RUNBOOK.md).
 
 ## Storage (`soc_matrix.db`)
 
@@ -581,6 +723,9 @@ the background, so `approve` returns immediately and the dashboard polls
 | `alert_soar_actions` | Bundled SOAR plan with per-action execution status, risk class and policy verdict |
 | `decision_corrections` | **The label corpus** — what a human changed, and what the machine had proposed |
 | `decision_outcomes` | What actually happened, attributed to the detection source |
+| `cases` | **The human workflow** — owner, state, priority, escalation, and the state of the conversation with the system of record |
+| `case_events` | The case file: append-only, never updated, never deleted, every row stamped `human` / `system` / `sync` |
+| `intel_observations` | What a feed said about an indicator, and when it was asked. A cache — droppable without losing a decision |
 | `ai_explanations` | Dashboard v2 explanation records |
 | `ai_evidence` | Structured evidence for v2 |
 | `recommended_actions` | SOAR-style actions for v2 |

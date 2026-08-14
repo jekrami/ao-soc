@@ -7,6 +7,7 @@ import importlib
 import json
 import os
 import sys
+import shutil
 
 import httpx
 
@@ -31,6 +32,8 @@ import sqlalchemy
 from datetime import datetime, timedelta, timezone
 
 import analysis_queue
+import case_sync
+import cases
 import db
 import decision_store
 import soc_orchestrator as broker
@@ -38,8 +41,11 @@ import llm
 import llm_provider
 import precedent
 import situation as situations
+import metrics
+import response
 import source_registry
 import threat_intel
+import ticketing
 import tier2
 from action_policy import assess_action, autopilot_allows, classify_action
 from auth import Principal, configured_origins, resolve_actor
@@ -303,7 +309,7 @@ async def check_authentication() -> None:
         assert open_health['ok'] and open_health['authenticated'] is False
         assert 'soar' not in open_health and 'db_file' not in open_health
         authed = (await client.get('/health', headers=viewer)).json()
-        assert authed['authenticated'] and authed['soar'] and authed['autopilot']
+        assert authed['authenticated'] and authed['response'] and authed['autopilot']
 
     # A caller cannot name its own approver; only a confidential client can.
     service = Principal(name='ui-api', role='service', asserted_actor='jek')
@@ -1078,6 +1084,361 @@ def check_precedent_similarity() -> None:
     assert score_similarity(beacon, same_shape) == (score, terms)
 
 
+# --- Phase E: delivery, cases, and the system of record --------------------
+
+
+def check_connector_boundary() -> None:
+    """Rule 9, E1: only connectors/ knows what an executor's API looks like.
+
+    The third boundary, and the same structural test as the other two. The day
+    a core module knows that Wazuh calls it ``agents_list``, swapping the EDR
+    becomes a code change instead of a configuration change.
+    """
+    core = ('response.py', 'tier2.py', 'action_policy.py', 'db.py', 'cases.py',
+            'case_sync.py', 'situation.py', 'decision_store.py')
+    for module in core:
+        source = open(module, encoding='utf-8').read()
+        assert 'from connectors' not in source, \
+            f'{module} imports from connectors/ — core logic must talk to the contract'
+        # response.py resolves the registry inside one function on purpose; the
+        # rule is that no core module holds a module-level dependency on it.
+        assert '\nimport connectors' not in source, f'{module} imports connectors/ at module level'
+
+    broker_source = open('soc_orchestrator.py', encoding='utf-8').read()
+    for vendor in ('WazuhActiveResponseConnector', 'connectors.wazuh', 'agents_list',
+                   'firewall-drop', 'active-response'):
+        assert vendor not in broker_source, f'{vendor} is named in the broker — Rule 9'
+
+
+def check_case_sync_isolation() -> None:
+    """E3's load-bearing guarantee, checked structurally rather than trusted.
+
+    An inbound message from a ticketing system must not be able to approve a
+    decision or dispatch an action. That is only true if the code handling
+    inbound messages has no path to the code that can — so ``case_sync`` and
+    every provider under ``ticketing/`` must not import ``tier2`` or
+    ``response`` at all. A comment promising it is not a control.
+    """
+    for module in ('case_sync.py', 'cases.py',
+                   os.path.join('ticketing', 'filedrop.py'),
+                   os.path.join('ticketing', 'thehive.py')):
+        source = open(module, encoding='utf-8').read()
+        for forbidden in ('import tier2', 'from tier2', 'import response', 'from response',
+                          'approve_tier2_decision', 'deliver_action'):
+            assert forbidden not in source, (
+                f'{module} can reach the decision path via {forbidden!r} — an inbound '
+                f'ticket update must never be able to cause an action'
+            )
+
+    # And the health endpoint says so out loud, because a guarantee nobody can
+    # see is a guarantee nobody checks.
+    assert case_sync.sync_config()['inbound_can_act'] is False
+
+
+class _StubConnector(response.Connector):
+    """An executor whose behaviour the test dictates, attempt by attempt."""
+
+    driver = 'stub'
+
+    def __init__(self, name, settings=None, script=None):
+        super().__init__(name, settings)
+        self.script = list(script or [])
+        self.seen = []
+
+    async def deliver(self, request):
+        self.seen.append(request.idempotency_key)
+        outcome = self.script.pop(0) if self.script else response.DeliveryResult(status=response.DONE)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+
+async def check_response_routing() -> None:
+    """E1: routing, capability, idempotency, retry policy and dry run."""
+    import connectors
+
+    original_routes = dict(response.ROUTES)
+    original_dry_run = response.DRY_RUN
+    original_backoff = response.RETRY_BACKOFF
+    response.RETRY_BACKOFF = 0.0
+
+    firewall = _StubConnector('firewall', {'verbs': 'block-ip,block-url'})
+    edr = _StubConnector('edr', {'verbs': 'isolate'})
+    response.clear_connectors()
+    response.register_connector(firewall)
+    response.register_connector(edr)
+    response.ROUTES.clear()
+    response.ROUTES.update({'block-ip': 'firewall', 'isolate': 'edr', '*': 'firewall'})
+
+    def request(rule, action, target, action_id='a1', decision_id=1):
+        return response.ActionRequest(
+            alert_id='ALT-E1', decision_id=decision_id, action_id=action_id,
+            action_type=action, target=target, rule=rule, risk_class='HIGH_WRITE',
+            target_kind='ip',
+        )
+
+    try:
+        # --- routed by class, not by phrasing ---
+        receipt = await response.deliver_action(request('block-ip', 'Block IP', '185.220.101.7'))
+        assert receipt['status'] == 'DONE' and receipt['connector'] == 'firewall', receipt
+
+        # --- capability preflight: refused before a packet ---
+        receipt = await response.deliver_action(
+            request('disable-account', 'Disable user', 'mmalek', action_id='a2')
+        )
+        assert receipt['status'] == 'BLOCKED', receipt
+        assert 'block-ip' in receipt['error'] and 'disable-account' in receipt['error']
+        assert len(firewall.seen) == 1, 'a refused action must never reach the executor'
+
+        # --- a transport failure is retried, with the SAME idempotency key ---
+        firewall.script = [
+            response.TransportError('connection reset'),
+            response.DeliveryResult(status=response.DONE, external_ref='FW-991'),
+        ]
+        receipt = await response.deliver_action(
+            request('block-ip', 'Block IP', '45.9.148.117', action_id='a3')
+        )
+        assert receipt['status'] == 'DONE' and receipt['attempts'] == 2, receipt
+        assert receipt['external_ref'] == 'FW-991'
+        retried = firewall.seen[-2:]
+        assert retried[0] == retried[1], (
+            'a retry sent a different idempotency key — that is a second containment, '
+            'not a repeat of the first'
+        )
+
+        # --- a refusal is an answer, and answers are delivered once ---
+        firewall.script = [response.ConnectorRefused('HTTP 422: target not managed here')]
+        before = len(firewall.seen)
+        receipt = await response.deliver_action(
+            request('block-ip', 'Block IP', '10.0.0.9', action_id='a4')
+        )
+        assert receipt['status'] == 'FAILED' and 'refused' in receipt['error']
+        assert len(firewall.seen) == before + 1, 'a 4xx-style refusal was retried'
+
+        # --- a route naming a connector nobody configured fails loudly ---
+        response.ROUTES['quarantine-file'] = 'sandbox'
+        receipt = await response.deliver_action(
+            request('quarantine-file', 'Quarantine hash', 'a' * 64, action_id='a5')
+        )
+        assert receipt['status'] == 'FAILED' and 'sandbox' in receipt['error'], receipt
+        assert 'sandbox' in response.response_config()['unrouted']
+
+        # --- dry run: previewed, never sent, and NOT reported as done ---
+        response.DRY_RUN = True
+        before = len(edr.seen)
+        receipt = await response.deliver_action(
+            request('isolate', 'Isolate host', 'WKSTN-14', action_id='a6')
+        )
+        assert receipt['status'] == 'SIMULATED', receipt
+        assert receipt['preview']['payload']['target'] == 'WKSTN-14'
+        assert len(edr.seen) == before, 'a dry run reached the executor'
+    finally:
+        response.DRY_RUN = original_dry_run
+        response.RETRY_BACKOFF = original_backoff
+        response.ROUTES.clear()
+        response.ROUTES.update(original_routes)
+        connectors.register_builtins()
+
+
+def check_connector_verification() -> None:
+    """E1: 2xx is not delivery. Both real connectors read the answer."""
+    from connectors.wazuh import WazuhActiveResponseConnector
+    from connectors.webhook import _external_ref
+
+    # The webhook lifts the executor's own id out of whatever shape it used.
+    assert _external_ref({'data': {'id': 'SOAR-7781'}}) == 'SOAR-7781'
+    assert _external_ref({'nothing': 'useful'}) == ''
+
+    wazuh = WazuhActiveResponseConnector('edr', {
+        'url': 'https://wazuh.internal:55000', 'user': 'ao-soc',
+        'password_env': 'UNSET_WAZUH_PASSWORD', 'agents': '001',
+    })
+    # A stock Wazuh install has no endpoint isolation. Mapping one here would be
+    # the connector-layer version of a fabricated technique.
+    assert 'isolate' not in wazuh.commands
+    assert wazuh.commands['block-ip'] == 'firewall-drop0'
+    # Selected but unconfigured is a configuration fault, not an empty executor.
+    assert 'UNSET_WAZUH_PASSWORD' in (wazuh.configuration_error() or '')
+
+
+def check_backup_roundtrip() -> None:
+    """E4: a backup that cannot be verified is not a backup."""
+    import backup
+
+    scratch = 'test_backup_dir'
+    shutil.rmtree(scratch, ignore_errors=True)
+    manifest = backup.create_backup(source='test_soc_matrix.db', out_dir=scratch)
+    archive = os.path.join(scratch, manifest['archive'])
+
+    assert manifest['integrity'] == 'ok'
+    assert manifest['rows']['tier2_decisions'] >= 1, manifest['rows']
+    assert manifest['app_version'] != 'unknown', 'an archive must name the build that wrote it'
+
+    verified = backup.verify_backup(archive)
+    assert verified['manifest_matches'] is True
+
+    # A tampered archive raises rather than returning something plausible
+    # (playbook §9: verify recovered bytes, and a mismatch raises).
+    with open(archive, 'ab') as handle:
+        handle.write(b'\x00')
+    try:
+        backup.verify_backup(archive)
+    except RuntimeError as exc:
+        assert 'does not match its manifest' in str(exc)
+    else:
+        raise AssertionError('a tampered archive verified clean')
+
+    shutil.rmtree(scratch, ignore_errors=True)
+
+
+async def check_phase_e_dod(client, ingest: dict, viewer: dict, analyst: dict) -> None:
+    """One scenario for Phase E, end to end.
+
+    A detection opens a case nobody owns; an analyst takes it, works it and
+    escalates it; a transition the machine does not allow is refused with its
+    reason; the case is pushed to a system of record; that system closes the
+    ticket and the case follows **while the decision stays exactly where it
+    was**; the same message arriving twice is recognised as our own echo; and a
+    state the map does not know is recorded as refused rather than forced.
+    """
+    scratch = 'test_case_sync'
+    shutil.rmtree(scratch, ignore_errors=True)
+
+    set_provider(ScriptedProvider(lambda _prompt: DOD_LLM_RESPONSE))
+    ingested = await client.post(
+        '/detections',
+        headers=ingest,
+        json={
+            'tool': 'wazuh', 'rule': {'id': '5710', 'description': 'Repeated SSH failures'},
+            'agent': {'name': 'BASTION-2', 'ip': '10.22.7.4'},
+            'data': {'srcip': '203.0.113.44', 'dstuser': 'root'},
+            'timestamp': datetime.now(timezone.utc).isoformat(),
+        },
+    )
+    assert ingested.status_code in (201, 202), ingested.text
+    alert_id = ingested.json()['id']
+
+    # --- E2: every analysed situation is somebody's work from the start ---
+    opened = (await client.get(f'/api/alerts/{alert_id}/case', headers=viewer)).json()
+    case_id = opened['case_id']
+    assert opened['state'] == 'NEW' and opened['assignee'] is None, opened
+    assert opened['sync']['status'] == 'LOCAL', 'no ticketing system is configured yet'
+    assert opened['timeline'][0]['kind'] == 'created'
+
+    # A viewer may read the queue and may not take work off it (A1).
+    denied = await client.post(f'/api/cases/{case_id}/assign', headers=viewer,
+                               json={'assignee': 'sara.analyst'})
+    assert denied.status_code == 403, denied.text
+
+    assigned = (await client.post(f'/api/cases/{case_id}/assign', headers=analyst,
+                                  json={'assignee': 'sara.analyst'})).json()
+    assert assigned['state'] == 'ASSIGNED' and assigned['assignee'] == 'sara.analyst'
+
+    noted = await client.post(
+        f'/api/cases/{case_id}/notes', headers=analyst,
+        json={'note': 'Source is a known scanner range; checking the change calendar.'},
+    )
+    assert noted.status_code == 201, noted.text
+
+    escalated = (await client.post(
+        f'/api/cases/{case_id}/escalate', headers=analyst,
+        json={'tier': 2, 'to': 'ir-team', 'reason': 'root login attempted'},
+    )).json()
+    assert escalated['state'] == 'ESCALATED' and escalated['escalation']['tier'] == 2
+
+    # Escalation only moves upward, and a transition off the whitelist is
+    # refused rather than quietly permitted (C3's lesson).
+    backwards = await client.post(f'/api/cases/{case_id}/escalate', headers=analyst, json={'tier': 1})
+    assert backwards.status_code == 409, backwards.text
+    unlisted = await client.post(f'/api/cases/{case_id}/state', headers=analyst, json={'state': 'NEW'})
+    assert unlisted.status_code == 409 and 'not an allowed transition' in unlisted.text
+
+    # --- E3: the conversation with the system of record ---
+    provider = ticketing.FileDropSyncProvider(directory=scratch)
+    case_sync.set_sync_provider(provider)
+    try:
+        pushed = (await client.post(f'/api/cases/{case_id}/sync', headers=analyst)).json()
+        assert pushed['synced'] is True and pushed['revision'] == 1, pushed
+        with open(os.path.join(scratch, 'outbox', f'{case_id}.json'), encoding='utf-8') as handle:
+            outbox = json.load(handle)
+        assert outbox['ao_soc_revision'] == 1
+        # The ticket carries the verdict as context. It carries no control.
+        assert outbox['decision']['verdict'] in tier2.DECISION_TYPES
+        assert outbox['decision']['approval_status'] == 'PENDING'
+
+        decision_before = (await client.get(f'/api/alerts/{alert_id}/decision', headers=viewer)).json()
+
+        # The service desk closes the ticket. The case follows it; the decision
+        # does not move an inch — the guarantee the whole design rests on.
+        os.makedirs(os.path.join(scratch, 'inbox'), exist_ok=True)
+        inbound = {
+            'external_ref': case_id, 'state': 'Closed', 'assignee': 'servicedesk.lead',
+            'note': 'Confirmed as an authorized penetration test.',
+            'actor': 'servicedesk.lead', 'ao_soc_revision': 2,
+        }
+        with open(os.path.join(scratch, 'inbox', 'change-1.json'), 'w', encoding='utf-8') as handle:
+            json.dump(inbound, handle)
+
+        result = (await client.post('/api/case-sync/run', headers=analyst)).json()
+        assert result['pull']['applied'] == 1, result
+
+        closed = (await client.get(f'/api/alerts/{alert_id}/case', headers=viewer)).json()
+        assert closed['state'] == 'CLOSED' and closed['assignee'] == 'servicedesk.lead'
+        assert any(event['origin'] == 'sync' for event in closed['timeline']), (
+            'a change that came from the system of record must be distinguishable '
+            'from one an analyst made here'
+        )
+
+        decision_after = (await client.get(f'/api/alerts/{alert_id}/decision', headers=viewer)).json()
+        assert decision_after['approval_status'] == decision_before['approval_status'] == 'PENDING', (
+            'closing a ticket approved a decision — an account on the ticketing system '
+            'is now an account that can contain a host'
+        )
+        assert decision_after['approved_by'] is None
+        actions = (await client.get(f'/api/alerts/{alert_id}/actions', headers=viewer)).json()
+        assert all(item['status'] == 'PENDING' for item in actions['items']), actions
+
+        # --- echo suppression: our own writing coming back is not news ---
+        with open(os.path.join(scratch, 'inbox', 'echo-1.json'), 'w', encoding='utf-8') as handle:
+            json.dump({'external_ref': case_id, 'state': 'Closed', 'ao_soc_revision': 1}, handle)
+        echoed = (await client.post('/api/case-sync/run', headers=analyst)).json()
+        assert echoed['pull']['pulled'] == 1 and echoed['pull']['applied'] == 0, echoed
+
+        # --- a state nothing maps to is recorded, not guessed at ---
+        with open(os.path.join(scratch, 'inbox', 'odd-1.json'), 'w', encoding='utf-8') as handle:
+            json.dump({'external_ref': case_id, 'state': 'Pending Vendor', 'ao_soc_revision': 9}, handle)
+        await client.post('/api/case-sync/run', headers=analyst)
+        after = (await client.get(f'/api/alerts/{alert_id}/case', headers=viewer)).json()
+        assert after['state'] == 'CLOSED', 'an unmappable external state moved the case'
+        refused = [e for e in after['timeline'] if e['kind'] == 'sync_in' and 'refused' in e['body']]
+        assert refused and 'Pending Vendor' in refused[-1]['body'], after['timeline']
+
+        # A note is still allowed on a closed case — the sentence that explains
+        # it six months later has to land somewhere.
+        late = await client.post(f'/api/cases/{case_id}/notes', headers=analyst,
+                                 json={'note': 'Change ticket CHG-4471 confirms it.'})
+        assert late.status_code == 201, late.text
+    finally:
+        case_sync.reset_sync_provider()
+        shutil.rmtree(scratch, ignore_errors=True)
+
+    # --- E4: the latency histogram Rule 8 has carried as a residual since v2.2 ---
+    scraped = await client.get('/metrics', headers=viewer)
+    assert scraped.status_code == 200, scraped.text
+    body = scraped.text
+    assert f'# TYPE {metrics.ANALYSIS_SECONDS} histogram' in body
+    assert f'{metrics.ANALYSIS_SECONDS}_bucket' in body and f'{metrics.ANALYSIS_SECONDS}_count' in body
+    assert f'{metrics.CASES_OPEN}{{state="CLOSED"}}' in body, body[:2000]
+    assert (await client.get('/metrics')).status_code == 401, 'metrics served without a key'
+
+    # --- E4: everything configured that would silently do less than it claims ---
+    health = (await client.get('/health', headers=viewer)).json()
+    assert health['preflight']['ok'] is True, health['preflight']
+    assert health['response']['routes'], health['response']
+    assert health['case_sync']['inbound_can_act'] is False
+    assert health['cases']['metrics']['total'] >= 1
+
+
 def check_adapter_boundary() -> None:
     """Rule 9 / B6: only adapters know a vendor's field names.
 
@@ -1201,7 +1562,11 @@ async def run_test() -> None:
     check_evidence_pointers()
     check_adapter_boundary()
     check_intel_boundary()
+    check_connector_boundary()
+    check_case_sync_isolation()
+    check_connector_verification()
     check_precedent_similarity()
+    await check_response_routing()
     await check_empty_response_raises()
     await check_provider_abstraction()
 
@@ -1454,6 +1819,16 @@ async def run_test() -> None:
             viewer={'X-API-Key': 'viewer-secret'},
             analyst={'X-API-Key': 'service-secret'},
         )
+        await check_phase_e_dod(
+            client,
+            ingest={'X-API-Key': 'service-secret'},
+            viewer={'X-API-Key': 'viewer-secret'},
+            analyst={'X-API-Key': 'service-secret'},
+        )
+
+    # After the corpus exists: a backup is only worth taking if it can be
+    # verified, and only worth verifying against real rows.
+    check_backup_roundtrip()
 
     # Windows keeps the SQLite file locked while the engine holds a connection.
     await db.engine.dispose()
@@ -1464,7 +1839,9 @@ async def run_test() -> None:
         'into one situation, situation-driven Tier-2 decision, retry/dead-letter/back-pressure '
         'on the analysis queue, decision search and retention, verified threat intelligence '
         'and ATT&CK catalogue checks, precedent retrieval with a grounding gate, '
-        'precedent-gated autopilot, and SOAR delivery all verified.'
+        'precedent-gated autopilot, routed response delivery with idempotent retry '
+        'and dry run, case management, bidirectional sync that cannot touch a decision, '
+        'metrics and verified backups all verified.'
     )
 
 

@@ -4,10 +4,10 @@
 |---|---|
 | **Project** | AI-SOC / AO-SOC Command Center |
 | **Document** | Master Project Plan, Milestones & Coding-Agent Roadmap |
-| **Version** | 2.5 (replan of v1.0; boundary corrected in v2.1; Phases A-C delivered in v2.2-2.4; **Phase D delivered in v2.5**) |
+| **Version** | 2.6 (replan of v1.0; boundary corrected in v2.1; Phases A-D delivered in v2.2-2.5; **Phase E delivered in v2.6**) |
 | **Supersedes** | Plan v1.0, Summer 2026 |
 | **Date** | Summer 2026 |
-| **Status** | Re-sequenced against implemented reality, re-scoped against the tool boundary; Phases A-D complete in `ao-soc` 2.6.0 — what remains is production |
+| **Status** | Re-sequenced against implemented reality, re-scoped against the tool boundary; **Phases A-E complete in `ao-soc` 2.7.0** — what remains is a pilot and a release, both of which are engagements rather than build artifacts |
 | **Writer** | J.Ekrami |
 | **Co-writer** | Claude (Opus 5) |
 | **Copyright** | © J.Ekrami-Labs |
@@ -127,13 +127,13 @@ integration, stated in the evidence column.
 | M08 | **AI Analysis Engine** | 🔴 | **🟢** | Structured output (severity, confidence, evidence, reasoning, MITRE, recommendations), validated, JSON-enforced, benchmarked across 14 local models, behind an `LLMProvider` abstraction with a model-free `echo` mode (A3), and **reasoning over a Security Situation rather than a single alert** (B3) |
 | M09 | RAG & Knowledge Base | 🔴 | **🟡→🟢** | **D3 delivered:** `precedent.py` retrieves past *settled* situations from the decision / correction / outcome corpus, ranked by a deterministic five-term similarity over contract 2, returned with every term's points. The top matches reach the prompt as **cited** context, and a precedent id the model was never offered is dropped and recorded (grounding gate). Deliberately not embedded: at decision-store scale a vector index buys ranking nobody needs yet, and the deterministic path works with no model at all. Missing: procedures/playbooks and asset-owner context, which are documents and belong with the external system of record |
 | M10 | **AI SOC Analyst / Tier-2** | 🔴 | **🟡→🟢** | Verdict (`CONTAIN`/`ESCALATE`/`INVESTIGATE`/`MONITOR`/`IGNORE`) + confidence + rationale + risk-of-action + bundled action plan + human approval **+ human edit captured as a label** (A4) + provenance (`llm`/`rules`/`human`). **One decision per situation, re-derived as it grows and frozen once a human or a dispatch claims it** (B3). **D2/D3:** the analyst now reasons with verified intelligence and cited precedent in front of it. Missing: investigation & attack-reconstruction depth |
-| M11 | Incident & Case Management | 🔴 | 🟡 | Incident object, timeline, evidence, status lifecycle, archive, audit trail, **`decision_outcomes` + feedback window** (A5). Missing: assignment, escalation, analyst notes, **sync to the external system of record** |
-| M12 | Response & Integration | 🔴 | 🟡 | Playbook plan, policy gate, background executor, pluggable SOAR adapter, action audit with receipts, **action risk classification + target-shape validation** (A2). Missing: real connectors |
+| M11 | Incident & Case Management | 🔴 | ⬛→**🟢** | **E2/E3 delivered.** `cases.py`: one case per situation, opened at analysis rather than at first view, with assignment, escalation, analyst notes and an append-only timeline whose every row is stamped `human` / `system` / `sync`. Transitions are a whitelist. `case_sync.py` + `ticketing/` carries the conversation with the external system of record in both directions, with echo suppression, per-field ownership and refusal-not-forcing. Missing: nothing in scope — the SLA clock and the shift roster belong to the system of record |
+| M12 | Response & Integration | 🔴 | **🟢** | **E1 delivered.** `response.py` + `connectors/` — routing per action class to a SOAR platform, an EDR, a firewall or an IdP; capability preflight; idempotency keys stable across retries; retry only on transport failure; verified success (a 200 that affected nothing is `FAILED`); and a dry run that reports `SIMULATED`, never `DONE`. A generic authenticated `webhook` plus `wazuh` active response, written to prove the boundary the way the Wazuh *adapter* proved the intake's |
 | M13 | SOC Dashboard | 🔴 | **🟢** | 7 routes, EN/FA + RTL, executive KPIs, MITRE heatmap, live telemetry, Tier-2 panel with edit + outcome capture, archive, **the situation panel (C5)** — every member detection with its source tool, the entity graph, and each term of the risk score — **and the verification panel (D5)**, which draws the absences as deliberately as the hits: unchecked, not-found, feed-down, unlisted technique, and the precedent behind an automatic execution. Both languages |
-| M14 | Security & Governance | 🔴 | 🟡 | **A1 delivered:** API-key authentication with roles on both services, CORS allow-list, authenticated approver identity, no unauthenticated path. Missing: real IdP/SSO, per-object RBAC, secrets management, TLS termination |
-| M15 | Production Hardening | 🔴 | 🔴 | No Docker, monitoring, backup, HA |
-| M16 | Pilot SOC | 🔴 | 🔴 | — |
-| M17 | Production Release | 🔴 | 🔴 | — |
+| M14 | Security & Governance | 🔴 | 🟡 | **A1 delivered:** API-key authentication with roles on both services, CORS allow-list, authenticated approver identity, no unauthenticated path. **E1/E3 added two structural controls:** a connector secret is referenced by the *name* of the variable holding it, so nothing sensitive reaches `/health`, and an inbound ticket update has no import path to the decision code. Missing: real IdP/SSO, per-object RBAC, secrets management, TLS termination |
+| M15 | Production Hardening | 🔴 | **🟢** | **E4 delivered.** `/metrics` in Prometheus exposition with the analysis latency histogram Rule 8 named as its residual; `preflight.py` reporting everything configured that would silently do less than it claims; `backup.py` with a consistent live copy, a manifest carrying a SHA-256 and the row counts of everything unrecoverable, and a verify that raises on a mismatch; Docker images and a compose file that publishes only the dashboard and defaults to dry run. Missing: HA, which for a single-writer SQLite decision store is a storage-layer decision a site makes with its own infrastructure |
+| M16 | Pilot SOC | 🔴 | 🟡 | **E6 delivered the runbook, not the pilot.** `docs/PILOT-RUNBOOK.md` gives the rollout order, what to watch at each stage, what to roll back with, and the seven questions a pilot must answer from its own corpus. M16 closes only when a real SOC runs it — that is an engagement, and no amount of code moves it |
+| M17 | Production Release | 🔴 | 🟡 | **E6 delivered the checklist.** Security, data, operations and judgement, including the residuals stated rather than hidden — pre-shared keys are not an IdP, and the autonomy gate's constants are calibrated on nothing yet |
 
 ```text
               AI-SOC DEVELOPMENT STATUS (scoped to the decision layer)
@@ -282,8 +282,8 @@ upper-layer features before contract 2 is frozen means rewriting the AI layer tw
 | 5 — **AI must be modular** | ✅ *(v2.2)* | `LLMProvider` abstraction with `OllamaProvider`, a model-free `EchoProvider` (`LLM_PROVIDER=echo`) and a `ScriptedProvider` for the demo tooling. `soc_orchestrator` no longer imports `llm` |
 | 6 — AI output must be structured | ✅ *(v2.5)* | JSON-enforced (`format: json`), vocabulary-gated, `decision_source` provenance (`llm` / `rules` / `human`); MITRE techniques carry `source` = `tool` / `llm`, **and since D1 a `catalog_status` as well** — structure was never the whole problem, and a well-formed claim about a technique that does not exist is still a fabrication. Precedent citations are gated the same way: an id the model was not given is dropped, not stored |
 | 7 — **Human approval for dangerous actions** | ✅ *(v2.2)* | Approval gate plus `action_policy.py`: `READ` / `LOW_WRITE` / `HIGH_WRITE` / `DESTRUCTIVE`, unknown verbs default to HIGH_WRITE, per-class target-shape validation before dispatch, autopilot risk ceiling, DESTRUCTIVE off unless deliberately enabled |
-| 8 — Everything observable | ✅ *(v2.5)* | `/health` (auth-scoped) reports the LLM provider, autopilot **and its precedent gate**, action policy, correlation, source registry, adapters, analysis queue depth and dead letters, retention, **the threat-intel provider and the ATT&CK catalogue in use**. Risk class, policy reason, correction/outcome trails, correlation decisions, source health, the decision store, the intelligence a decision was made on and **the precedent an automatic execution stood on** are all queryable. *Residual:* no latency histograms — a metrics exporter is Phase E |
-| **9 — Every external tool sits behind an adapter** *(new, v2.1)* | ✅ *(v2.3)* | Corollary of §2 and the sibling of Rule 5. SOAR complied already; **intake now does too** — `adapters/` is the only package where a vendor's field names appear, `POST /detections` is vendor-neutral, `/splunk-alert` is a thin alias, and `test_broker.check_adapter_boundary` fails the build if a core module imports the package or the broker names an adapter class. **Seven vendors as of v2.4 (C1), none of which needed a change outside `adapters/`. R7 closed** |
+| 8 — Everything observable | ✅ *(v2.5)* | `/health` (auth-scoped) reports the LLM provider, autopilot **and its precedent gate**, action policy, correlation, source registry, adapters, analysis queue depth and dead letters, retention, **the threat-intel provider and the ATT&CK catalogue in use**. Risk class, policy reason, correction/outcome trails, correlation decisions, source health, the decision store, the intelligence a decision was made on and **the precedent an automatic execution stood on** are all queryable. **E4 closed the residual:** `GET /metrics` serves Prometheus exposition including the analysis-latency and delivery-latency histograms, and `/health` carries a **`preflight`** report naming everything configured that would silently do less than it claims |
+| **9 — Every external tool sits behind an adapter** *(new, v2.1)* | ✅ *(v2.3)* | Corollary of §2 and the sibling of Rule 5. SOAR complied already; **intake now does too** — `adapters/` is the only package where a vendor's field names appear, `POST /detections` is vendor-neutral, `/splunk-alert` is a thin alias, and `test_broker.check_adapter_boundary` fails the build if a core module imports the package or the broker names an adapter class. **Seven vendors as of v2.4 (C1), none of which needed a change outside `adapters/`. R7 closed.** **Four boundary packages as of v2.6** — `adapters/` in, `intel/` verifying, `connectors/` out, `ticketing/` alongside — each with a structural test that fails the build if core logic reaches into it |
 
 ### Rule 7 is not theoretical
 
@@ -317,6 +317,7 @@ validity of what it dispatches is not a detail.
 | **R8** | **Decision quality is bounded by upstream detection quality** *(v2.1)* | Medium | AI-SOC cannot see what the SIEM did not alert on, and inherits its false-positive rate. Accepted deliberately. **Measurable since v2.2:** `GET /api/decisions/outcomes` reports precision per detection source, so a bad upstream rule no longer reads as bad AI. **Reduced in v2.3:** cross-tool corroboration is exactly the mitigation — a situation two independent tools agree on is less bounded by either one's error rate, which is why it scores higher. A multi-source situation's `detection_source` reads `splunk+wazuh`, so precision is still attributable and never guessed |
 | ~~**R10**~~ | ~~**A failed analysis is a lost decision**~~ *(raised and closed, v2.4)* | **Closed v2.4** | Phase B stored the detection before calling the model, so evidence was never lost — but the *analysis* was: a failure returned 502 and the situation stayed unanalysed unless another detection happened to join it. C2 makes it a job with backoff, a bounded attempt budget and a visible, re-runnable dead-letter state. Recorded here rather than quietly fixed, because it was a real gap in a phase that had already been called done |
 | **R11** | **Precedent inherits the corpus's blind spots** *(new, v2.5)* | Medium | The autonomy gate is only as good as the confirmations behind it. Three analysts who approved a CONTAIN too quickly are indistinguishable, to this system, from three who were right — and a pattern nobody has ever seen has no precedent, which is safe, while a pattern the SOC has *consistently mishandled* has plenty. Mitigated three ways and not eliminated: an outcome of `FALSE_POSITIVE` or `REOPENED` reverses a precedent and closes the gate; a single contrary human verdict closes it; and `GET /api/decisions/outcomes` reports precision per detection source, so a bad seam is visible before it is automated. The real control is that the corpus is *auditable* — every case behind an automatic execution is recorded on the decision |
+| **R12** | **The layer can now act on production infrastructure** *(new, v2.6)* | **High** | Through v2.5 a wrong decision cost a line in a JSON file. With E1 it can reach a firewall, an EDR and an identity provider, and the blast radius of a bad verdict is now a real one. Not a reason to withhold the capability — dispatching to somebody else's executor is the entire product (§2) — but it is the risk that reorders every other one. Mitigated in layers, none of which is sufficient alone: **dry run is the deployment default**, and the rollout order in the runbook does not turn it off until a human has read what would have been sent; routing is by a **closed action-class vocabulary** a model cannot extend by rephrasing; a connector **declares what it performs** and anything else is blocked before a packet leaves; targets are shape-validated (A2) and the protected-target list is enforced; every action carries an **idempotency key**, so a retried containment is the same containment; nothing above `LOW_WRITE` executes without a human unless **precedent** allows it (D4); and DESTRUCTIVE is off unless a site turned it on, which `preflight` reports. *Residual, and permanent:* an executor that silently ignores idempotency keys will double-apply a retried action, and AI-SOC cannot detect that from the outside — which is why the runbook says to start with the least dangerous class of action and read the receipts |
 | **R9** | **A busy entity chains a situation into a shift** *(new, v2.3)* | Low | Correlation joins on entities inside a window, so a heavily-alerting host could absorb unrelated detections indefinitely. Bounded three ways: `SITUATION_MAX_MEMBERS` (default 25), `CORRELATION_WINDOW_MINUTES` (default 30), and joining only on strong namespaces — a shared *process name* or *domain* is not enough, because half a fleet runs `powershell.exe`. All three are settings, not truths, and want re-calibrating on a real corpus |
 
 ---
@@ -328,7 +329,7 @@ The intended production flow, and where each phase stands:
 ```text
 1. AI receives situation, produces verdict + playbook     ✅ built v2.3 — genuinely on situations now
 2. Human reads / EDITS                                    ✅ built v2.2 — edit + labelled correction
-3. Confirmed → external SOAR / EDR                        ✅ built (stub connectors, risk-classified)
+3. Confirmed → external SOAR / EDR                        ✅ built v2.6 — real routed connectors
 4. Results → RAG                                          ✅ built v2.5 — retrieval over the corpus
 5. Human role diminishes                                  ✅ built v2.5 — and only where precedent says so
 6. Autopilot on RAG-enriched precedent                    ✅ built v2.5 — the threshold no longer decides
@@ -514,11 +515,57 @@ limit); procedures and playbooks as retrievable documents, which belong with the
 system of record rather than in the decision layer; and per-scenario-class autonomy
 policy, which needs a real corpus to be anything other than a guess.
 
-### Phase E — Production
+### Phase E — Production ✅ *(delivered, `ao-soc` 2.7.0)*
 
-Case management completion plus **bidirectional sync with the external system of record**
-(M11), real response connectors — SOAR platform, EDR, firewall, IdP (M12),
-Docker/monitoring/backup/HA (M15), pilot (M16), release (M17).
+| Task | Milestone | Addresses | State |
+|---|---|---|---|
+| E1. Real response connectors behind a delivery contract | M12 | Rule 9, **R12** | ✅ `response.py` + `connectors/{log,noop,webhook,wazuh}.py`. Routed by the policy rule name — a closed vocabulary a model cannot extend. Capability preflight blocks before a packet; idempotency keys are stable across retries; only transport failures are retried; a 200 that affected nothing is `FAILED`; a dry run is `SIMULATED`, never `DONE`, and does not mitigate the alert |
+| E2. Case management: assignment, escalation, notes, lifecycle | M11 | M11's named gap | ✅ `cases.py`. One case per situation, opened at analysis. Append-only timeline stamped `human` / `system` / `sync`; transitions are a whitelist; the actor is the authenticated identity. **No code path from a case to a decision** |
+| E3. Bidirectional sync with the system of record | M11 | M11, Rule 9 | ✅ `case_sync.py` + `ticketing/{filedrop,thehive}.py`. Echo suppression by revision, ownership per field, an unlisted transition refused and recorded rather than forced. **An inbound message can never cause an action**, guaranteed structurally and asserted by reading the source |
+| E4. Metrics, preflight, backup, containers | M15 | Rule 8 residual | ✅ `metrics.py` (Prometheus, latency histograms, closed-vocabulary labels only), `preflight.py` (what is configured to silently do less than it claims), `backup.py` (live-consistent, manifest with SHA-256 and row counts, verify raises on mismatch, restore never overwrites in place), `deploy/` (three images, dashboard published alone, decision store on a named volume, dry run by default) |
+| E5. The case and the delivery in the dashboard | M13 | E left them APIs | ✅ `CasePanel`, EN/FA + RTL: owner, state, priority, escalation, note timeline, and the sync state including `LOCAL` and a refused inbound transition. Per-action delivery shows the connector, the executor's own reference and the attempt count; `SIMULATED` is drawn in amber and says so in words |
+| E6. Pilot runbook and release checklist | M16/M17 | — | ✅ `docs/PILOT-RUNBOOK.md`. The rollout order, what to watch, what to roll back with, the seven questions a pilot must answer, and the release checklist with its residuals stated |
+
+**DoD:** an approved action reaches the executor that performs that class of action, or
+visibly fails; nothing reaches a network until a human has read what would have been
+sent; a case has an owner, a state and a file; the ticketing system and the decision
+layer stay in step without either being able to overwrite what the other owns; and an
+operator can see latency, backlog, load and misconfiguration without reading a log. —
+**Met.** Verified by `test_broker.check_phase_e_dod` (one scenario: a detection opens an
+unowned case; a viewer is refused the work and an analyst takes it, notes it and
+escalates it; a backwards escalation and an off-whitelist transition are both refused
+with their reasons; the case is pushed with revision 1 and the ticket carries the verdict
+as context and no control; the service desk closes the ticket, the case follows and
+**the decision and every action stay exactly where they were**; the same message arriving
+again is recognised as our own echo; a state nothing maps to is recorded as refused
+rather than forced; a note still lands on a closed case; `/metrics` carries the histogram
+and refuses an unauthenticated scrape; and `preflight` is clean), plus
+`check_response_routing` (routing by class, capability refusal before dispatch, a retry
+carrying the *same* idempotency key, a refusal delivered once, an unrouted class failing
+loudly, and a dry run that never reaches the executor), `check_connector_boundary`,
+`check_case_sync_isolation`, `check_connector_verification`, `check_backup_roundtrip`
+(including a tampered archive, which raises) and `backend/testUnify.js`.
+
+**One thing worth recording, because it is the same shape as C3's bug.** The first
+version of the connector registry lived in `connectors/__init__.py` and `response.py`
+imported it lazily inside a function — which worked, and which the boundary test
+immediately rejected. The fix was to invert it: the registry lives with the contract and
+the package registers itself, exactly as `intel/` does with `threat_intel`. A boundary
+that needs a lazy import to hold is a boundary that will not hold, and the test found it
+before the pattern spread to a fourth package.
+
+**Deliberately deferred:** HA, which for a single-writer SQLite decision store is a
+storage-layer decision a site makes with its own infrastructure rather than something
+this layer should invent; per-object RBAC and SSO, which are M14's remainder; and the
+pilot itself.
+
+### After Phase E
+
+Every milestone that can be closed by writing code is closed. What is left is **M16 and
+M17** — a real SOC running this against real detections, and the numbers that come out of
+it. Two of those numbers are already known to be missing: the autonomy gate's constants
+(3 precedents / 70 % similarity / 30 days) are calibrated on nothing, and so are
+correlation's window and member ceiling. A pilot is where they stop being guesses.
 
 ---
 
@@ -580,8 +627,18 @@ The AI layer must remain provider-independent regardless (Rule 5, task A3).
 > sent to a feed**; **anything a model cites must be checkable against what it was given**,
 > and what it invents is dropped and recorded; and **only a human's confirmation is
 > precedent**, so autonomy can never bootstrap from the machine's own approvals. The
-> immediate priority is now Phase E: production hardening (M15-M17), real response
-> connectors and sync with the external system of record. Preserve raw detection evidence,
+> **Phase E is done** (2.7.0): real response connectors behind `connectors/` (never an
+> execution engine), case management, bidirectional sync with the system of record behind
+> `ticketing/`, metrics, preflight validation, verified backups and containers. Four rules
+> follow and must not be regressed — **an action is routed by its policy class, and a
+> connector that cannot observe success never reports `DONE`**, which is why a dry run is
+> `SIMULATED` and a 200 that affected nothing is `FAILED`; **a retry carries the same
+> idempotency key**, because a repeated containment must be the same containment;
+> **a case can never change a decision**, and `case_sync` and `ticketing/` must keep
+> having no import path to `tier2` or `response`; and **a secret is referenced by the name
+> of the variable holding it**, never by value in a setting, because settings are reported
+> on `/health`. What remains is M16 and M17, which are engagements rather than code.
+> Preserve raw detection evidence,
 > require structured AI output, classify every action by risk, and consider a milestone
 > complete only after implementation, testing, documentation, logging, error handling and
 > verification.**
@@ -607,6 +664,7 @@ instead of to log parsers.
 |---|---|---|---|
 | 1.0 | Summer 2026 | Initial master plan, milestones M00-M17 | J.Ekrami |
 | 2.0 | Summer 2026 | Replan against implemented reality: corrected status (intelligence layers built, data foundation and governance not), Security Situation contract as next architectural artifact, governance moved from last to first, autonomy ramp with edit-capture, measured model selection | J.Ekrami / Claude (Opus 5) |
+| 2.6 | Summer 2026 | **Phase E delivered** (`ao-soc` 2.7.0). E1 `response.py` + `connectors/{log,noop,webhook,wazuh}.py` — delivery routed by action class, capability preflight, idempotency keys stable across retries, retry only on transport failure, verified success, and a dry run that reports `SIMULATED` rather than `DONE`. E2 `cases.py` — assignment, escalation, notes and a whitelisted lifecycle over an append-only timeline, with no code path to a decision. E3 `case_sync.py` + `ticketing/{filedrop,thehive}.py` — bidirectional sync with echo suppression, per-field ownership and refusal-not-forcing, structurally unable to cause an action. E4 `metrics.py`, `preflight.py`, `backup.py` and `deploy/` — the latency histograms Rule 8 named, a start-up report of everything configured to silently do less than it claims, verified backups that raise on a hash mismatch, and containers that default to dry run. E5 the `CasePanel` in EN/FA. E6 `docs/PILOT-RUNBOOK.md`. §3 status (M11/M12/M15 to green, M16/M17 to amber), rule audit (Rule 8 residual closed, Rule 9 now four boundaries), risk register (**R12 raised**), §7 step 3, §8 and §10 updated | J.Ekrami / Claude (Opus 5) |
 | 2.5 | Summer 2026 | **Phase D delivered** (`ao-soc` 2.6.0). D1 `threat_intel.py` + `intel/{local,misp}.py` — a TI **client** behind a provider contract, four report buckets so *not found* and *never checked* cannot read as *clean*, a degraded state for an unreachable feed, no internal address ever sent to one, and a TTL cache that stores misses; `attack_catalog.py` checks every technique against a local ATT&CK catalogue and the catalogue's label outranks the model's. D2 both reach the prompt in words, inside the analysis job. D3 `precedent.py` — deterministic five-term similarity over contract 2, cited precedent in the prompt, and a grounding gate that drops any id the model was never offered. D4 the confidence threshold stops being the control: N human-confirmed precedents, zero reversed, zero contrary, inside a staleness window, with the basis persisted and no bootstrapping from the machine's own approvals. D5 the `IntelPrecedentPanel` in EN/FA, drawing the absences as deliberately as the hits. §3 status (M07/M09 up), rule audit (Rules 6 and 8), risk register (**R4 and R6 closed, R11 raised**), §7 steps 4-6 marked built, §8 and §10 updated | J.Ekrami / Claude (Opus 5) |
 | 2.4 | Summer 2026 | **Phase C delivered** (`ao-soc` 2.5.0). C1 four more adapters (`elastic`, `sentinel`, `crowdstrike`, `cef`) — seven vendors, no core change, with Falcon's 1-5 and CEF's 0-10 severity scales mapped inside the adapters that know them; C2 `analysis_queue.py` — the model call becomes a job with exponential backoff, a bounded attempt budget, a visible dead-letter state, bounded concurrency, orphan recovery and back-pressure that returns 202; C3 situation merging, with the absorbed situation kept as `MERGED` / `SUPERSEDED` and settled situations reported rather than absorbed; C4 `decision_store.py` — search over situations and decisions, derived evidence pointers, and retention that drops vendor payload copies and never a judgement; C5 the `SituationPanel` in EN/FA. §3 status (M01/M02/M04 to green), rule audit (Rule 8 ✅), risk register (**R10 raised and closed**), §7 and §10 updated. Fixed an approval gate that was a blacklist of states, and removed two more fabricated MITRE fallbacks from the UI API | J.Ekrami / Claude (Opus 5) |
 | 2.3 | Summer 2026 | **Phase B delivered** (`ao-soc` 2.4.0). B1 Detection Intake contract (`detection.py`) with a `DetectionAdapter` registry, generic `POST /detections` and auto-detection; B2 Security Situation contract (`situation.py`) with a deterministic, factor-stamped risk score; B3 M08/M10 refactored **once** onto situations, with tool-asserted MITRE preferred and stamped `source='tool'`; B4 cross-tool correlation on entities inside a time window, with `GET /api/correlation/metrics`; B5 detection-source registry with health and trust weights; B6 Wazuh and native adapters written with no core change, enforced by a boundary test. §3 status table, §4 (contracts frozen), rule audit (Rule 9 ✅), risk register (**R2 and R7 closed**, R4 reduced, R9 added) and §7 updated. Two fabricated values removed from the enrichment fallback | J.Ekrami / Claude (Opus 5) |

@@ -30,7 +30,7 @@
   <!-- ================= Title ================= -->
   <text class="t1" x="830" y="52" text-anchor="middle">معماری نرم‌افزاری AI-SOC</text>
   <text class="t2" x="830" y="82" text-anchor="middle">مرکز عملیات امنیت مبتنی بر هوش مصنوعی — «لایهٔ تصمیم»</text>
-  <text class="t3" x="830" y="106" text-anchor="middle">نسخهٔ ۲.۵ — تابستان ۱۴۰۵</text>
+  <text class="t3" x="830" y="106" text-anchor="middle">نسخهٔ ۲.۶ — تابستان ۱۴۰۵</text>
 
   <!-- ================= External: detection sources (right) ================= -->
   <rect x="1330" y="160" width="290" height="292" rx="10" fill="#ffffff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="7 5"/>
@@ -62,14 +62,14 @@
   <rect x="30" y="160" width="290" height="38" rx="10" fill="#e2e8f0"/>
   <text class="ext-title" x="175" y="186" text-anchor="middle">ابزارهای بیرونی — اجرا</text>
 
-  <text class="ext-item" x="300" y="228" text-anchor="start">سکوهای SOAR</text>
+  <text class="ext-item" x="300" y="228" text-anchor="start">سکوهای SOAR — با رابط اختصاصی</text>
   <text class="ext-note ltr" x="300" y="248" text-anchor="end">Shuffle · Cortex XSOAR · Tines</text>
   <text class="ext-item" x="300" y="278" text-anchor="start">واکنش EDR — قرنطینهٔ میزبان</text>
   <text class="ext-item" x="300" y="306" text-anchor="start">فایروال — مسدودسازی نشانی</text>
   <text class="ext-item" x="300" y="334" text-anchor="start">هویت (IdP) — ابطال نشست</text>
   <line x1="50" y1="356" x2="300" y2="356" stroke="#e2e8f0" stroke-width="1.5"/>
-  <text class="ext-note" x="300" y="398" text-anchor="start">AI-SOC تصمیم می‌گیرد</text>
-  <text class="ext-note" x="300" y="416" text-anchor="start">و فرمان را می‌فرستد؛</text>
+  <text class="ext-note" x="300" y="398" text-anchor="start">برای هر نقش یک رابط؛</text>
+  <text class="ext-note" x="300" y="416" text-anchor="start">ردهٔ اقدام آن را انتخاب می‌کند.</text>
   <text class="ext-note" x="300" y="434" text-anchor="start">اجرا بر عهدهٔ این ابزارهاست.</text>
 
   <!-- External: ticketing -->
@@ -77,9 +77,9 @@
   <rect x="30" y="472" width="290" height="34" rx="10" fill="#e2e8f0"/>
   <text class="ext-title" x="175" y="496" text-anchor="middle">سامانهٔ ثبت رسمی</text>
   <text class="ext-note ltr" x="300" y="532" text-anchor="end">Jira · ServiceNow · TheHive</text>
-  <text class="ext-item" x="300" y="562" text-anchor="start">هم‌گام‌سازی دوسویهٔ پرونده</text>
-  <text class="ext-note" x="300" y="586" text-anchor="start">تصمیم و شواهد آن به سامانهٔ</text>
-  <text class="ext-note" x="300" y="606" text-anchor="start">ثبت سازمان منتقل می‌شود.</text>
+  <text class="ext-item" x="300" y="562" text-anchor="start">هم‌گام‌سازی دوسویهٔ پرونده — ساخته‌شده</text>
+  <text class="ext-note" x="300" y="586" text-anchor="start">گردش‌کار از آنِ آن، تصمیم از آنِ ما؛</text>
+  <text class="ext-note" x="300" y="606" text-anchor="start">پیام ورودی هرگز اقدامی ایجاد نمی‌کند.</text>
 
   <!-- ================= Boundary ================= -->
   <rect x="330" y="110" width="960" height="774" rx="14" fill="#ffffff" stroke="#1e3a8a" stroke-width="3"/>
@@ -129,9 +129,9 @@
   <!-- L6 dispatch -->
   <rect x="348" y="712" width="712" height="76" rx="9" fill="#047857"/>
   <circle cx="372" cy="736" r="7" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"/>
-  <text class="box-title" x="704" y="741" text-anchor="middle">۶. ارسال تصمیم به مجریِ بیرونی</text>
+  <text class="box-title" x="704" y="741" text-anchor="middle">۶. ارسال تصمیم به مجریِ همان ردهٔ اقدام</text>
   <text class="box-sub" x="704" y="764" text-anchor="middle">طبقه‌بندی ریسک اقدام: خواندن · نوشتن کم‌خطر · نوشتن پرخطر · مخرب</text>
-  <text class="box-sub" x="704" y="782" text-anchor="middle">رده‌بندی و اعتبارسنجی شکل هدف · دروازهٔ سابقه، نه اطمینان مدل · ثبت رسید تغییرناپذیر</text>
+  <text class="box-sub" x="704" y="782" text-anchor="middle">مسیریابی بر پایهٔ رده · تکرارپذیرِ ایمن · اجرای آزمایشی تا پیش از بازبینی انسان</text>
 
   <!-- Side: decision store -->
   <rect x="1076" y="260" width="196" height="228" rx="9" fill="#1e293b"/>
@@ -204,5 +204,5 @@
   <text class="legend" x="560" y="946" text-anchor="start">خط‌چین = وابستگی بیرونی</text>
 
   <!-- ================= Footer ================= -->
-  <text class="foot" x="830" y="994" text-anchor="middle">نویسنده: J.Ekrami · هم‌نویسنده: Claude (Opus 5) · © J.Ekrami-Labs · تابستان ۱۴۰۵ · برابر با طرح نسخهٔ ۲.۵</text>
+  <text class="foot" x="830" y="994" text-anchor="middle">نویسنده: J.Ekrami · هم‌نویسنده: Claude (Opus 5) · © J.Ekrami-Labs · تابستان ۱۴۰۵ · برابر با طرح نسخهٔ ۲.۶</text>
 </svg>

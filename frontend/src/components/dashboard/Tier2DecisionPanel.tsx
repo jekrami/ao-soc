@@ -34,6 +34,10 @@ const statusTone: Record<Tier2ApprovalStatus, string> = {
   EXECUTING: 'text-info border-info/40 bg-info/10',
   DONE: 'text-low border-low/40 bg-low/10',
   FAILED: 'text-critical border-critical/40 bg-critical/10',
+  SUPERSEDED: 'text-muted border-border bg-surface2/60',
+  // Deliberately not the green of DONE: a dry run reached nothing, and the
+  // colour is the first thing an analyst reads.
+  SIMULATED: 'text-medium border-medium/40 bg-medium/10',
 };
 
 // Rule 7: the class is what governs whether autopilot may act, so it is shown
@@ -227,6 +231,20 @@ export const Tier2DecisionPanel: React.FC = () => {
                         <div className="text-[11px] text-critical mt-1 flex items-start gap-1">
                           <ShieldAlert className="h-3 w-3 mt-0.5 shrink-0" />
                           <span>{action.policy_reason}</span>
+                        </div>
+                      )}
+                      {/* E1: where it actually went. A SIMULATED action is a
+                          dry run and reached nothing — said in words, because
+                          a green tick beside it would be the most dangerous
+                          thing this dashboard could show. */}
+                      {action.status === 'SIMULATED' && (
+                        <div className="text-[11px] text-medium mt-1">{t('tier2.delivery.simulated')}</div>
+                      )}
+                      {action.connector && (
+                        <div className="text-[10px] text-muted mt-1">
+                          {t('tier2.delivery.via', { connector: action.connector })}
+                          {action.external_ref && ` · ${action.external_ref}`}
+                          {(action.attempts ?? 0) > 1 && ` · ${t('tier2.delivery.attempts', { count: action.attempts })}`}
                         </div>
                       )}
                       {action.result?.execution_id && (
