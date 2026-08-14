@@ -29,7 +29,7 @@
   <!-- ================= Title ================= -->
   <text class="t1" x="830" y="52" text-anchor="middle">AI-SOC SOFTWARE ARCHITECTURE</text>
   <text class="t2" x="830" y="82" text-anchor="middle">AI-Powered Security Operations Center — the Decision Layer</text>
-  <text class="t3" x="830" y="106" text-anchor="middle">Version 2.6 — Summer 2026</text>
+  <text class="t3" x="830" y="106" text-anchor="middle">Version 2.6.1 — Summer 2026</text>
 
   <!-- ================= External: detection sources (left) ================= -->
   <rect x="30" y="160" width="290" height="292" rx="10" fill="#ffffff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="7 5"/>
@@ -115,7 +115,7 @@
   <text class="chip" x="739" y="437" text-anchor="middle" fill="#e0e7ff">Structured reasoning — built</text>
   <text class="box-sub" x="739" y="458" text-anchor="middle">evidence · rationale · ATT&amp;CK · JSON output</text>
   <rect x="928" y="416" width="330" height="56" rx="7" fill="#ffffff" fill-opacity="0.14" stroke="#c7d2fe" stroke-width="1"/>
-  <text class="chip" x="1093" y="437" text-anchor="middle" fill="#e0e7ff">Verification &amp; precedent — built</text>
+  <text class="chip" x="1093" y="437" text-anchor="middle" fill="#e0e7ff">RAG · verification &amp; precedent — built</text>
   <text class="box-sub" x="1093" y="458" text-anchor="middle">intel checked · ATT&amp;CK catalogue · cited precedent</text>
 
   <!-- L4 tier2 -->
@@ -210,5 +210,5 @@
   <text class="legend" x="1010" y="946">dashed line = external dependency</text>
 
   <!-- ================= Footer ================= -->
-  <text class="foot" x="830" y="994" text-anchor="middle">Written by J.Ekrami · Co-written with Claude (Opus 5) · © J.Ekrami-Labs · Summer 2026 · matches plan v2.6</text>
+  <text class="foot" x="830" y="994" text-anchor="middle">Written by J.Ekrami · Co-written with Claude (Opus 5) · © J.Ekrami-Labs · Summer 2026 · matches plan v2.6.1</text>
 </svg>

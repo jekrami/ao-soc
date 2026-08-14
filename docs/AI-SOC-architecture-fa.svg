@@ -30,7 +30,7 @@
   <!-- ================= Title ================= -->
   <text class="t1" x="830" y="52" text-anchor="middle">معماری نرم‌افزاری AI-SOC</text>
   <text class="t2" x="830" y="82" text-anchor="middle">مرکز عملیات امنیت مبتنی بر هوش مصنوعی — «لایهٔ تصمیم»</text>
-  <text class="t3" x="830" y="106" text-anchor="middle">نسخهٔ ۲.۶ — تابستان ۱۴۰۵</text>
+  <text class="t3" x="830" y="106" text-anchor="middle">نسخهٔ ۲.۶.۱ — تابستان ۱۴۰۵</text>
 
   <!-- ================= External: detection sources (right) ================= -->
   <rect x="1330" y="160" width="290" height="292" rx="10" fill="#ffffff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="7 5"/>
@@ -115,7 +115,7 @@
   <text class="chip" x="881" y="437" text-anchor="middle" fill="#e0e7ff">استدلال ساخت‌یافته — ساخته‌شده</text>
   <text class="box-sub" x="881" y="458" text-anchor="middle">شواهد · دلیل · نگاشت ATT&amp;CK · خروجی JSON</text>
   <rect x="362" y="416" width="330" height="56" rx="7" fill="#ffffff" fill-opacity="0.14" stroke="#c7d2fe" stroke-width="1"/>
-  <text class="chip" x="527" y="437" text-anchor="middle" fill="#e0e7ff">راستی‌آزمایی و سابقه — ساخته‌شده</text>
+  <text class="chip" x="527" y="437" text-anchor="middle" fill="#e0e7ff">راستی‌آزمایی و بازیابی سابقه (RAG) — ساخته‌شده</text>
   <text class="box-sub" x="527" y="458" text-anchor="middle">بررسی نشانه‌ها · فهرست ATT&amp;CK · سابقهٔ استنادشده</text>
 
   <!-- L4 tier2 -->
@@ -210,5 +210,5 @@
   <text class="legend" x="560" y="946" text-anchor="start">خط‌چین = وابستگی بیرونی</text>
 
   <!-- ================= Footer ================= -->
-  <text class="foot" x="830" y="994" text-anchor="middle">نویسنده: J.Ekrami · هم‌نویسنده: Claude (Opus 5) · © J.Ekrami-Labs · تابستان ۱۴۰۵ · برابر با طرح نسخهٔ ۲.۶</text>
+  <text class="foot" x="830" y="994" text-anchor="middle">نویسنده: J.Ekrami · هم‌نویسنده: Claude (Opus 5) · © J.Ekrami-Labs · تابستان ۱۴۰۵ · برابر با طرح نسخهٔ ۲.۶.۱</text>
 </svg>
