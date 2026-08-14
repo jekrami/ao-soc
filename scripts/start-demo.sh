@@ -186,12 +186,18 @@ fi
 
 step "Starting Aegis-Link broker on port 8500"
 export BROKER_PORT=8500
+# D1: the file-backed provider, so the demo verifies indicators against
+# something real and offline. A site points TI_PROVIDER at its own TIP.
+export TI_PROVIDER=local
+export TI_LOCAL_FILE=reference/intel-indicators.json
 if [[ $AI -eq 1 ]]; then
-  # AI mode: real inference, and high-confidence actionable verdicts execute
-  # without waiting for a click.
+  # AI mode: real inference, and actionable verdicts execute without waiting
+  # for a click — where precedent allows it (D4). On a fresh database there is
+  # none, so the first shift is fully human and autonomy arrives as the
+  # analysts confirm.
   export TIER2_AUTOPILOT=1
   export TIER2_AUTOPILOT_MIN_CONFIDENCE="$THRESHOLD"
-  echo "    Autopilot ON (CONTAIN/ESCALATE at >= ${THRESHOLD}% confidence)"
+  echo "    Autopilot ON (CONTAIN/ESCALATE at >= ${THRESHOLD}% confidence, precedent-gated)"
 fi
 start_bg broker "$ORCHESTRATOR_DIR" \
   "$PYTHON" -m uvicorn soc_orchestrator:app --host 0.0.0.0 --port 8500

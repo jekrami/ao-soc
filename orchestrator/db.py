@@ -66,6 +66,11 @@ tier2_decisions = Table(
     Column('rationale', String, nullable=False, default=''),
     Column('risk_of_action', String, nullable=True),
     Column('approval_status', String(32), nullable=False, default='PENDING'),
+    # D4. When autopilot approved this, the precedent it stood on: which past
+    # situations, how they were confirmed, and how old the newest one was.
+    # An autonomous action whose justification cannot be read back later is not
+    # auditable, and "the model was 94% sure" is not a justification (§7.3.1).
+    Column('autopilot_basis_json', String, nullable=True),
     Column('approved_by', String(128), nullable=True),
     Column('rejected_by', String(128), nullable=True),
     Column('rejection_note', String, nullable=True),
@@ -251,6 +256,38 @@ detection_sources = Table(
     Column('updated_at', DateTime, nullable=False),
 )
 
+# D1. What a feed said about an indicator, and when it was asked. A cache, and
+# nothing more: it is derived from an external system of record and may be
+# dropped at any time without losing a decision. It is deliberately *not* keyed
+# by situation — an address's reputation is a property of the address, and
+# re-asking the same feed about the same host for every situation in a shift is
+# how an on-prem TIP gets rate-limited by its own SOC.
+#
+# The row for a miss is stored too. "Asked, nothing known" is a fact worth
+# keeping: it is the difference between an unverified indicator and one that
+# was checked and came back empty (threat_intel — UNKNOWN is not BENIGN).
+intel_observations = Table(
+    'intel_observations',
+    metadata,
+    Column('id', Integer, primary_key=True, autoincrement=True),
+    Column('provider', String(64), nullable=False, index=True),
+    Column('provider_version', String(32), nullable=False, default='0'),
+    Column('kind', String(16), nullable=False, index=True),
+    Column('value', String(512), nullable=False, index=True),
+    Column('verdict', String(16), nullable=False, default='UNKNOWN'),
+    Column('confidence', Integer, nullable=False, default=0),
+    Column('feed', String(128), nullable=False, default=''),
+    Column('first_seen', DateTime, nullable=True),
+    Column('last_seen', DateTime, nullable=True),
+    Column('tags_json', String, nullable=True),
+    Column('reference', String(512), nullable=False, default=''),
+    Column('raw_json', String, nullable=True),
+    Column('checked_at', DateTime, nullable=False),
+    Column('expires_at', DateTime, nullable=False, index=True),
+    Column('created_at', DateTime, nullable=False),
+    Column('updated_at', DateTime, nullable=False),
+)
+
 # --- Dashboard v2 explanation tables ---
 
 ai_explanations = Table(
@@ -344,6 +381,11 @@ def _migrate_tier2_decisions(conn) -> None:
         conn.execute(text(
             "ALTER TABLE tier2_decisions ADD COLUMN decision_source TEXT NOT NULL DEFAULT 'rules'"
         ))
+    if cols and 'autopilot_basis_json' not in cols:
+        # Pre-2.6 autopilot approvals were made on a confidence threshold and
+        # recorded no basis. NULL says that: there is no precedent to read back,
+        # and back-filling one would manufacture a justification after the fact.
+        conn.execute(text('ALTER TABLE tier2_decisions ADD COLUMN autopilot_basis_json TEXT'))
 
 
 def _migrate_alert_soar_actions(conn) -> None:

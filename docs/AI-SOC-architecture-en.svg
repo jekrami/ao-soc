@@ -29,7 +29,7 @@
   <!-- ================= Title ================= -->
   <text class="t1" x="830" y="52" text-anchor="middle">AI-SOC SOFTWARE ARCHITECTURE</text>
   <text class="t2" x="830" y="82" text-anchor="middle">AI-Powered Security Operations Center — the Decision Layer</text>
-  <text class="t3" x="830" y="106" text-anchor="middle">Version 2.4 — Summer 2026</text>
+  <text class="t3" x="830" y="106" text-anchor="middle">Version 2.5 — Summer 2026</text>
 
   <!-- ================= External: detection sources (left) ================= -->
   <rect x="30" y="160" width="290" height="292" rx="10" fill="#ffffff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="7 5"/>
@@ -52,9 +52,9 @@
   <rect x="30" y="472" width="290" height="34" rx="10" fill="#e2e8f0"/>
   <text class="ext-title" x="175" y="495" text-anchor="middle">THREAT INTELLIGENCE FEEDS</text>
   <text class="ext-note" x="50" y="532">MISP · OpenCTI · VirusTotal</text>
-  <text class="ext-item" x="50" y="562">Queried only</text>
-  <text class="ext-note" x="50" y="586">to verify what the model asserted:</text>
-  <text class="ext-note" x="50" y="606">IOCs and ATT&amp;CK techniques</text>
+  <text class="ext-item" x="50" y="562">Queried by a client — built</text>
+  <text class="ext-note" x="50" y="586">verifies what the model asserted;</text>
+  <text class="ext-note" x="50" y="606">unverified never reads as verified</text>
 
   <!-- ================= External: execution (right) ================= -->
   <rect x="1330" y="160" width="290" height="292" rx="10" fill="#ffffff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="7 5"/>
@@ -106,9 +106,9 @@
   <rect x="574" y="416" width="330" height="56" rx="7" fill="#ffffff" fill-opacity="0.14" stroke="#c7d2fe" stroke-width="1"/>
   <text class="chip" x="739" y="437" text-anchor="middle" fill="#e0e7ff">Structured reasoning — built</text>
   <text class="box-sub" x="739" y="458" text-anchor="middle">evidence · rationale · ATT&amp;CK · JSON output</text>
-  <rect x="928" y="416" width="330" height="56" rx="7" fill="#ffffff" fill-opacity="0.14" stroke="#fecaca" stroke-width="1" stroke-dasharray="5 4"/>
-  <text class="chip" x="1093" y="437" text-anchor="middle" fill="#fecaca">Knowledge &amp; precedent (RAG) — not built</text>
-  <text class="box-sub" x="1093" y="458" text-anchor="middle">procedures · playbooks · decision history</text>
+  <rect x="928" y="416" width="330" height="56" rx="7" fill="#ffffff" fill-opacity="0.14" stroke="#c7d2fe" stroke-width="1"/>
+  <text class="chip" x="1093" y="437" text-anchor="middle" fill="#e0e7ff">Verification &amp; precedent — built</text>
+  <text class="box-sub" x="1093" y="458" text-anchor="middle">intel checked · ATT&amp;CK catalogue · cited precedent</text>
 
   <!-- L4 tier2 -->
   <rect x="560" y="510" width="712" height="82" rx="9" fill="#b91c1c"/>
@@ -122,14 +122,14 @@
   <circle cx="1248" cy="638" r="7" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"/>
   <text class="box-title" x="916" y="643" text-anchor="middle">5. Human approval &amp; edit</text>
   <text class="box-sub" x="916" y="666" text-anchor="middle">Approve · Reject · Edit the verdict and the action plan — all built</text>
-  <text class="box-sub" x="916" y="684" text-anchor="middle">every human correction is stored as a label — the only training corpus for later autonomy</text>
+  <text class="box-sub" x="916" y="684" text-anchor="middle">every correction stored as a label — and autonomy is granted only where humans already confirmed the same verdict</text>
 
   <!-- L6 dispatch -->
   <rect x="560" y="712" width="712" height="76" rx="9" fill="#047857"/>
-  <circle cx="1248" cy="736" r="7" fill="#f59e0b" stroke="#ffffff" stroke-width="1.5"/>
+  <circle cx="1248" cy="736" r="7" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"/>
   <text class="box-title" x="916" y="741" text-anchor="middle">6. Dispatch the decision to an external executor</text>
   <text class="box-sub" x="916" y="764" text-anchor="middle">Action risk class: READ · LOW_WRITE · HIGH_WRITE · DESTRUCTIVE</text>
-  <text class="box-sub" x="916" y="782" text-anchor="middle">classified and target-shape validated before dispatch · autopilot risk ceiling · immutable receipt</text>
+  <text class="box-sub" x="916" y="782" text-anchor="middle">classified and target-shape validated · precedent gate, not confidence · immutable receipt</text>
 
   <!-- Side: decision store -->
   <rect x="348" y="260" width="196" height="228" rx="9" fill="#1e293b"/>
@@ -202,5 +202,5 @@
   <text class="legend" x="1010" y="946">dashed line = external dependency</text>
 
   <!-- ================= Footer ================= -->
-  <text class="foot" x="830" y="994" text-anchor="middle">Written by J.Ekrami · Co-written with Claude (Opus 5) · © J.Ekrami-Labs · Summer 2026 · matches plan v2.4</text>
+  <text class="foot" x="830" y="994" text-anchor="middle">Written by J.Ekrami · Co-written with Claude (Opus 5) · © J.Ekrami-Labs · Summer 2026 · matches plan v2.5</text>
 </svg>

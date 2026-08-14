@@ -1,0 +1,56 @@
+{
+  "feed": "sample-indicator-set",
+  "note": "A worked example of the file TI_PROVIDER=local reads, and what the demo and the tests verify against. Replace it with a real export — a CERT bulletin, a customer blocklist, a hunt team's sheet. Nothing here is a live indicator; these are the addresses the seeded demo uses.",
+  "indicators": [
+    {
+      "kind": "ip",
+      "value": "185.220.101.7",
+      "verdict": "MALICIOUS",
+      "confidence": 92,
+      "tags": ["c2", "beacon", "sample-data"],
+      "first_seen": "2026-06-02T00:00:00",
+      "last_seen": "2026-08-09T00:00:00",
+      "reference": "https://intel.example.internal/indicators/185.220.101.7"
+    },
+    {
+      "kind": "ip",
+      "value": "45.9.148.117",
+      "verdict": "MALICIOUS",
+      "confidence": 88,
+      "tags": ["credential-theft", "egress", "sample-data"],
+      "first_seen": "2026-07-18T00:00:00",
+      "last_seen": "2026-08-11T00:00:00",
+      "reference": "https://intel.example.internal/indicators/45.9.148.117"
+    },
+    {
+      "kind": "ip",
+      "value": "45.155.205.211",
+      "verdict": "SUSPICIOUS",
+      "confidence": 60,
+      "tags": ["mass-scanner", "sample-data"],
+      "last_seen": "2026-08-12T00:00:00"
+    },
+    {
+      "kind": "ip",
+      "value": "8.8.8.8",
+      "verdict": "BENIGN",
+      "confidence": 99,
+      "tags": ["public-dns", "known-good", "sample-data"],
+      "reference": "https://intel.example.internal/indicators/8.8.8.8"
+    },
+    {
+      "kind": "domain",
+      "value": "updates.cdn-delivery.example",
+      "verdict": "MALICIOUS",
+      "confidence": 84,
+      "tags": ["dga", "sample-data"]
+    },
+    {
+      "kind": "hash",
+      "value": "9f2b7c1e4a6d8035f1c9b2e7a4d6081357bd9ef024a1c3e5709b2d4f6a8c0e13",
+      "verdict": "MALICIOUS",
+      "confidence": 95,
+      "tags": ["loader", "sample-data"]
+    }
+  ]
+}

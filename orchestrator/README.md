@@ -65,6 +65,21 @@ python soc_orchestrator.py
 | `TIER2_AUTOPILOT_MIN_CONFIDENCE` | `90` | Confidence floor for autopilot |
 | `TIER2_AUTOPILOT_DECISIONS` | `CONTAIN,ESCALATE` | Verdicts autopilot may execute |
 | `TIER2_AUTOPILOT_APPROVER` | `tier2-autopilot` | Name recorded as the approver in the audit trail |
+| `TIER2_AUTOPILOT_REQUIRE_PRECEDENT` | `true` | The D4 gate. `0` falls back to the pre-2.6 confidence-only behaviour — a lab/demo mode, reported on `/health` so nobody runs it by accident |
+| `TIER2_AUTOPILOT_MIN_PRECEDENTS` | `3` | Human-confirmed precedents required before a verdict may execute on its own |
+| `TIER2_AUTOPILOT_PRECEDENT_SIMILARITY` | `70` | Similarity floor (%) for a past situation to count as precedent |
+| `TIER2_AUTOPILOT_PRECEDENT_DAYS` | `30` | Staleness window — the newest matching precedent must be inside it |
+| `TI_PROVIDER` | `none` | Threat-intelligence provider: `none`, `local`, `misp`. `none` is honest, not empty — nothing is reported as verified |
+| `TI_LOCAL_FILE` | `reference/intel-indicators.json` | Indicator file for `TI_PROVIDER=local`; reloaded when it changes |
+| `TI_CACHE_TTL_HOURS` | `24` | How long an observation (including a miss) is cached before the feed is asked again |
+| `TI_MAX_INDICATORS` | `12` | Indicators one situation may cost a feed |
+| `TI_TIMEOUT` | `10` | Per-lookup timeout in seconds; a timeout degrades the report, never the analysis |
+| `TI_ATTACK_CATALOG` | *(bundled)* | Path to an ATT&CK technique catalogue. Set `"complete": true` inside it to make a missing ID meaningful |
+| `MISP_URL` / `MISP_API_KEY` | *(unset)* | On-prem MISP instance for `TI_PROVIDER=misp`. Selected-but-unconfigured raises rather than reading as an empty feed |
+| `MISP_VERIFY_TLS` | `true` | TLS verification for the MISP client |
+| `PRECEDENT_MIN_SIMILARITY` | `35` | Retrieval floor (%) — lower than the autonomy gate, because context worth *showing* is not context worth *acting on* |
+| `PRECEDENT_PROMPT_LIMIT` | `4` | Past decisions put in front of the model |
+| `PRECEDENT_CANDIDATE_POOL` | `200` | Newest settled decisions considered per query |
 | `SOAR_DRIVER` | `log` | `log` (JSONL sink) or `noop` |
 | `SOAR_LOG_FILE` | `data/soar-actions.jsonl` | Where the `log` driver writes deliveries |
 | `SOAR_STEP_DELAY` | `0.35` | Seconds between actions, so the UI can render each transition |
@@ -292,7 +307,7 @@ find decisions a degraded model or an offline Ollama produced.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/health` | Service liveness + config (correlation, adapters and source policy included when authenticated) |
+| GET | `/health` | Service liveness + config (correlation, adapters, source policy, threat-intel provider, ATT&CK catalogue and the precedent gate when authenticated) |
 | POST | `/detections?adapter=` | **The intake.** Adapter → detection → situation → decision. Omit `adapter` to auto-detect |
 | POST | `/splunk-alert` | Compatibility alias for `?adapter=splunk` |
 | GET | `/api/adapters` | Registered adapters: name, version, source tool |
@@ -300,6 +315,8 @@ find decisions a degraded model or an offline Ollama produced.
 | GET | `/api/situations/{id}` | One situation with every member detection and its entity graph |
 | GET | `/api/alerts/{id}/situation` | The situation behind a decision (404 for pre-2.4 alerts, which were never correlated) |
 | GET | `/api/correlation/metrics` | Detections per situation, correlated and multi-source counts |
+| GET | `/api/situations/{id}/precedents` | Past settled situations most like this one, with the terms that matched |
+| GET | `/api/alerts/{id}/intel` | The intelligence this decision was made on, plus technique verification |
 | GET | `/api/detection-sources` | Registry: adapter, version, health, trust weight, detection count |
 | POST | `/api/detection-sources/{tool}/trust` | Set a source's trust weight (`decisions:act`) |
 | GET | `/api/search/situations` | Search by entity, source, severity, status, risk, time, text; paged |
@@ -334,18 +351,20 @@ find decisions a degraded model or an offline Ollama produced.
 ## Autopilot (Stage 3 preview)
 
 Off by default — Stage 2 means a human confirms. When `TIER2_AUTOPILOT=1`, a
-verdict is auto-approved and executed at ingest only if **all three** hold:
+verdict is auto-approved and executed at ingest only if **all four** hold:
 
 1. the decision is in `TIER2_AUTOPILOT_DECISIONS` (default `CONTAIN`/`ESCALATE`),
-2. confidence ≥ `TIER2_AUTOPILOT_MIN_CONFIDENCE`, and
+2. confidence ≥ `TIER2_AUTOPILOT_MIN_CONFIDENCE`,
 3. **every action in the plan passes `action_policy`** — classified at or below
    `ACTION_MAX_AUTOPILOT_RISK`, with a target that parses as the thing the action
-   needs it to be.
+   needs it to be, and
+4. **precedent supports it** (D4, §7) — see below.
 
-Gate 3 is the one that protects the network. Confidence is a self-report, is not
-calibrated, and is unstable run to run — benchmarked across 14 models, one returned
+Gates 3 and 4 are the ones that protect the network. Confidence is a self-report, is
+not calibrated, and is unstable run to run — benchmarked across 14 models, one returned
 91% for a C2 beacon and 87% for an active credential compromise. The risk class of
-what would be dispatched is a *fact about the plan*, not an opinion about it.
+what would be dispatched is a *fact about the plan*, not an opinion about it, and
+precedent is a fact about this SOC.
 
 The plan is all-or-nothing: one action above the ceiling, or one target that does
 not parse, sends the whole thing to an analyst. Half-executing a containment plan
@@ -354,6 +373,122 @@ is worse than not starting.
 Confidence alone is never sufficient. A 99%-confident `MONITOR` means *do not
 act*, so it stays PENDING for an analyst — executing a containment plan against
 a verdict that said "watch this" would be wrong at any confidence.
+
+## The precedent gate (D4 — what replaced the threshold)
+
+```
+auto-execute when ≥N similar past situations were human-confirmed with this same
+verdict, none was reversed, none was human-confirmed as something else, and the
+newest is inside the staleness window.
+```
+
+Four properties, and each of them is why this and not a number:
+
+* **It degrades safely.** A novel situation has no precedent, so it goes to an
+  analyst by construction — which is exactly the case where a model is most
+  confident and least informed.
+* **It cannot bootstrap.** An autopilot approval is the machine agreeing with
+  itself, and is precedent for nothing. Three human decisions stay three; they
+  never compound into unlimited automatic ones. `approve_tier2_decision` writes
+  `autopilot_basis_json` only on the machine path, and its *absence* is what marks
+  a row as human-confirmed.
+* **Disagreement counts.** §7 asks for "zero reversed"; this also refuses when a
+  human confirmed a *different* verdict on an equally similar situation. A rule
+  that ignores disagreement only ever counts its own supporters.
+* **It is auditable.** The basis — which cases, confirmed by whom, how old the
+  newest is, and the reason in one sentence — is stored on the decision and shown
+  in the dashboard. *"The model was 94% sure"* is not a justification for an
+  autonomous action; *"these four cases, confirmed by these analysts, none
+  reversed"* is.
+
+```bash
+# Why did (or didn't) this execute on its own?
+curl -H "X-API-Key: $KEY" http://127.0.0.1:8500/api/situations/SIT-…/precedents
+```
+
+`TIER2_AUTOPILOT_REQUIRE_PRECEDENT=0` restores the pre-2.6 confidence-only
+behaviour for a lab or a demo against an empty corpus. `/health` reports it, because
+the weaker mode should never be running unnoticed.
+
+## Threat intelligence (D1/D2)
+
+A **client**, never a platform (plan §2). `threat_intel.py` is the contract; every
+feed is a file in `intel/` — the sibling of `adapters/`, enforced by the same
+boundary test.
+
+| Provider | Reads |
+|----------|-------|
+| `none` *(default)* | Nothing. Reports `status=disabled` and marks every indicator unchecked |
+| `local` | A file of indicators — a CERT export, a customer blocklist, a hunt team's sheet. JSON document, JSON array, JSONL, or one indicator per line. Reloads when the file changes |
+| `misp` | An on-prem MISP instance's attribute index. Prefers an attribute the instance marked `to_ids`, because a MISP event routinely carries context attributes that are recorded rather than accused |
+
+Three rules are built into the shape of the module, because the opposite of each is
+the easy mistake:
+
+1. **UNKNOWN is not BENIGN.** The report has four buckets — `malicious`,
+   `suspicious`, `not_found` (asked, no record) and `skipped` (never asked, with a
+   reason). The prompt says so in words, including *"absence from a feed is not
+   evidence of safety — it is no evidence at all"*.
+2. **A failed lookup is visible.** A feed that times out or refuses the connection
+   yields `status=degraded` with the error, never an empty-and-therefore-clean
+   report. This is the §7.5 lesson in another costume: the dangerous failure is the
+   one that looks like a success.
+3. **Internal addresses are never sent.** RFC1918, loopback, link-local and reserved
+   addresses are skipped with a reason, and `user` / `host` / `process` are not
+   indicators at all. A reputation service has no opinion on `mmalek`, and asking
+   would publish the staff list.
+
+Observations are cached with a TTL — **including misses**, or a feed that has never
+heard of the estate's busiest address is re-asked once per situation, all shift.
+
+### The ATT&CK catalogue
+
+Provenance (B3) recorded *who* claimed a technique. This checks whether the claim is
+a technique at all:
+
+| Status | Meaning |
+|--------|---------|
+| `verified` | In the catalogue. Its **name and tactic replace the model's** — the ID is the identity, and the prose around it is the part most likely to be invented |
+| `unlisted` | Not in the catalogue, and the catalogue does not claim to be complete. **Not evidence of fabrication** |
+| `unknown` | Not in a catalogue that *is* complete (`"complete": true`). Only then does absence mean the ID does not exist |
+| `malformed` | Not a well-formed ATT&CK ID |
+
+The bundled snapshot covers what a SOC routinely sees and is deliberately marked
+incomplete. Point `TI_ATTACK_CATALOG` at a full MITRE export to make absence mean
+something.
+
+## Precedent (D3 — M09's retrieval)
+
+The corpus is **decisions**, not documents: the useful question for a Tier-2 verdict
+is *"what did this SOC decide the last four times it saw this shape, and did that
+turn out right?"* — which is exactly what Phase A started capturing.
+
+Similarity is a weighted sum of five comparable properties of contract 2, returned
+term by term with its points:
+
+| Term | Weight | Why |
+|------|--------|-----|
+| `techniques` | 30 | What the attacker did — the most transferable property |
+| `narrative` | 20 | How the situation was described |
+| `sources` | 15 | Which tools saw it; a single-tool case is weak precedent for a corroborated one |
+| `entities` | 15 | The same account or host — real, but narrow |
+| `entity_shape` | 10 | The same *kinds* of entity: a user+host+ip case is not an ip-only one |
+| `severity` | 10 | Comparable stakes |
+
+Entity *identity* is deliberately outweighed by shape and technique: precedent is
+about the shape of an intrusion, not about the same host offending twice. A gate keyed
+on identity would only ever fire for repeat victims.
+
+The top matches go into the prompt with `PREC-n` ids and the model is required to cite
+the ones it used. **An id it returns that was never offered is dropped** — and kept, in
+`enrichment.precedent.fabricated`, because a model that invents case ids is a fact
+worth having.
+
+**Embeddings are deferred, not forgotten.** The lab default is hybrid BM25 + vector
+with `snowflake-arctic-embed2`, which is benchmarked and already local. A vector index
+earns its keep when ranking rather than corpus size is the limit; this corpus is one
+row per decision. The deterministic path also works with `LLM_PROVIDER=echo` and on a
+machine with no GPU, which the model-free rule requires.
 
 ## Action risk policy (`action_policy.py`)
 

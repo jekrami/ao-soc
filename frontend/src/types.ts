@@ -24,6 +24,14 @@ export interface MitreTechnique {
   id: string;
   tactic: string;
   name: string;
+  /** Who claimed it: an upstream detection rule, or the model (R4). */
+  source?: 'tool' | 'llm';
+  /**
+   * Checked against the local ATT&CK catalogue (D1).
+   * `unlisted` means the bundled catalogue is a subset and does not cover it —
+   * that is not the same as `unknown`, which only a complete catalogue can say.
+   */
+  catalog_status?: 'verified' | 'unlisted' | 'unknown' | 'malformed';
 }
 
 export interface RecommendedAction {
@@ -132,9 +140,85 @@ export interface Tier2Decision {
   rejected_by?: string | null;
   rejection_note?: string | null;
   required_actions: Tier2ActionStatus[];
+  /** Present only where autopilot approved this, and it is the justification (D4). */
+  autopilot_basis?: AutopilotBasis | null;
   created_at?: string | null;
   approved_at?: string | null;
   completed_at?: string | null;
+}
+
+// --- Phase D: verified intelligence and earned autonomy
+
+/** What a feed said about one indicator, and who said it. */
+export interface IntelObservation {
+  kind: string;
+  value: string;
+  verdict: 'MALICIOUS' | 'SUSPICIOUS' | 'BENIGN' | 'UNKNOWN';
+  confidence: number;
+  feed: string;
+  tags: string[];
+  reference: string;
+  last_seen: string | null;
+}
+
+/**
+ * The intelligence a decision was made on.
+ *
+ * Four buckets, never three: `not_found` was asked about and came back empty,
+ * and `skipped` was never asked. Neither is evidence of safety, and the UI must
+ * not let them read as one.
+ */
+export interface IntelReport {
+  provider: string;
+  status: 'ok' | 'degraded' | 'disabled';
+  malicious: IntelObservation[];
+  suspicious: IntelObservation[];
+  benign: IntelObservation[];
+  not_found: { kind: string; value: string }[];
+  skipped: { kind: string; value: string; reason: string }[];
+  errors: string[];
+  checked_at: string | null;
+}
+
+/** Which past decisions the model was given, and which it cited (D3). */
+export interface PrecedentCitation {
+  offered: number;
+  cited: {
+    precedent_id: string;
+    alert_id: string;
+    situation_id: string;
+    verdict: string;
+    similarity: number;
+    outcome: string | null;
+  }[];
+  /** Ids the model returned that were never offered to it. Dropped, and kept. */
+  fabricated: string[];
+}
+
+/** Why autopilot was allowed to act without a human (§7). */
+export interface AutopilotBasis {
+  ok: boolean;
+  reason: string;
+  verdict: string;
+  required: number;
+  matching: number;
+  fresh?: number;
+  reversals: number;
+  contrary: number;
+  newest_age_days: number | null;
+  similarity_floor: number;
+  staleness_days: number;
+  cases: {
+    precedent_id: string;
+    alert_id: string;
+    situation_id: string;
+    verdict: string;
+    similarity: number;
+    resolution: string;
+    outcome: string | null;
+    age_days: number | null;
+    reversed: boolean;
+  }[];
 }
 
 // --- Cross-tool correlation (plan §2.1 — the one thing no upstream tool does)
@@ -220,6 +304,10 @@ export interface Incident {
   /** The correlated situation this decision stands on, when there is one. */
   situation_id?: string | null;
   situation?: SituationSummary | null;
+  /** What was verified about this decision's indicators, if anything was (D2). */
+  threat_intel?: IntelReport | null;
+  /** The past decisions the model was shown, and what it cited (D3). */
+  precedent?: PrecedentCitation | null;
   /** Which tool(s) detected it — 'splunk', or 'splunk+wazuh' when several did. */
   detection_source?: string | null;
   /** Broker timestamps (ISO); absent on mock incidents */

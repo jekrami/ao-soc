@@ -36,8 +36,11 @@ import decision_store
 import soc_orchestrator as broker
 import llm
 import llm_provider
+import precedent
 import situation as situations
 import source_registry
+import threat_intel
+import tier2
 from action_policy import assess_action, autopilot_allows, classify_action
 from auth import Principal, configured_origins, resolve_actor
 from detection import (
@@ -276,11 +279,18 @@ async def check_authentication() -> None:
             '/splunk-alert', headers=ingest,
             json={'result': {**alert['result'], 'detection_source': 'wazuh'}},
         )
-        # The sender may name its own tool. This one lands in its own situation
-        # rather than joining the first: autopilot already executed that plan,
-        # and a dispatched situation stops absorbing detections. Where two
-        # tools *do* share a live situation, detection_source reads 'a+b'.
-        assert sourced.json()['detection_source'] == 'wazuh'
+        # The sender may name its own tool, and this one joins the first
+        # detection's situation on the shared addresses, so R8 attribution reads
+        # 'a+b' — a decision on a two-tool situation is not attributable to
+        # either tool alone.
+        #
+        # It used to land in a situation of its own, and the change is D4's:
+        # through v2.5 autopilot executed the first plan on confidence alone,
+        # and a dispatched situation stops absorbing detections. With the
+        # precedent gate on, an empty corpus means nothing auto-executes, the
+        # situation stays open, and the second detection joins it. That is the
+        # gate working, visible in an assertion that predates it.
+        assert sourced.json()['detection_source'] == 'splunk+wazuh', sourced.text
 
         # Bearer is accepted as well, so an IdP token slots in without a change
         # at the call sites (M14).
@@ -771,6 +781,303 @@ async def check_phase_c_dod(client, ingest: dict, viewer: dict, analyst: dict) -
         set_provider(ScriptedProvider(lambda _prompt: MOCK_LLM_RESPONSE))
 
 
+def _phase_d_response(verdict: str, peer: str) -> str:
+    """One model answer, carrying three things Phase D has to handle.
+
+    A real technique, a fabricated one, and a citation of a precedent that was
+    never offered — the two ways a model quietly invents a fact that renders
+    identically to a true one.
+    """
+    return json.dumps({
+        'threat_severity': 'HIGH',
+        'incident_analysis': (
+            'Sustained beaconing from a finance endpoint to an external peer, '
+            'with encrypted egress after hours.'
+        ),
+        'likelihood': 88,
+        'recommended_containment_steps': [f'Block egress to {peer}'],
+        'evidence': [{'id': 'EV-1', 'type': 'network', 'src': peer,
+                      'signal': 'Encrypted egress', 'weight': 0.9}],
+        'mitre_techniques': [
+            {'id': 'T1071.001', 'tactic': 'Fabricated Tactic', 'name': 'Invented Label'},
+            {'id': 'T1099.007', 'tactic': 'Command and Control', 'name': 'Not a real technique'},
+        ],
+        'recommended_actions': [
+            {'id': 'A1', 'action': 'Block IP', 'target': peer, 'reason': 'Egress peer',
+             'confidence': 93, 'impact': 'Stops egress'},
+        ],
+        'bullets': ['Encrypted egress from a finance endpoint'],
+        'recommendation': f'Block {peer}.',
+        'tier2_decision': {
+            'decision': verdict,
+            'confidence': 93,
+            'rationale': 'Beaconing pattern consistent with an active implant.',
+            'risk_of_action': 'Blocking the peer may break a legitimate integration.',
+        },
+        'precedent_ids': ['PREC-9'],
+    })
+
+
+async def check_phase_d_dod(client, ingest: dict, viewer: dict, analyst: dict) -> None:
+    """Plan §8, Phase D Definition of Done — verification and earned autonomy.
+
+    > a model's claims are checked against a source of record rather than
+    > stored as fact; a decision is made with the SOC's own past decisions in
+    > front of it, cited and checkable; and nothing executes without a human
+    > until precedent — not confidence — says it may.
+    """
+    prompts: list[str] = []
+    verdicts = {'value': 'CONTAIN'}
+
+    def responder(prompt: str) -> str:
+        prompts.append(prompt)
+        return _phase_d_response(verdicts['value'], '185.220.101.7')
+
+    async def ingest_case(tag: str, peer: str, technique: str = 'T1071.001') -> str:
+        """One fresh situation. Entities are unique so it cannot correlate into
+        an earlier one — precedent must be found by *shape*, not by identity."""
+        response = await client.post('/detections', headers=ingest, json={
+            'source_tool': 'edge-firewall',
+            'rule_name': 'Outbound beacon to an external peer',
+            'severity': 'HIGH',
+            'techniques': [technique],
+            'message': f'ALLOW 10.12.{int(tag)}.5 -> {peer}:443',
+            'entities': {
+                'src_ip': f'10.12.{int(tag)}.5', 'dst_ip': peer,
+                'user': f'user{tag}', 'host': f'FIN-WIN-{tag}',
+            },
+        })
+        assert response.status_code == 201, response.text
+        return response.json()['id']
+
+    async def confirm(alert_id: str, by: str = 'sara.analyst') -> None:
+        approved = await client.post(
+            f'/api/alerts/{alert_id}/decision/approve', headers={**analyst, 'X-Actor': by}, json={},
+        )
+        assert approved.status_code == 202, approved.text
+        assert approved.json()['approved_by'] == by
+        # A human approval records no basis. That absence is what tells the
+        # gate a person was behind it.
+        assert approved.json()['autopilot_basis'] is None
+
+    previous_provider = threat_intel.get_intel_provider()
+    threat_intel.set_intel_provider(threat_intel.get_intel_provider('local'))
+    set_provider(ScriptedProvider(responder))
+    try:
+        # --- D1/D2: what a feed says, and what it does not ----------------
+        first = await ingest_case('01', '45.9.148.117')
+        prompt = prompts[-1]
+        assert 'CONFIRMED MALICIOUS: ip 45.9.148.117' in prompt, prompt
+        # Internal addresses and identities are never sent to a feed, and the
+        # model is told they were not checked rather than left to assume.
+        assert 'Not checked' in prompt and 'internal addresses' in prompt
+
+        record = (await client.get(f'/api/alerts/{first}', headers=viewer)).json()
+        intel = record['enrichment']['threat_intel']
+        assert intel['status'] == 'ok' and intel['provider'] == 'local'
+        assert [item['value'] for item in intel['malicious']] == ['45.9.148.117']
+        assert intel['malicious'][0]['feed'] == 'sample-indicator-set'
+        # The endpoint's own address is never sent to a feed: a reputation
+        # service has nothing to say about RFC1918, and asking publishes the
+        # site's internal topology to whoever runs the feed.
+        assert [item['value'] for item in intel['skipped']] == ['10.12.1.5'], intel['skipped']
+        assert intel['skipped'][0]['reason'] == 'internal_address'
+        assert record['enrichment']['intel_summary']['malicious'] == 1
+
+        # --- D1: a technique that exists, and one that does not -----------
+        techniques = {item['id']: item for item in record['enrichment']['mitre_techniques']}
+        real = techniques['T1071.001']
+        assert real['catalog_status'] == 'verified'
+        # The catalogue's label wins over the model's: the ID is the identity,
+        # and the prose around it is the part most likely to be invented.
+        assert real['name'] == 'Web Protocols' and real['tactic'] == 'Command and Control'
+        assert real['source'] == 'tool', 'provenance survives verification (R4)'
+        assert techniques['T1099.007']['catalog_status'] == 'unlisted'
+
+        # --- D3: a precedent nobody offered is dropped, and recorded ------
+        assert record['enrichment']['precedent'] == {
+            'cited': [], 'fabricated': ['PREC-9'], 'offered': 0,
+        }, record['enrichment']['precedent']
+
+        # --- D4: an empty corpus grants no autonomy -----------------------
+        decision = (await client.get(f'/api/alerts/{first}/decision', headers=viewer)).json()
+        assert decision['decision'] == 'CONTAIN' and decision['confidence'] == 93
+        assert decision['approval_status'] == 'PENDING', \
+            '93% confidence must not execute anything on its own'
+        await confirm(first)
+
+        # A second confirmed case: two is still short of the three the gate wants.
+        second = await ingest_case('02', '45.9.148.201')
+        # This peer is not in the feed, and the prompt says so in the words that
+        # matter. "We asked and found nothing" is not "we found it is safe".
+        assert 'Absence from a feed is not evidence of safety' in prompts[-1], prompts[-1]
+        assert (await client.get(f'/api/alerts/{second}', headers=viewer)).json()[
+            'enrichment']['threat_intel']['not_found'][0]['value'] == '45.9.148.201'
+        await confirm(second)
+
+        third = await ingest_case('03', '45.9.148.202')
+        third_decision = (await client.get(f'/api/alerts/{third}/decision', headers=viewer)).json()
+        assert third_decision['approval_status'] == 'PENDING'
+        situation = await situations.get_situation_for_alert(third)
+        basis = await precedent.autopilot_precedent(situation, 'CONTAIN')
+        assert not basis['ok'] and basis['matching'] == 2, basis
+        assert '3 required' in basis['reason'], basis['reason']
+        await confirm(third)
+
+        # --- D3: with a corpus, the past decisions reach the prompt -------
+        fourth = await ingest_case('04', '45.9.148.203')
+        prompt = prompts[-1]
+        assert 'PRECEDENT — past situations this SOC already settled' in prompt, prompt
+        assert 'approved by sara.analyst' in prompt
+        assert 'Cite the ids you relied on' in prompt
+        offered = (await client.get(f'/api/alerts/{fourth}', headers=viewer)).json()
+        assert offered['enrichment']['precedent']['offered'] >= 3
+        # It still cited PREC-9, which it was still never given.
+        assert offered['enrichment']['precedent']['fabricated'] == ['PREC-9']
+
+        # --- D4: three human confirmations, and the gate opens ------------
+        decision = (await client.get(f'/api/alerts/{fourth}/decision', headers=viewer)).json()
+        assert decision['approval_status'] in ('APPROVED', 'EXECUTING', 'DONE'), decision
+        assert decision['approved_by'] == 'tier2-autopilot'
+        auto_basis = decision['autopilot_basis']
+        assert auto_basis and auto_basis['ok'] and auto_basis['matching'] >= 3
+        assert auto_basis['reversals'] == 0 and auto_basis['contrary'] == 0
+        assert len(auto_basis['cases']) >= 3
+        assert all(case['verdict'] == 'CONTAIN' for case in auto_basis['cases'])
+        assert 'none reversed' in auto_basis['reason'], auto_basis['reason']
+
+        # --- D4: autonomy must not bootstrap from itself ------------------
+        # The case autopilot just approved is precedent for nothing. Counting a
+        # machine's own approvals would turn three human decisions into an
+        # unbounded number of automatic ones.
+        cases = await precedent.find_precedents(situation, limit=20, min_similarity=1)
+        auto = next(case for case in cases if case['alert_id'] == fourth)
+        assert auto['human_confirmed'] is False, auto
+        assert auto['resolution'].startswith('auto-approved'), auto['resolution']
+
+        # --- D4: a human who disagreed stops the pattern being settled ----
+        # INVESTIGATE is outside the auto-executable verdicts, so this one waits
+        # for a person — which is what lets a person disagree with it. Once the
+        # gate is open, every subsequent CONTAIN of this shape is dispatched
+        # before an analyst can reach it, and that is the intended behaviour.
+        verdicts['value'] = 'INVESTIGATE'
+        contrary_alert = await ingest_case('05', '45.9.148.204')
+        edited = await client.post(
+            f'/api/alerts/{contrary_alert}/decision/edit',
+            headers={**analyst, 'X-Actor': 'reza.analyst'},
+            json={'decision': 'ESCALATE', 'rationale': 'Owned by the IR team, not Tier-2.'},
+        )
+        assert edited.status_code == 200, edited.text
+        await confirm(contrary_alert, by='reza.analyst')
+
+        verdicts['value'] = 'CONTAIN'
+        sixth = await ingest_case('06', '45.9.148.205')
+        sixth_decision = (await client.get(f'/api/alerts/{sixth}/decision', headers=viewer)).json()
+        assert sixth_decision['approval_status'] == 'PENDING', sixth_decision
+        blocked = await precedent.autopilot_precedent(
+            await situations.get_situation_for_alert(sixth), 'CONTAIN'
+        )
+        assert not blocked['ok'] and blocked['contrary'] >= 1
+        assert 'not settled' in blocked['reason'], blocked['reason']
+
+        # --- D4: and a decision that turned out wrong stops it harder -----
+        outcome = await client.post(
+            f'/api/alerts/{first}/decision/outcome', headers={**analyst, 'X-Actor': 'sara.analyst'},
+            json={'outcome': 'FALSE_POSITIVE', 'note': 'Approved backup replication.'},
+        )
+        assert outcome.status_code == 201, outcome.text
+        reversed_basis = await precedent.autopilot_precedent(
+            await situations.get_situation_for_alert(sixth), 'CONTAIN'
+        )
+        assert not reversed_basis['ok'] and reversed_basis['reversals'] >= 1
+        assert 'already got wrong' in reversed_basis['reason'], reversed_basis['reason']
+
+        # --- D2: a feed that is down must never read as a clean feed ------
+        class DeadFeed(threat_intel.IntelProvider):
+            name, version = 'dead-feed', '1'
+
+            async def lookup(self, indicator):
+                raise RuntimeError('connection refused')
+
+        threat_intel.set_intel_provider(DeadFeed())
+        degraded_alert = await ingest_case('07', '45.9.148.206')
+        degraded_prompt = prompts[-1]
+        assert 'could not be reached' in degraded_prompt, degraded_prompt
+        assert 'UNVERIFIED, not clean' in degraded_prompt
+        degraded = (await client.get(f'/api/alerts/{degraded_alert}', headers=viewer)).json()
+        assert degraded['enrichment']['threat_intel']['status'] == 'degraded'
+        assert degraded['enrichment']['threat_intel']['malicious'] == []
+
+        # --- D5: both are readable through the API ------------------------
+        intel_view = (await client.get(f'/api/alerts/{first}/intel', headers=viewer)).json()
+        assert intel_view['summary']['malicious'] == 1
+        assert intel_view['techniques']['unlisted'] == ['T1099.007'], intel_view['techniques']
+        precedents = (await client.get(
+            f'/api/situations/{situation.situation_id}/precedents', headers=viewer
+        )).json()
+        assert precedents['count'] >= 1
+        assert precedents['items'][0]['components'], 'every match must state why it matched'
+    finally:
+        threat_intel.set_intel_provider(previous_provider)
+        set_provider(ScriptedProvider(lambda _prompt: MOCK_LLM_RESPONSE))
+
+
+def check_intel_boundary() -> None:
+    """Rule 9, D1: only intel/ knows what a feed calls its fields.
+
+    The same structural test as the adapter boundary, for the same reason. A
+    threat-intelligence platform is an external tool, and the moment core logic
+    knows MISP has ``to_ids``, swapping the TIP becomes a code change.
+    """
+    core = ('threat_intel.py', 'precedent.py', 'attack_catalog.py', 'situation.py',
+            'detection.py', 'tier2.py', 'db.py', 'decision_store.py')
+    for module in core:
+        source = open(module, encoding='utf-8').read()
+        assert 'import intel' not in source and 'from intel' not in source, \
+            f'{module} reaches into intel/ — core logic must talk to the provider contract'
+
+    broker_source = open('soc_orchestrator.py', encoding='utf-8').read()
+    assert broker_source.count('import intel') == 1
+    for vendor in ('MispIntelProvider', 'intel.misp', 'to_ids'):
+        assert vendor not in broker_source, f'{vendor} is named in the broker — Rule 9'
+
+
+def check_precedent_similarity() -> None:
+    """D3: similarity is deterministic, explainable, and needs no model."""
+    from precedent import Features, score_similarity
+
+    beacon = Features(
+        techniques={'T1071.001'}, sources={'edge-firewall'},
+        entity_values={('user', 'mmalek'), ('ip', '10.9.4.7')},
+        entity_kinds={'user', 'ip'}, tokens={'beacon', 'egress', 'encrypted'},
+        severity='HIGH',
+    )
+    same_shape = Features(
+        techniques={'T1071.001'}, sources={'edge-firewall'},
+        entity_values={('user', 'dpaydar'), ('ip', '10.9.9.9')},
+        entity_kinds={'user', 'ip'}, tokens={'beacon', 'egress', 'encrypted'},
+        severity='HIGH',
+    )
+    unrelated = Features(
+        techniques={'T1486'}, sources={'wazuh'},
+        entity_values={('host', 'FILE-SRV-2')}, entity_kinds={'host'},
+        tokens={'ransomware', 'encryption'}, severity='CRITICAL',
+    )
+
+    score, terms = score_similarity(beacon, same_shape)
+    # No entity in common at all, and it still matches: precedent is about the
+    # shape of an intrusion, not about the same host offending twice. A gate
+    # keyed on identity would only ever fire for repeat victims.
+    assert score >= precedent.AUTOPILOT_SIMILARITY, score
+    assert {term['factor'] for term in terms} >= {'techniques', 'sources', 'severity'}
+    assert not any(term['factor'] == 'entities' for term in terms)
+
+    assert score_similarity(beacon, unrelated)[0] < precedent.MIN_SIMILARITY
+    # Deterministic: the same pair scores the same on every run, which is what
+    # makes an autonomous action defensible after the fact.
+    assert score_similarity(beacon, same_shape) == (score, terms)
+
+
 def check_adapter_boundary() -> None:
     """Rule 9 / B6: only adapters know a vendor's field names.
 
@@ -880,8 +1187,11 @@ async def check_empty_response_raises() -> None:
 
 
 async def run_test() -> None:
-    if os.path.exists('test_soc_matrix.db'):
-        os.remove('test_soc_matrix.db')
+    # The SOAR sink is append-only by design (Rule 4), so a run that does not
+    # clear it counts the previous run's receipts as its own.
+    for artifact in ('test_soc_matrix.db', 'test_soar_actions.jsonl'):
+        if os.path.exists(artifact):
+            os.remove(artifact)
 
     check_endpoint_resolution()
     check_action_policy()
@@ -890,6 +1200,8 @@ async def run_test() -> None:
     check_risk_scoring()
     check_evidence_pointers()
     check_adapter_boundary()
+    check_intel_boundary()
+    check_precedent_similarity()
     await check_empty_response_raises()
     await check_provider_abstraction()
 
@@ -982,8 +1294,15 @@ async def run_test() -> None:
     assert normalize_tier2_proposal({'decision': 'NUKE_IT', 'confidence': 99}) is None
     assert normalize_tier2_proposal({'decision': 'contain'})['decision'] == 'CONTAIN'
 
-    # --- Autopilot: CONTAIN at 91% >= 90% executes without a human ---
+    # --- Autopilot, pre-D4 mode: CONTAIN at 91% >= 90% executes ---
+    # This alert has no situation behind it (it was written straight into the
+    # store), so there is nothing for the precedent gate to find precedent for
+    # and it would refuse — correctly. TIER2_AUTOPILOT_REQUIRE_PRECEDENT=0 is
+    # the supported lab/demo mode and this block is what covers it; the gate
+    # itself is exercised in check_phase_d_dod, against a real corpus.
+    tier2.AUTOPILOT_REQUIRE_PRECEDENT = False
     executed = await autopilot_if_eligible(decision, wait=True)
+    tier2.AUTOPILOT_REQUIRE_PRECEDENT = True
     assert executed['approval_status'] == 'DONE', executed['approval_status']
     assert executed['approved_by'] == 'tier2-autopilot'
     assert all(a['status'] == 'DONE' for a in executed['required_actions'])
@@ -1125,6 +1444,17 @@ async def run_test() -> None:
     assert watch['approval_status'] == 'PENDING', 'a 99% MONITOR must never auto-execute'
     assert (await db.get_alert('ALT-TEST003'))['mitigation_status'] == 'PENDING'
 
+    # Phase D runs last on purpose: it is the only check that records an
+    # outcome, and the Phase-A assertions above count outcomes globally.
+    transport = httpx.ASGITransport(app=broker.app)
+    async with httpx.AsyncClient(transport=transport, base_url='http://test') as client:
+        await check_phase_d_dod(
+            client,
+            ingest={'X-API-Key': 'service-secret'},
+            viewer={'X-API-Key': 'viewer-secret'},
+            analyst={'X-API-Key': 'service-secret'},
+        )
+
     # Windows keeps the SQLite file locked while the engine holds a connection.
     await db.engine.dispose()
     os.remove('test_soc_matrix.db')
@@ -1132,8 +1462,9 @@ async def run_test() -> None:
     print(
         'PASS: Detection Intake contract (7 adapters), cross-tool correlation and merging '
         'into one situation, situation-driven Tier-2 decision, retry/dead-letter/back-pressure '
-        'on the analysis queue, decision search and retention, autopilot policy and SOAR '
-        'delivery all verified.'
+        'on the analysis queue, decision search and retention, verified threat intelligence '
+        'and ATT&CK catalogue checks, precedent retrieval with a grounding gate, '
+        'precedent-gated autopilot, and SOAR delivery all verified.'
     )
 
 

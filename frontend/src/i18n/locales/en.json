@@ -351,5 +351,20 @@
       "multiple_techniques": "{{count}} distinct techniques asserted by the detecting tools: {{list}}",
       "source_trust_weight": "Mean trust of {{list}} is {{trust}}"
     }
+  },
+  "intel": {
+    "title": "Verification and precedent",
+    "subtitle": "What was checked against a source of record, and what this SOC decided before",
+    "noProvider": "No threat-intelligence provider is configured, so nothing here has been verified against a feed. This is not a clean result — it is no result.",
+    "degraded": "The {{provider}} feed could not be reached for part of this situation. Anything not listed below is unverified, not clean.",
+    "noHits": "No indicator in this situation matched the {{provider}} feed.",
+    "notFound": "{{count}} indicator(s) checked and not found — absence from a feed is not evidence of safety",
+    "skipped": "{{count}} not checked (internal addresses and identities are never sent to a feed)",
+    "unverifiedTechniques": "{{count}} technique(s) are not in the local ATT&CK catalogue: {{ids}}. The catalogue is a subset, so this means unconfirmed rather than invented.",
+    "precedent": "Precedent",
+    "autoExecuted": "Executed without a human, on precedent",
+    "offered": "{{count}} similar past decision(s) were put in front of the model; it cited {{cited}}.",
+    "noPrecedent": "No sufficiently similar past decision — this one waits for an analyst by construction.",
+    "fabricated": "The model cited case id(s) it was never given: {{ids}}. They were dropped, not stored."
   }
 }

@@ -4,10 +4,10 @@
 |---|---|
 | **Project** | AI-SOC / AO-SOC Command Center |
 | **Document** | Master Project Plan, Milestones & Coding-Agent Roadmap |
-| **Version** | 2.4 (replan of v1.0; boundary corrected in v2.1; Phases A and B delivered in v2.2-2.3; **Phase C delivered in v2.4**) |
+| **Version** | 2.5 (replan of v1.0; boundary corrected in v2.1; Phases A-C delivered in v2.2-2.4; **Phase D delivered in v2.5**) |
 | **Supersedes** | Plan v1.0, Summer 2026 |
 | **Date** | Summer 2026 |
-| **Status** | Re-sequenced against implemented reality, re-scoped against the tool boundary; Phases A, B and C complete in `ao-soc` 2.5.0 |
+| **Status** | Re-sequenced against implemented reality, re-scoped against the tool boundary; Phases A-D complete in `ao-soc` 2.6.0 — what remains is production |
 | **Writer** | J.Ekrami |
 | **Co-writer** | Claude (Opus 5) |
 | **Copyright** | © J.Ekrami-Labs |
@@ -123,13 +123,13 @@ integration, stated in the evidence column.
 | M04 | Security Data Platform | 🟡 | ⬛→**🟢** | Log platform is **external**. In scope and **delivered (C4)**: search over situations (entity / source / severity / status / risk / time / text, paged) and decisions (verdict / status / source / outcome / corrected); evidence pointers derived from the frozen contract, with no link at all rather than a broken one; retention that drops vendor payload copies and never the decision, correction, outcome or receipt |
 | M05 | Detection Engine | 🔴 | **⬛ EXT** | **Removed from scope.** Detection is the upstream tool's job. Obligation met: three vendor shapes consumed with no special-casing above the adapter |
 | M06 | Correlation Engine | 🔴 | **🟢** | **B2/B4 + C3 delivered.** Entity + time-window join across vendors into a `Situation` with an entity graph, contributing sources and a deterministic, explainable risk score. Measured: five detections from three tools → one situation, one decision. **Merging (C3):** two situations a later detection ties together are folded into one, the absorbed one kept as `MERGED` with its decision `SUPERSEDED`; a settled situation is reported as `related_settled`, never merged |
-| M07 | Threat Intelligence | 🔴 | ⬛→🔴 | Feeds/TIP **external**. In scope: a TI **client** to verify LLM-asserted IOCs and techniques. Today: no feed. **Partially mitigated (B3):** where the detecting tool asserted a technique it is preferred and stored as `source='tool'`; a model's own claim is stored as `source='llm'` — provenance, not verification |
+| M07 | Threat Intelligence | 🔴 | ⬛→**🟢** | Feeds/TIP **external**. In scope and **delivered (D1/D2)**: `threat_intel.py` + `intel/` — a provider contract with a file-backed offline feed and an on-prem MISP client, TTL-cached, bounded per situation, reported in four buckets so *not found* and *never checked* can never read as *clean*; a failed lookup degrades visibly. Plus `attack_catalog.py`: every technique checked against a local ATT&CK catalogue and stamped `verified` / `unlisted` / `unknown`, with the catalogue's name and tactic outranking the model's. Missing: nothing in scope — feed curation is the TIP's job |
 | M08 | **AI Analysis Engine** | 🔴 | **🟢** | Structured output (severity, confidence, evidence, reasoning, MITRE, recommendations), validated, JSON-enforced, benchmarked across 14 local models, behind an `LLMProvider` abstraction with a model-free `echo` mode (A3), and **reasoning over a Security Situation rather than a single alert** (B3) |
-| M09 | RAG & Knowledge Base | 🔴 | 🔴 | None. **Core scope** — precedent is the autonomy gate (§7) |
-| M10 | **AI SOC Analyst / Tier-2** | 🔴 | **🟡→🟢** | Verdict (`CONTAIN`/`ESCALATE`/`INVESTIGATE`/`MONITOR`/`IGNORE`) + confidence + rationale + risk-of-action + bundled action plan + human approval **+ human edit captured as a label** (A4) + provenance (`llm`/`rules`/`human`). **One decision per situation, re-derived as it grows and frozen once a human or a dispatch claims it** (B3). Missing: investigation & attack-reconstruction depth |
+| M09 | RAG & Knowledge Base | 🔴 | **🟡→🟢** | **D3 delivered:** `precedent.py` retrieves past *settled* situations from the decision / correction / outcome corpus, ranked by a deterministic five-term similarity over contract 2, returned with every term's points. The top matches reach the prompt as **cited** context, and a precedent id the model was never offered is dropped and recorded (grounding gate). Deliberately not embedded: at decision-store scale a vector index buys ranking nobody needs yet, and the deterministic path works with no model at all. Missing: procedures/playbooks and asset-owner context, which are documents and belong with the external system of record |
+| M10 | **AI SOC Analyst / Tier-2** | 🔴 | **🟡→🟢** | Verdict (`CONTAIN`/`ESCALATE`/`INVESTIGATE`/`MONITOR`/`IGNORE`) + confidence + rationale + risk-of-action + bundled action plan + human approval **+ human edit captured as a label** (A4) + provenance (`llm`/`rules`/`human`). **One decision per situation, re-derived as it grows and frozen once a human or a dispatch claims it** (B3). **D2/D3:** the analyst now reasons with verified intelligence and cited precedent in front of it. Missing: investigation & attack-reconstruction depth |
 | M11 | Incident & Case Management | 🔴 | 🟡 | Incident object, timeline, evidence, status lifecycle, archive, audit trail, **`decision_outcomes` + feedback window** (A5). Missing: assignment, escalation, analyst notes, **sync to the external system of record** |
 | M12 | Response & Integration | 🔴 | 🟡 | Playbook plan, policy gate, background executor, pluggable SOAR adapter, action audit with receipts, **action risk classification + target-shape validation** (A2). Missing: real connectors |
-| M13 | SOC Dashboard | 🔴 | **🟢** | 7 routes, EN/FA + RTL, executive KPIs, MITRE heatmap, live telemetry, Tier-2 panel with edit + outcome capture, archive, **and the situation panel (C5)**: every member detection with its source tool, the entity graph, and each term of the risk score — in both languages |
+| M13 | SOC Dashboard | 🔴 | **🟢** | 7 routes, EN/FA + RTL, executive KPIs, MITRE heatmap, live telemetry, Tier-2 panel with edit + outcome capture, archive, **the situation panel (C5)** — every member detection with its source tool, the entity graph, and each term of the risk score — **and the verification panel (D5)**, which draws the absences as deliberately as the hits: unchecked, not-found, feed-down, unlisted technique, and the precedent behind an automatic execution. Both languages |
 | M14 | Security & Governance | 🔴 | 🟡 | **A1 delivered:** API-key authentication with roles on both services, CORS allow-list, authenticated approver identity, no unauthenticated path. Missing: real IdP/SSO, per-object RBAC, secrets management, TLS termination |
 | M15 | Production Hardening | 🔴 | 🔴 | No Docker, monitoring, backup, HA |
 | M16 | Pilot SOC | 🔴 | 🔴 | — |
@@ -146,10 +146,10 @@ Decision Store                 ████████████████�
 Reliable Decision Path         ██████████████████░░  90%
 Detection Engine               ────── external ──────  n/a
 Correlation → Situation        ███████████████████░  95%
-Threat-Intel Client            ░░░░░░░░░░░░░░░░░░░░   0%  (technique provenance only)
+Threat-Intel Client            ██████████████████░░  90%  (2 providers + ATT&CK catalogue)
 AI Analysis                    ███████████████████░  95%
-RAG / Precedent                ░░░░░░░░░░░░░░░░░░░░   0%  (corpus capture live)
-AI SOC Analyst                 █████████████████░░░  85%
+RAG / Precedent                ████████████████░░░░  80%  (retrieval + autonomy gate)
+AI SOC Analyst                 ██████████████████░░  90%
 Case Management                ████████████░░░░░░░░  60%
 Response Dispatch              █████████████░░░░░░░  65%
 Dashboard                      ███████████████████░  95%
@@ -179,6 +179,17 @@ decision store is queryable, and correlation merges situations that turn out to 
 rather than leaving two decisions about one intrusion. **What is left is knowledge**
 (M07/M09, Phase D) **and production** (M15-M17, Phase E) — nothing on the integration
 surface is now a blocker for either.
+
+**v2.5 update.** Phase D closed knowledge, and with it the last two open risks that were
+about the *quality* of a decision rather than its delivery. Two sentences state what
+changed. First, **the layer now checks what it is told** — a technique the model asserted
+is looked up in a catalogue, an indicator is looked up in a feed, and where either cannot
+be checked the record says so in the four different ways it can be true. Second,
+**autonomy is earned rather than configured**: the confidence threshold has stopped being
+the control, and a verdict executes on its own only where humans have repeatedly and
+recently confirmed the same verdict on the same shape. Everything remaining is
+**production** (M15-M17) and the two integrations Phase E names — real response
+connectors, and sync with the external system of record.
 
 **What correlation is worth, stated so it can be checked.** `GET /api/correlation/metrics`
 reports `detections_per_situation` and `multi_source_situations`. The first is how many
@@ -269,9 +280,9 @@ upper-layer features before contract 2 is frozen means rewriting the AI layer tw
 | 3 — Never break existing functionality | ✅ | `test_broker.py`, `testUnify.js`, typecheck, build gate every change. Phase B kept `POST /splunk-alert` and every Phase-A route working; Phase C put a queue under the intake without changing what a synchronous caller receives, verified by the same assertions |
 | 4 — Preserve raw security evidence | ✅ | `detections.raw_payload` stores each tool's payload verbatim, per detection; the analysed record keeps the correlated view that produced it; archive append-only; SOAR receipts immutable |
 | 5 — **AI must be modular** | ✅ *(v2.2)* | `LLMProvider` abstraction with `OllamaProvider`, a model-free `EchoProvider` (`LLM_PROVIDER=echo`) and a `ScriptedProvider` for the demo tooling. `soc_orchestrator` no longer imports `llm` |
-| 6 — AI output must be structured | ✅ | JSON-enforced (`format: json`), vocabulary-gated, `decision_source` provenance (`llm` / `rules` / `human`); MITRE techniques now carry `source` = `tool` / `llm` so a rule's assertion and a model's guess are distinguishable (R4, partial) |
+| 6 — AI output must be structured | ✅ *(v2.5)* | JSON-enforced (`format: json`), vocabulary-gated, `decision_source` provenance (`llm` / `rules` / `human`); MITRE techniques carry `source` = `tool` / `llm`, **and since D1 a `catalog_status` as well** — structure was never the whole problem, and a well-formed claim about a technique that does not exist is still a fabrication. Precedent citations are gated the same way: an id the model was not given is dropped, not stored |
 | 7 — **Human approval for dangerous actions** | ✅ *(v2.2)* | Approval gate plus `action_policy.py`: `READ` / `LOW_WRITE` / `HIGH_WRITE` / `DESTRUCTIVE`, unknown verbs default to HIGH_WRITE, per-class target-shape validation before dispatch, autopilot risk ceiling, DESTRUCTIVE off unless deliberately enabled |
-| 8 — Everything observable | ✅ *(v2.4)* | `/health` (auth-scoped) reports the LLM provider, autopilot, action policy, correlation, source registry, adapters, **analysis queue depth and dead letters**, and retention. Risk class, policy reason, correction/outcome trails, correlation decisions (`joined_on`, `merged`, `related_settled`), source health and the decision store are all queryable. *Residual:* no latency histograms — a metrics exporter is Phase E |
+| 8 — Everything observable | ✅ *(v2.5)* | `/health` (auth-scoped) reports the LLM provider, autopilot **and its precedent gate**, action policy, correlation, source registry, adapters, analysis queue depth and dead letters, retention, **the threat-intel provider and the ATT&CK catalogue in use**. Risk class, policy reason, correction/outcome trails, correlation decisions, source health, the decision store, the intelligence a decision was made on and **the precedent an automatic execution stood on** are all queryable. *Residual:* no latency histograms — a metrics exporter is Phase E |
 | **9 — Every external tool sits behind an adapter** *(new, v2.1)* | ✅ *(v2.3)* | Corollary of §2 and the sibling of Rule 5. SOAR complied already; **intake now does too** — `adapters/` is the only package where a vendor's field names appear, `POST /detections` is vendor-neutral, `/splunk-alert` is a thin alias, and `test_broker.check_adapter_boundary` fails the build if a core module imports the package or the broker names an adapter class. **Seven vendors as of v2.4 (C1), none of which needed a change outside `adapters/`. R7 closed** |
 
 ### Rule 7 is not theoretical
@@ -299,12 +310,13 @@ validity of what it dispatches is not a detail.
 | ~~**R1**~~ | ~~**Unauthenticated action execution**~~ | **Closed v2.2** | API-key authentication with roles on the broker and the UI API; ingest, read and act are separate scopes; CORS is an allow-list and `'*'` is refused; the approver is the authenticated identity, not a body field. With no keys configured a key is minted and printed rather than serving open. *Residual:* pre-shared keys are not an IdP — M14 completes with SSO, per-object RBAC and TLS |
 | ~~**R2**~~ | ~~Correlation retrofit rewrites the AI layer~~ | **Closed v2.3** | Both contracts frozen (§4) and the AI layer refactored **once**, onto `Situation`, with a single detection as the degenerate case. `POST /splunk-alert` passes its original tests unmodified, which is the evidence that the rewrite did not have to happen twice |
 | ~~**R3**~~ | ~~No LLM abstraction (Rule 5)~~ | **Closed v2.2** | `LLMProvider` + `OllamaProvider` / `EchoProvider`; provider swap is an env var |
-| **R4** | Unverified MITRE / threat claims | **Medium→Low** *(v2.3)* | *"Where the upstream tool asserts a technique, prefer it and mark the source"* — done in B3: a tool-asserted technique is passed to the model as fact and stored with `source='tool'`; a model's own claim is stored as `source='llm'`. Two fabrications were also removed (a hardcoded `T1071.001` fallback, and evidence labelled as a named vendor's match). Still open in full: **nothing verifies either kind** until the TI client lands in Phase D |
+| ~~**R4**~~ | ~~Unverified MITRE / threat claims~~ | **Closed v2.5** | Provenance (B3) said *who* claimed a technique; D1 says whether the claim checks out. Techniques are looked up in a local ATT&CK catalogue and stamped, with the catalogue's name and tactic outranking the model's — a real ID with an invented label now renders correctly. Indicators are looked up in a feed through `intel/`, and the report distinguishes *malicious*, *checked and not found*, *never checked* and *could not check*, so nothing unverified can be presented as verified. *Residual, and permanent:* a catalogue is a snapshot and a feed has coverage limits — which is exactly why `unlisted` is a distinct status from `unknown`, and why a subset catalogue never accuses a model of inventing an ID it simply does not carry |
 | ~~**R5**~~ | ~~Human corrections are not captured~~ | **Closed v2.2** | `decision_corrections` stores verdict before/after, the plan delta and the analyst's note, with `decision_source='human'`. `GET /api/corrections` exposes the corpus |
-| **R6** | Confidence-only autonomy gate | **Low** *(v2.2)* | Autopilot now also gates on the **action risk class** of the plan and on target-shape validity — factual properties of what would be dispatched, unlike the self-reported number. Still open in full until §7's precedent gate replaces the threshold (Phase D) |
+| ~~**R6**~~ | ~~Confidence-only autonomy gate~~ | **Closed v2.5** | D4 replaced the threshold as the control with §7's precedent gate: N human-confirmed precedents at a similarity floor, zero reversed, zero contrary, newest inside a staleness window. The confidence number survives as a floor and as display, and decides nothing — which is the correct role for a figure 14 benchmarked models all report between 75 % and 98 % regardless of input, and which moved 45 points between two runs of the same five cases at temperature 0.1. **The gate cannot bootstrap:** an autopilot approval is not precedent, so a machine cannot promote its own decisions into a licence for more of them. *Residual:* the gate's constants (3 precedents, 70 % similarity, 30 days) are settings calibrated on nothing yet, and want re-measuring against a real corpus — the same caveat as every threshold in this system |
 | ~~**R7**~~ | ~~**Vendor coupling at the intake**~~ *(v2.1)* | **Closed v2.3** | The route is `POST /detections`, the field mapping is one file per vendor under `adapters/`, and the columns are the contract's. Demonstrated by writing the Wazuh adapter without editing anything outside that package (B6), and enforced by a test that refuses a core import of it. *Residual:* the adapters themselves still have to be written and kept current per vendor — that is the cost the boundary was chosen to pay |
 | **R8** | **Decision quality is bounded by upstream detection quality** *(v2.1)* | Medium | AI-SOC cannot see what the SIEM did not alert on, and inherits its false-positive rate. Accepted deliberately. **Measurable since v2.2:** `GET /api/decisions/outcomes` reports precision per detection source, so a bad upstream rule no longer reads as bad AI. **Reduced in v2.3:** cross-tool corroboration is exactly the mitigation — a situation two independent tools agree on is less bounded by either one's error rate, which is why it scores higher. A multi-source situation's `detection_source` reads `splunk+wazuh`, so precision is still attributable and never guessed |
 | ~~**R10**~~ | ~~**A failed analysis is a lost decision**~~ *(raised and closed, v2.4)* | **Closed v2.4** | Phase B stored the detection before calling the model, so evidence was never lost — but the *analysis* was: a failure returned 502 and the situation stayed unanalysed unless another detection happened to join it. C2 makes it a job with backoff, a bounded attempt budget and a visible, re-runnable dead-letter state. Recorded here rather than quietly fixed, because it was a real gap in a phase that had already been called done |
+| **R11** | **Precedent inherits the corpus's blind spots** *(new, v2.5)* | Medium | The autonomy gate is only as good as the confirmations behind it. Three analysts who approved a CONTAIN too quickly are indistinguishable, to this system, from three who were right — and a pattern nobody has ever seen has no precedent, which is safe, while a pattern the SOC has *consistently mishandled* has plenty. Mitigated three ways and not eliminated: an outcome of `FALSE_POSITIVE` or `REOPENED` reverses a precedent and closes the gate; a single contrary human verdict closes it; and `GET /api/decisions/outcomes` reports precision per detection source, so a bad seam is visible before it is automated. The real control is that the corpus is *auditable* — every case behind an automatic execution is recorded on the decision |
 | **R9** | **A busy entity chains a situation into a shift** *(new, v2.3)* | Low | Correlation joins on entities inside a window, so a heavily-alerting host could absorb unrelated detections indefinitely. Bounded three ways: `SITUATION_MAX_MEMBERS` (default 25), `CORRELATION_WINDOW_MINUTES` (default 30), and joining only on strong namespaces — a shared *process name* or *domain* is not enough, because half a fleet runs `powershell.exe`. All three are settings, not truths, and want re-calibrating on a real corpus |
 
 ---
@@ -317,10 +329,23 @@ The intended production flow, and where each phase stands:
 1. AI receives situation, produces verdict + playbook     ✅ built v2.3 — genuinely on situations now
 2. Human reads / EDITS                                    ✅ built v2.2 — edit + labelled correction
 3. Confirmed → external SOAR / EDR                        ✅ built (stub connectors, risk-classified)
-4. Results → RAG                                          ⚠️ outcomes captured; RAG not built
-5. Human role diminishes                                  ⚠️ risk-class ceiling added, nothing learns yet
-6. Autopilot on RAG-enriched precedent                    ❌ threshold + risk class today
+4. Results → RAG                                          ✅ built v2.5 — retrieval over the corpus
+5. Human role diminishes                                  ✅ built v2.5 — and only where precedent says so
+6. Autopilot on RAG-enriched precedent                    ✅ built v2.5 — the threshold no longer decides
 ```
+
+**Steps 4-6 are built (v2.5), and the shape they took is worth recording.** Step 4 is not
+a document index: the results that matter were already rows — the verdict, the human
+correction, the outcome — and retrieval over them is deterministic, explainable and needs
+no model. Step 6 is the gate stated below, implemented literally, with one addition: a
+*contrary* human verdict blocks it as firmly as a reversal, because a pattern analysts
+disagree about is not a pattern.
+
+**Step 5 is the one to watch.** The human role diminishes *per scenario class*, as
+precedent accumulates — which means a quiet week automates nothing and a well-understood
+recurring alert automates quickly. That is the intended shape, and it is also why R11
+exists: the ramp now runs on what the SOC did, so what the SOC did badly automates just
+as smoothly as what it did well.
 
 **Step 1 is also now reliable, not merely correct (v2.4).** A verdict that never arrived
 because inference failed is, from the ramp's point of view, indistinguishable from a
@@ -355,6 +380,15 @@ rather than one that has to be reconstructed later.
 This is auditable, degrades safely (a novel situation has no precedent, so it goes to a
 human by construction), and lets autonomy arrive per scenario class — C2 beacons long
 before anything touching a domain controller.
+
+**Implemented in v2.5** as `precedent.autopilot_precedent`, with the defaults
+`TIER2_AUTOPILOT_MIN_PRECEDENTS=3`, `TIER2_AUTOPILOT_PRECEDENT_SIMILARITY=70` and
+`TIER2_AUTOPILOT_PRECEDENT_DAYS=30`, and with **only human confirmations counted**. The
+basis is written to the decision, so the question *"why did the machine act here?"* has a
+recorded answer naming the cases, who confirmed them and how old the newest was. It can
+be turned off (`TIER2_AUTOPILOT_REQUIRE_PRECEDENT=0`) for a lab or a demo on an empty
+corpus, and `/health` says so when it is — a weaker mode nobody can run by accident is the
+point of reporting it.
 
 ---
 
@@ -445,12 +479,40 @@ full-text search over rationale and analyst notes (the entity and verdict filter
 the questions analysts actually ask; a text index is a Phase E concern if it is one at
 all).
 
-### Phase D — Knowledge and adaptive autonomy *(next)*
+### Phase D — Knowledge and adaptive autonomy ✅ *(delivered, `ao-soc` 2.6.0)*
 
-Threat-intelligence **client** (M07) — MISP / OpenCTI / reputation lookups used to verify
-IOCs and techniques the model asserted (R4). RAG over procedures, playbooks, asset/user
-context and **incident history including the Phase-A corrections** (M09). Precedent-gated
-autopilot (§7). Embeddings: `snowflake-arctic-embed2` (benchmarked, already local).
+| Task | Milestone | Addresses | State |
+|---|---|---|---|
+| D1. Threat-intelligence **client** behind a provider contract; local ATT&CK catalogue | M07 | **R4** | ✅ `threat_intel.py` + `intel/{local,misp}.py` + `attack_catalog.py`. Four report buckets so *not found* and *never checked* cannot read as *clean*; a feed outage is `degraded`, never empty; internal addresses and identities are never sent to a feed; TTL cache stores misses too. Techniques stamped `verified` / `unlisted` / `unknown` / `malformed`, with the catalogue's label outranking the model's |
+| D2. Verified intelligence into the analysis path | M08 | R4 | ✅ Runs inside the analysis job, never on the synchronous intake (C2's rule). The prompt states what the feed said, what it could not answer and what was never asked, in words — including that absence from a feed is not evidence of safety. Stored on the analysed record with its provenance |
+| D3. Precedent retrieval over the decision corpus | M09 | §7 step 4 | ✅ `precedent.py`. Five-term deterministic similarity over contract 2, every term returned with its points; top matches reach the prompt with citation ids; **a cited id that was never offered is dropped and recorded** (grounding gate). Embeddings deferred with the reason stated: decision-store scale, and a model-free path is mandatory |
+| D4. Precedent-gated autopilot | M10/M12 | **R6** | ✅ N human-confirmed precedents, zero reversed, zero contrary, newest inside the staleness window. An autopilot approval is precedent for nothing, so autonomy cannot bootstrap. The basis is persisted on the decision |
+| D5. Verification and precedent in the dashboard | M13 | D left them APIs | ✅ `IntelPrecedentPanel`, EN/FA + RTL. Draws every state — confirmed, not found, not checked, feed unreachable, technique unlisted, precedent offered/cited/fabricated, and the cases behind an automatic execution |
+
+**DoD:** a model's claims are checked against a source of record rather than stored as
+fact; a decision is made with the SOC's own past decisions in front of it, cited and
+checkable; and nothing executes without a human until precedent — not confidence — says
+it may. — **Met.** Verified by `test_broker.check_phase_d_dod` (one scenario: a confirmed
+malicious indicator reaching the prompt while the endpoint's own address is never sent; a
+real technique verified and relabelled from the catalogue while a fabricated one is marked
+unlisted; a precedent id the model invented dropped; 93 % confidence executing nothing on
+an empty corpus; the gate opening on the third human confirmation and recording its basis;
+the machine's own approval refused as precedent; a contrary human verdict and then a
+reversed outcome each closing the gate again; and a dead feed reading as `degraded` rather
+than clean), plus `check_intel_boundary`, `check_precedent_similarity` and
+`backend/testUnify.js`.
+
+**One thing changed that had nothing to do with Phase D's code.** With the precedent gate
+on, a fresh deployment auto-executes nothing at all — which broke a Phase-A test assertion
+that had been passing since v2.3 because autopilot used to dispatch the first alert it
+saw. The assertion was right then and is right now; what it measured moved. That is the
+gate working, visible in a test that predates it.
+
+**Deliberately deferred:** embeddings over the precedent corpus (`snowflake-arctic-embed2`
+is benchmarked and local — it earns its keep when ranking rather than corpus size is the
+limit); procedures and playbooks as retrievable documents, which belong with the external
+system of record rather than in the decision layer; and per-scenario-class autonomy
+policy, which needs a real corpus to be anything other than a guess.
 
 ### Phase E — Production
 
@@ -509,11 +571,20 @@ The AI layer must remain provider-independent regardless (Rule 5, task A3).
 > model outage costs latency and never evidence; **retention deletes copies of a vendor's
 > data and nothing else**, never a decision, correction, outcome or receipt; and **state
 > gates are whitelists**, because C3 found an approval gate that listed the states which
-> block it and was therefore approvable by omission. The immediate priority is now Phase
-> D: the threat-intelligence client (M07) and RAG over precedent (M09), leading to the
-> precedent-gated autonomy of §7. Preserve raw detection evidence, require structured AI
-> output, classify every action by risk, and consider a milestone complete only after
-> implementation, testing, documentation, logging, error handling and verification.**
+> block it and was therefore approvable by omission. **Phase D is done** (2.6.0): a
+> threat-intelligence *client* behind `intel/` (never a platform), a local ATT&CK
+> catalogue, precedent retrieval over the decision corpus, and precedent-gated autopilot.
+> Four rules follow and must not be regressed — **an unverified claim may never be
+> presented as a verified one**, which is why the intel report has four buckets and a feed
+> outage is `degraded` rather than empty; **internal addresses and identities are never
+> sent to a feed**; **anything a model cites must be checkable against what it was given**,
+> and what it invents is dropped and recorded; and **only a human's confirmation is
+> precedent**, so autonomy can never bootstrap from the machine's own approvals. The
+> immediate priority is now Phase E: production hardening (M15-M17), real response
+> connectors and sync with the external system of record. Preserve raw detection evidence,
+> require structured AI output, classify every action by risk, and consider a milestone
+> complete only after implementation, testing, documentation, logging, error handling and
+> verification.**
 
 ---
 
@@ -536,6 +607,7 @@ instead of to log parsers.
 |---|---|---|---|
 | 1.0 | Summer 2026 | Initial master plan, milestones M00-M17 | J.Ekrami |
 | 2.0 | Summer 2026 | Replan against implemented reality: corrected status (intelligence layers built, data foundation and governance not), Security Situation contract as next architectural artifact, governance moved from last to first, autonomy ramp with edit-capture, measured model selection | J.Ekrami / Claude (Opus 5) |
+| 2.5 | Summer 2026 | **Phase D delivered** (`ao-soc` 2.6.0). D1 `threat_intel.py` + `intel/{local,misp}.py` — a TI **client** behind a provider contract, four report buckets so *not found* and *never checked* cannot read as *clean*, a degraded state for an unreachable feed, no internal address ever sent to one, and a TTL cache that stores misses; `attack_catalog.py` checks every technique against a local ATT&CK catalogue and the catalogue's label outranks the model's. D2 both reach the prompt in words, inside the analysis job. D3 `precedent.py` — deterministic five-term similarity over contract 2, cited precedent in the prompt, and a grounding gate that drops any id the model was never offered. D4 the confidence threshold stops being the control: N human-confirmed precedents, zero reversed, zero contrary, inside a staleness window, with the basis persisted and no bootstrapping from the machine's own approvals. D5 the `IntelPrecedentPanel` in EN/FA, drawing the absences as deliberately as the hits. §3 status (M07/M09 up), rule audit (Rules 6 and 8), risk register (**R4 and R6 closed, R11 raised**), §7 steps 4-6 marked built, §8 and §10 updated | J.Ekrami / Claude (Opus 5) |
 | 2.4 | Summer 2026 | **Phase C delivered** (`ao-soc` 2.5.0). C1 four more adapters (`elastic`, `sentinel`, `crowdstrike`, `cef`) — seven vendors, no core change, with Falcon's 1-5 and CEF's 0-10 severity scales mapped inside the adapters that know them; C2 `analysis_queue.py` — the model call becomes a job with exponential backoff, a bounded attempt budget, a visible dead-letter state, bounded concurrency, orphan recovery and back-pressure that returns 202; C3 situation merging, with the absorbed situation kept as `MERGED` / `SUPERSEDED` and settled situations reported rather than absorbed; C4 `decision_store.py` — search over situations and decisions, derived evidence pointers, and retention that drops vendor payload copies and never a judgement; C5 the `SituationPanel` in EN/FA. §3 status (M01/M02/M04 to green), rule audit (Rule 8 ✅), risk register (**R10 raised and closed**), §7 and §10 updated. Fixed an approval gate that was a blacklist of states, and removed two more fabricated MITRE fallbacks from the UI API | J.Ekrami / Claude (Opus 5) |
 | 2.3 | Summer 2026 | **Phase B delivered** (`ao-soc` 2.4.0). B1 Detection Intake contract (`detection.py`) with a `DetectionAdapter` registry, generic `POST /detections` and auto-detection; B2 Security Situation contract (`situation.py`) with a deterministic, factor-stamped risk score; B3 M08/M10 refactored **once** onto situations, with tool-asserted MITRE preferred and stamped `source='tool'`; B4 cross-tool correlation on entities inside a time window, with `GET /api/correlation/metrics`; B5 detection-source registry with health and trust weights; B6 Wazuh and native adapters written with no core change, enforced by a boundary test. §3 status table, §4 (contracts frozen), rule audit (Rule 9 ✅), risk register (**R2 and R7 closed**, R4 reduced, R9 added) and §7 updated. Two fabricated values removed from the enrichment fallback | J.Ekrami / Claude (Opus 5) |
 | 2.2 | Summer 2026 | **Phase A delivered** (`ao-soc` 2.3.0). A1 API-key authentication with roles on the broker and the UI API, CORS allow-list, approver taken from the authenticated identity; A2 action risk classes (`READ`/`LOW_WRITE`/`HIGH_WRITE`/`DESTRUCTIVE`) with per-class target-shape validation and an autopilot risk ceiling; A3 `LLMProvider` abstraction with a model-free `echo` provider; A4 human edit of verdict and plan persisted to `decision_corrections` with `decision_source='human'`; A5 `decision_outcomes` with a feedback window and per-detection-source attribution. Status table, rule audit and risk register updated; R1 and R5 closed, R3 closed, R6 mitigated, R8 now measurable | J.Ekrami / Claude (Opus 5) |

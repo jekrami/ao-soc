@@ -7,6 +7,7 @@ import { IncidentQueue }         from '@/components/dashboard/IncidentQueue';
 import { ClearedBanner }         from '@/components/dashboard/ClearedBanner';
 import { AttackStoryboard }      from '@/components/dashboard/AttackStoryboard';
 import { SituationPanel }        from '@/components/dashboard/SituationPanel';
+import { IntelPrecedentPanel }   from '@/components/dashboard/IntelPrecedentPanel';
 import { RecommendedActions }    from '@/components/dashboard/RecommendedActions';
 import { Tier2DecisionPanel }    from '@/components/dashboard/Tier2DecisionPanel';
 import { RiskAnalytics }         from '@/components/dashboard/RiskAnalytics';
@@ -51,6 +52,7 @@ export const DashboardPage: React.FC = () => {
           <div className="lg:col-span-6 space-y-3">
             <AttackStoryboard />
             <SituationPanel />
+            <IntelPrecedentPanel />
           </div>
           <div className="lg:col-span-3 space-y-3">
             <Tier2DecisionPanel />

@@ -10,9 +10,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 import adapters  # noqa: F401 — importing registers the built-in adapters (Rule 9)
 import analysis_queue
+import attack_catalog
 import decision_store
+import intel  # noqa: F401 — importing registers the built-in intel providers (Rule 9)
+import precedent
 import situation as situations
 import source_registry
+import threat_intel
 from auth import (
     DECISIONS_ACT,
     DECISIONS_READ,
@@ -132,7 +136,119 @@ app.add_middleware(
 )
 
 
-def build_situation_analysis_prompt(situation: situations.Situation) -> str:
+def _intel_prompt_section(report: Optional[Dict[str, Any]]) -> List[str]:
+    """Hand the model what a feed actually said — and what it did not (D2).
+
+    Every branch here exists to stop one specific sentence from being written:
+    *"threat intelligence shows this is clean."* A feed that was never
+    configured, one that was unreachable, and one that was asked and had no
+    record are three different states, and none of them is a clean bill of
+    health. The model is told which it is looking at, in words.
+    """
+    if not report:
+        return []
+
+    status = report.get('status')
+    lines = ['', 'THREAT INTELLIGENCE:']
+
+    if status == threat_intel.STATUS_DISABLED:
+        lines.append(
+            '  No threat-intelligence provider is configured. Nothing below has been '
+            'verified against any feed. Do not describe any indicator as known-malicious '
+            'or known-good on intelligence grounds.'
+        )
+        return lines
+
+    provider = report.get('provider') or 'unknown'
+    if status == threat_intel.STATUS_DEGRADED:
+        lines.append(
+            f'  WARNING — the {provider} feed could not be reached for part of this '
+            'situation. Anything not listed as a hit below is UNVERIFIED, not clean.'
+        )
+
+    for bucket, label in (('malicious', 'CONFIRMED MALICIOUS'), ('suspicious', 'SUSPICIOUS')):
+        for item in report.get(bucket) or []:
+            tags = ', '.join(item.get('tags') or []) or 'no tags'
+            seen = item.get('last_seen') or 'date not reported'
+            lines.append(
+                f'  {label}: {item["kind"]} {item["value"]} — feed "{item.get("feed") or provider}", '
+                f'confidence {item.get("confidence")}, last seen {seen} ({tags})'
+            )
+
+    benign = [item for item in report.get('observations') or [] if item.get('verdict') == 'BENIGN']
+    for item in benign:
+        lines.append(
+            f'  KNOWN GOOD: {item["kind"]} {item["value"]} — feed "{item.get("feed") or provider}" '
+            'lists this as benign infrastructure'
+        )
+
+    not_found = report.get('not_found') or []
+    if not_found:
+        lines.append(
+            '  Checked and NOT FOUND in the feed: '
+            + ', '.join(f'{item["value"]}' for item in not_found)
+            + '. Absence from a feed is not evidence of safety — it is no evidence at all.'
+        )
+
+    skipped = report.get('skipped') or []
+    if skipped:
+        reasons = sorted({item.get('reason') or 'unknown' for item in skipped})
+        lines.append(
+            f'  Not checked ({len(skipped)}, reasons: {", ".join(reasons)}): '
+            'internal addresses and identities are never sent to a feed, so they '
+            'carry no intelligence either way.'
+        )
+
+    if not (report.get('malicious') or report.get('suspicious') or benign):
+        lines.append('  No indicator in this situation matched the feed.')
+    return lines
+
+
+def _precedent_prompt_section(cases: Optional[List[Dict[str, Any]]]) -> List[str]:
+    """The RAG half of M09: past decisions a human already settled (D3).
+
+    Retrieval over the decision store, not over documents. What a model most
+    needs here is not a procedure written in 2019, it is *what this SOC did the
+    last four times it saw this shape and whether that turned out right* —
+    which is precisely the corpus Phase A started capturing.
+
+    Every case is offered with an id, and the model is required to cite the
+    ids it used. Uncited precedent is unusable to a reviewer, and an id the
+    model returns that was never offered is dropped rather than stored
+    (playbook §8 — the grounding gate).
+    """
+    if not cases:
+        return []
+
+    lines = [
+        '',
+        'PRECEDENT — past situations this SOC already settled, most similar first.',
+        'These are records, not suggestions. Use them where the match is real, say so',
+        'in the rationale, and depart from them where this situation genuinely differs.',
+    ]
+    for case in cases:
+        outcome = case.get('outcome') or 'no outcome recorded'
+        corrected = ' (an analyst CORRECTED the machine here)' if case.get('corrected') else ''
+        lines.append(
+            f'  [{case["precedent_id"]}] {case.get("age_days")}d ago · similarity '
+            f'{case.get("similarity")}% · {case.get("title")}'
+        )
+        lines.append(
+            f'      final verdict {case.get("verdict")} — {case.get("resolution")}, '
+            f'outcome {outcome}{corrected}. Shared: {case.get("shared") or "structure only"}'
+        )
+    lines.append(
+        '  Cite the ids you relied on in precedent_ids. Cite nothing if none of them fit — '
+        'a wrong precedent is worse than none.'
+    )
+    return lines
+
+
+def build_situation_analysis_prompt(
+    situation: situations.Situation,
+    intel_report: Optional[Dict[str, Any]] = None,
+    precedents: Optional[List[Dict[str, Any]]] = None,
+) -> str:
     """The M08 prompt, written against a Security Situation (B3).
 
     Two things changed with contract 2, and both are the point of Phase B:
@@ -144,6 +260,12 @@ def build_situation_analysis_prompt(situation: situations.Situation) -> str:
     * where the *detecting tools* asserted MITRE techniques, those are handed
       over as fact and the model is told to prefer them (R4). A technique from
       an upstream rule is evidence; one the model produced is a claim.
+
+    Phase D adds the two things a Tier-2 analyst has and a model previously did
+    not: **what a feed says about these indicators** (D2) and **what this SOC
+    decided the last time it saw this shape** (D3). Both are appended as
+    labelled, cited context rather than mixed into the narrative, so a reviewer
+    can see exactly which sentences the model was given and which it wrote.
 
     No vendor is named anywhere here — the situation carries whichever tools
     happen to have contributed, and the prompt says their names because the
@@ -172,7 +294,7 @@ def build_situation_analysis_prompt(situation: situations.Situation) -> str:
             'include them in mitre_techniques.'
         )
 
-    return '\n'.join(header + [
+    return '\n'.join(header + _intel_prompt_section(intel_report) + _precedent_prompt_section(precedents) + [
         '',
         'Return a JSON object with these keys:',
         '  threat_severity (CRITICAL | HIGH | MEDIUM | LOW)',
@@ -186,6 +308,7 @@ def build_situation_analysis_prompt(situation: situations.Situation) -> str:
         '  bullets (array of evidence summary strings for the analyst)',
         '  recommendation (single primary remediation sentence)',
         '  tier2_decision (object: {decision, confidence, rationale, risk_of_action})',
+        '  precedent_ids (array of the PREC-… ids above that informed the verdict; [] if none)',
         'Return valid JSON only. No markdown fences or commentary.',
         '',
         'tier2_decision is your Tier-2 triage verdict — a human analyst approves it,',
@@ -239,6 +362,7 @@ def build_situation_analysis_prompt(situation: situations.Situation) -> str:
                 'rationale': 'Sustained beaconing to a known C2 ASN from an internal finance host indicates active compromise, not scanning noise.',
                 'risk_of_action': 'Isolating the host drops the analyst session and any in-flight finance transfers on that endpoint.',
             },
+            'precedent_ids': ['PREC-1'],
         }, indent=2),
     ])
 
@@ -276,11 +400,58 @@ def _merge_vendor_techniques(
     return merged
 
 
+def _cited_precedents(
+    raw: Any, offered: Optional[List[Dict[str, Any]]]
+) -> Dict[str, Any]:
+    """The grounding gate over precedent (playbook §8, D3).
+
+    A model asked to cite its sources will occasionally cite one that does not
+    exist — and a fabricated precedent is the worst possible fabrication here,
+    because the whole autonomy ramp is built on *"we have done this before and
+    it was right"*. Only ids that were actually put in front of it survive.
+
+    Retained either way: what it cited, and what was dropped. A model that
+    invents case ids is a fact about the model, and a column nobody kept is a
+    fact nobody can find later.
+    """
+    by_id = {case['precedent_id']: case for case in offered or []}
+    cited: List[Dict[str, Any]] = []
+    fabricated: List[str] = []
+    seen = set()
+
+    for item in raw if isinstance(raw, (list, tuple)) else []:
+        pid = str(item).strip().upper()
+        if not pid or pid in seen:
+            continue
+        seen.add(pid)
+        case = by_id.get(pid)
+        if case is None:
+            fabricated.append(pid)
+            continue
+        cited.append({
+            'precedent_id': pid,
+            'alert_id': case.get('alert_id'),
+            'situation_id': case.get('situation_id'),
+            'verdict': case.get('verdict'),
+            'similarity': case.get('similarity'),
+            'outcome': case.get('outcome'),
+        })
+
+    if fabricated:
+        logger.warning(
+            'Dropped %d precedent id(s) the model was never offered: %s',
+            len(fabricated), ', '.join(fabricated),
+        )
+    return {'cited': cited, 'fabricated': fabricated, 'offered': len(by_id)}
+
+
 def normalize_threat_analysis(
     data: Dict[str, Any],
     fields: Dict[str, Any],
     alert_id: str,
     situation: Optional[situations.Situation] = None,
+    intel_report: Optional[Dict[str, Any]] = None,
+    precedents: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     severity = str(data.get('threat_severity', 'MEDIUM')).upper().strip()
     if severity not in {'CRITICAL', 'HIGH', 'MEDIUM', 'LOW'}:
@@ -315,6 +486,21 @@ def normalize_threat_analysis(
         enrichment['mitre_techniques'] = _merge_vendor_techniques(
             enrichment.get('mitre_techniques') or [], situation.vendor_techniques()
         )
+
+    # D1/R4: provenance said *who* claimed a technique; the catalogue says
+    # whether the ID exists at all. Both stay on the row — a verified technique
+    # a model guessed and an unlisted one a tool asserted are different objects,
+    # and the heatmap now has the columns to tell them apart.
+    enrichment['mitre_techniques'] = attack_catalog.verify_techniques(
+        enrichment.get('mitre_techniques') or []
+    )
+
+    if intel_report is not None:
+        enrichment['threat_intel'] = intel_report
+        enrichment['intel_summary'] = threat_intel.summarize_report(intel_report)
+    enrichment['precedent'] = _cited_precedents(data.get('precedent_ids'), precedents)
+
+    if situation is not None:
         # The situation summary travels with the analysed record so the panel,
         # the archive and any later evaluator can see what was correlated
         # without re-reading the correlation store.
@@ -454,6 +640,9 @@ async def health(request: Request) -> dict:
         'adapters': [adapter.describe() for adapter in list_adapters()],
         'analysis_queue': await analysis_queue.queue_stats(),
         'retention': decision_store.retention_config(),
+        'threat_intel': threat_intel.intel_config(),
+        'attack_catalog': attack_catalog.catalog_config(),
+        'precedent': precedent.precedent_config(),
     }
 
 
@@ -477,10 +666,27 @@ async def analyze_situation(situation: situations.Situation) -> dict:
     existing_alert_id = situation.alert_id
     alert_id = existing_alert_id or f'ALT-{uuid.uuid4().hex[:12].upper()}'
 
+    # D2/D3. Both run here, inside the job, and not on the intake path: they
+    # talk to a feed and to the decision store, and C2's rule is that anything
+    # slow or failable belongs on the retryable side of the queue. Neither can
+    # fail the analysis — a feed outage degrades the report (threat_intel), and
+    # a precedent lookup that raises costs the analyst context, not a decision.
+    intel_report = await threat_intel.enrich_situation(situation)
     try:
-        raw_output = await get_provider().complete(build_situation_analysis_prompt(situation))
+        precedents = await precedent.find_precedents(situation)
+    except Exception as exc:  # noqa: BLE001 — context is optional, the verdict is not
+        logger.warning('Precedent retrieval failed for %s: %s', situation.situation_id, exc)
+        precedents = []
+
+    try:
+        raw_output = await get_provider().complete(
+            build_situation_analysis_prompt(situation, intel_report, precedents)
+        )
         parsed = parse_json_response(raw_output)
-        analysis = normalize_threat_analysis(parsed, fields, alert_id, situation=situation)
+        analysis = normalize_threat_analysis(
+            parsed, fields, alert_id, situation=situation,
+            intel_report=intel_report, precedents=precedents,
+        )
     except Exception as exc:
         raise AnalysisError(f'LLM inference failed: {exc}') from exc
 
@@ -712,6 +918,69 @@ async def api_get_alert_situation(
     if found is None:
         raise HTTPException(status_code=404, detail='No situation is linked to this alert')
     return _with_evidence_pointers(found.as_dict())
+
+
+@app.get('/api/alerts/{alert_id}/intel')
+async def api_alert_intel(
+    alert_id: str,
+    _principal: Principal = Depends(require(DECISIONS_READ)),
+) -> dict:
+    """What was verified about this decision, and what was not (D5).
+
+    Read back from the analysed record rather than re-queried: this is the
+    intelligence the decision was actually made on, and re-running the lookup
+    now would answer a different question — *what does the feed say today* —
+    while looking like the same one.
+    """
+    alert = await get_alert(alert_id)
+    if alert is None:
+        raise HTTPException(status_code=404, detail='Alert not found')
+
+    enrichment = alert.get('enrichment') or {}
+    report = enrichment.get('threat_intel') or {}
+    buckets: Dict[str, List[str]] = {
+        attack_catalog.VERIFIED: [], attack_catalog.UNLISTED: [],
+        attack_catalog.UNKNOWN: [], attack_catalog.MALFORMED: [],
+    }
+    for item in enrichment.get('mitre_techniques') or []:
+        buckets.setdefault(item.get('catalog_status') or attack_catalog.UNLISTED, []).append(
+            item.get('id') or ''
+        )
+
+    return {
+        'alert_id': alert_id,
+        'report': report,
+        'summary': threat_intel.summarize_report(report),
+        'techniques': buckets,
+        'catalog': attack_catalog.catalog_config(),
+        'precedent': enrichment.get('precedent') or {'cited': [], 'fabricated': [], 'offered': 0},
+    }
+
+
+@app.get('/api/situations/{situation_id}/precedents')
+async def api_situation_precedents(
+    situation_id: str,
+    limit: int = Query(default=10, ge=1, le=50),
+    min_similarity: Optional[int] = Query(default=None, ge=1, le=100),
+    _principal: Principal = Depends(require(DECISIONS_READ)),
+) -> dict:
+    """Past settled situations most like this one, with why they matched (D5).
+
+    The autonomy gate reads the same rows through the same function, which is
+    the point: an analyst can see exactly what autopilot would be standing on
+    before it stands on anything.
+    """
+    found = await situations.get_situation(situation_id)
+    if found is None:
+        raise HTTPException(status_code=404, detail='Situation not found')
+
+    items = await precedent.find_precedents(found, limit=limit, min_similarity=min_similarity)
+    return {
+        'situation_id': situation_id,
+        'count': len(items),
+        'config': precedent.precedent_config(),
+        'items': items,
+    }
 
 
 @app.get('/api/correlation/metrics')

@@ -30,7 +30,7 @@
   <!-- ================= Title ================= -->
   <text class="t1" x="830" y="52" text-anchor="middle">معماری نرم‌افزاری AI-SOC</text>
   <text class="t2" x="830" y="82" text-anchor="middle">مرکز عملیات امنیت مبتنی بر هوش مصنوعی — «لایهٔ تصمیم»</text>
-  <text class="t3" x="830" y="106" text-anchor="middle">نسخهٔ ۲.۴ — تابستان ۱۴۰۵</text>
+  <text class="t3" x="830" y="106" text-anchor="middle">نسخهٔ ۲.۵ — تابستان ۱۴۰۵</text>
 
   <!-- ================= External: detection sources (right) ================= -->
   <rect x="1330" y="160" width="290" height="292" rx="10" fill="#ffffff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="7 5"/>
@@ -53,9 +53,9 @@
   <rect x="1330" y="472" width="290" height="34" rx="10" fill="#e2e8f0"/>
   <text class="ext-title" x="1475" y="496" text-anchor="middle">فیدهای اطلاعات تهدید</text>
   <text class="ext-note ltr" x="1600" y="532" text-anchor="end">MISP · OpenCTI · VirusTotal</text>
-  <text class="ext-item" x="1600" y="562" text-anchor="start">تنها «پرس‌وجو» می‌شود</text>
-  <text class="ext-note" x="1600" y="586" text-anchor="start">برای راستی‌آزمایی ادعاهای مدل:</text>
-  <text class="ext-note" x="1600" y="606" text-anchor="start">نشانه‌های نفوذ و تکنیک‌های ATT&amp;CK</text>
+  <text class="ext-item" x="1600" y="562" text-anchor="start">تنها «پرس‌وجو» می‌شود — ساخته‌شده</text>
+  <text class="ext-note" x="1600" y="586" text-anchor="start">ادعاهای مدل راستی‌آزمایی می‌شود؛</text>
+  <text class="ext-note" x="1600" y="606" text-anchor="start">راستی‌آزمایی‌نشده هرگز «تأییدشده» خوانده نمی‌شود</text>
 
   <!-- ================= External: execution (left) ================= -->
   <rect x="30" y="160" width="290" height="292" rx="10" fill="#ffffff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="7 5"/>
@@ -108,9 +108,9 @@
   <rect x="716" y="416" width="330" height="56" rx="7" fill="#ffffff" fill-opacity="0.14" stroke="#c7d2fe" stroke-width="1"/>
   <text class="chip" x="881" y="437" text-anchor="middle" fill="#e0e7ff">استدلال ساخت‌یافته — ساخته‌شده</text>
   <text class="box-sub" x="881" y="458" text-anchor="middle">شواهد · دلیل · نگاشت ATT&amp;CK · خروجی JSON</text>
-  <rect x="362" y="416" width="330" height="56" rx="7" fill="#ffffff" fill-opacity="0.14" stroke="#fecaca" stroke-width="1" stroke-dasharray="5 4"/>
-  <text class="chip" x="527" y="437" text-anchor="middle" fill="#fecaca">دانش و سابقه (RAG) — ساخته‌نشده</text>
-  <text class="box-sub" x="527" y="458" text-anchor="middle">رویه‌ها · کتابچه‌ها · تاریخچهٔ تصمیم‌ها</text>
+  <rect x="362" y="416" width="330" height="56" rx="7" fill="#ffffff" fill-opacity="0.14" stroke="#c7d2fe" stroke-width="1"/>
+  <text class="chip" x="527" y="437" text-anchor="middle" fill="#e0e7ff">راستی‌آزمایی و سابقه — ساخته‌شده</text>
+  <text class="box-sub" x="527" y="458" text-anchor="middle">بررسی نشانه‌ها · فهرست ATT&amp;CK · سابقهٔ استنادشده</text>
 
   <!-- L4 tier2 -->
   <rect x="348" y="510" width="712" height="82" rx="9" fill="#b91c1c"/>
@@ -124,14 +124,14 @@
   <circle cx="372" cy="638" r="7" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"/>
   <text class="box-title" x="704" y="643" text-anchor="middle">۵. تأیید و ویرایش انسانی</text>
   <text class="box-sub" x="704" y="666" text-anchor="middle">تأیید · رد · ویرایش رأی و طرح اقدام — هر سه ساخته‌شده</text>
-  <text class="box-sub" x="704" y="684" text-anchor="middle">هر اصلاح انسانی به‌عنوان «برچسب» ذخیره می‌شود — تنها پیکرهٔ آموزشی خودگردانی آینده</text>
+  <text class="box-sub" x="704" y="684" text-anchor="middle">هر اصلاح انسانی به‌عنوان «برچسب» ذخیره می‌شود — و خودگردانی تنها جایی داده می‌شود که انسان‌ها همان حکم را تأیید کرده باشند</text>
 
   <!-- L6 dispatch -->
   <rect x="348" y="712" width="712" height="76" rx="9" fill="#047857"/>
-  <circle cx="372" cy="736" r="7" fill="#f59e0b" stroke="#ffffff" stroke-width="1.5"/>
+  <circle cx="372" cy="736" r="7" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"/>
   <text class="box-title" x="704" y="741" text-anchor="middle">۶. ارسال تصمیم به مجریِ بیرونی</text>
   <text class="box-sub" x="704" y="764" text-anchor="middle">طبقه‌بندی ریسک اقدام: خواندن · نوشتن کم‌خطر · نوشتن پرخطر · مخرب</text>
-  <text class="box-sub" x="704" y="782" text-anchor="middle">رده‌بندی و اعتبارسنجی شکل هدف پیش از ارسال · سقف خطر خلبان خودکار · ثبت رسید تغییرناپذیر</text>
+  <text class="box-sub" x="704" y="782" text-anchor="middle">رده‌بندی و اعتبارسنجی شکل هدف · دروازهٔ سابقه، نه اطمینان مدل · ثبت رسید تغییرناپذیر</text>
 
   <!-- Side: decision store -->
   <rect x="1076" y="260" width="196" height="228" rx="9" fill="#1e293b"/>
@@ -204,5 +204,5 @@
   <text class="legend" x="560" y="946" text-anchor="start">خط‌چین = وابستگی بیرونی</text>
 
   <!-- ================= Footer ================= -->
-  <text class="foot" x="830" y="994" text-anchor="middle">نویسنده: J.Ekrami · هم‌نویسنده: Claude (Opus 5) · © J.Ekrami-Labs · تابستان ۱۴۰۵ · برابر با طرح نسخهٔ ۲.۴</text>
+  <text class="foot" x="830" y="994" text-anchor="middle">نویسنده: J.Ekrami · هم‌نویسنده: Claude (Opus 5) · © J.Ekrami-Labs · تابستان ۱۴۰۵ · برابر با طرح نسخهٔ ۲.۵</text>
 </svg>

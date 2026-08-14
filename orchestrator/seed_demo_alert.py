@@ -186,7 +186,10 @@ def build_correlated_cluster(base_time: datetime) -> list[tuple[str, dict[str, A
     Returned as ``(adapter, payload, mocked model response)`` — the model
     response is only consumed on whichever post triggers analysis.
     """
-    user, host, host_ip, peer = 'mmalek', 'HR-WIN-11', '10.9.4.7', '198.51.100.9'
+    # The egress peer is a globally routable address on purpose: a reputation
+    # feed has nothing to say about RFC1918 or the documentation ranges, so a
+    # demo built on those would never exercise the D1 lookup path at all.
+    user, host, host_ip, peer = 'mmalek', 'HR-WIN-11', '10.9.4.7', '45.9.148.117'
     analysis = (
         'Credential compromise on HR-WIN-11: brute force from an external address, '
         'a successful logon, privilege escalation to SYSTEM and outbound traffic to a '
@@ -447,6 +450,20 @@ async def seed_alerts(count: int, seed: int | None, reset: bool = True) -> list[
 
         contain_count = max(1, count // 4)
         for alert_id in rng.sample(created_ids, k=min(contain_count, len(created_ids))):
+            # D4: a closed incident in a real SOC was closed by somebody, and
+            # that confirmation is the corpus the precedent gate reads. Seeding
+            # a CONTAINED incident with no human approval behind it would give
+            # the demo a history that grants no autonomy — which is not what a
+            # worked shift looks like, and would hide the gate rather than show
+            # it. The approver is a name, deliberately: an auto-approval is
+            # precedent for nothing.
+            approved = await client.post(
+                f'/api/alerts/{alert_id}/decision/approve',
+                headers={**act_headers, 'X-Actor': 'demo.analyst'}, json={},
+            )
+            if approved.status_code not in (202, 404):
+                print(approved.text, file=sys.stderr)
+                sys.exit(1)
             mitigated = await client.post(f'/api/alerts/{alert_id}/mitigate', headers=act_headers)
             if mitigated.status_code != 200:
                 print(mitigated.text, file=sys.stderr)

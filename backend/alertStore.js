@@ -142,6 +142,14 @@ export function mapAlertToIncident(alert) {
   // second round-trip; the full member list is /api/incidents/:id/situation.
   const situation = alert.enrichment?.situation ?? null;
 
+  // Phase D. Two things the decision was made *with*, carried so the panel can
+  // show them without asking the broker again: what a feed said about the
+  // indicators, and which past decisions the model was given and cited.
+  // Both are passed through verbatim — an absent report stays absent rather
+  // than becoming an empty one, because "no feed" and "feed found nothing" are
+  // different facts and the UI has to be able to tell them apart.
+  const intelReport = alert.enrichment?.threat_intel ?? null;
+
   return {
     id: alert.id,
     source: 'broker',
@@ -165,6 +173,18 @@ export function mapAlertToIncident(alert) {
       first_seen: situation.first_seen,
       last_seen: situation.last_seen,
     },
+    threat_intel: intelReport && {
+      provider: intelReport.provider,
+      status: intelReport.status,
+      malicious: intelReport.malicious || [],
+      suspicious: intelReport.suspicious || [],
+      benign: (intelReport.observations || []).filter(o => o.verdict === 'BENIGN'),
+      not_found: intelReport.not_found || [],
+      skipped: intelReport.skipped || [],
+      errors: intelReport.errors || [],
+      checked_at: intelReport.checked_at ?? null,
+    },
+    precedent: alert.enrichment?.precedent ?? null,
     affected_assets: [alert.source_ip, alert.dest_ip].filter(ip => ip && ip !== 'unknown'),
     owner: 'aegis-link-broker',
     first_seen: formatTime(alert.created_at || alert.timestamp),

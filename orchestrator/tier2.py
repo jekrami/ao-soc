@@ -11,6 +11,8 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy import select, update
 
+import precedent
+import situation as situations
 from action_policy import (
     action_policy_config,
     assess_action,
@@ -77,6 +79,19 @@ AUTOPILOT_DECISIONS = frozenset(
     if d.strip()
 ) & DECISION_TYPES
 
+# D4 / §7. The control that replaces the confidence threshold: a verdict is
+# executed without a human only where humans have already confirmed the same
+# verdict on the same shape of situation, repeatedly and recently.
+#
+# On by default *while autopilot is on*, which is a deliberate default change:
+# through v2.5 enabling autopilot meant "act on a number the model made up".
+# It can be turned off (TIER2_AUTOPILOT_REQUIRE_PRECEDENT=0) for a lab or a
+# demo on an empty corpus, and that combination is reported on /health so an
+# operator can see the weaker mode is running.
+AUTOPILOT_REQUIRE_PRECEDENT = (
+    os.getenv('TIER2_AUTOPILOT_REQUIRE_PRECEDENT') or 'true'
+).strip().lower() in {'1', 'true', 'yes', 'on'}
+
 # Fire-and-forget SOAR runs; held so the GC cannot collect a task mid-flight.
 _BACKGROUND_EXECUTIONS: set[asyncio.Task] = set()
 
@@ -86,11 +101,13 @@ def autopilot_config() -> Dict[str, Any]:
     return {
         'enabled': AUTOPILOT_ENABLED,
         # Benchmarked across 14 models: self-reported confidence is uncalibrated
-        # and unstable run to run. The verdict-type and action-risk gates do the
-        # real work here; this number is a floor, not the control.
+        # and unstable run to run. The verdict-type, action-risk and precedent
+        # gates do the real work here; this number is a floor, not the control.
         'min_confidence': AUTOPILOT_MIN_CONFIDENCE,
         'decisions': sorted(AUTOPILOT_DECISIONS),
         'approver': AUTOPILOT_APPROVER,
+        'require_precedent': AUTOPILOT_REQUIRE_PRECEDENT,
+        'precedent_gate': precedent.precedent_config()['autopilot_gate'],
         'action_policy': action_policy_config(),
     }
 
@@ -282,6 +299,10 @@ def _format_decision(row, actions: List[dict]) -> dict:
         'approval_status': row['approval_status'],
         'human_approval_required': True,
         'approved_by': row['approved_by'],
+        # D4: present only on a machine approval, and it is the justification —
+        # which past cases, confirmed by whom, how recently.
+        'autopilot_basis': json.loads(row['autopilot_basis_json'])
+        if row.get('autopilot_basis_json') else None,
         'rejected_by': row['rejected_by'],
         'rejection_note': row['rejection_note'],
         'required_actions': actions,
@@ -1033,12 +1054,18 @@ async def approve_tier2_decision(
     *,
     approved_by: str = 'analyst',
     wait: bool = False,
+    autopilot_basis: Optional[dict] = None,
 ) -> Optional[dict]:
     """Approve a plan and start SOAR execution.
 
     Returns as soon as the plan is APPROVED; execution runs in the background
     and the dashboard polls the decision while it is EXECUTING. Pass wait=True
     (scripts, tests) to block until every action has finished.
+
+    ``autopilot_basis`` is written only by the autopilot path (D4). A human
+    approval leaves it NULL, which is exactly the distinction the audit needs:
+    a row with a basis was decided by the machine on stated precedent, and a
+    row without one had a person's name and judgement behind it.
     """
     async with async_session() as session:
         row = await _load_decision_row(session, alert_id)
@@ -1063,6 +1090,7 @@ async def approve_tier2_decision(
                 approval_status='APPROVED',
                 approved_by=approved_by,
                 approved_at=now,
+                autopilot_basis_json=json.dumps(autopilot_basis) if autopilot_basis else None,
             )
         )
         await session.execute(
@@ -1136,11 +1164,40 @@ async def autopilot_if_eligible(decision: Optional[dict], *, wait: bool = False)
         )
         return decision
 
-    logger.info(
-        'Autopilot approving alert %s - %s at %s%% confidence (>= %s%%)',
-        alert_id, verdict, confidence, AUTOPILOT_MIN_CONFIDENCE,
+    # D4 / §7: the gate that actually decides. Everything above this line is a
+    # property of the *proposal*; this is the only one that asks whether this
+    # SOC has seen the thing before and agreed with itself about it, and it is
+    # the only one that gets safer as the corpus grows.
+    basis: Optional[Dict[str, Any]] = None
+    if AUTOPILOT_REQUIRE_PRECEDENT:
+        situation = await situations.get_situation_for_alert(alert_id)
+        if situation is None:
+            logger.info(
+                'Autopilot skipped alert %s - no situation behind it, so there is nothing '
+                'to find precedent for (awaiting analyst)', alert_id,
+            )
+            return decision
+        basis = await precedent.autopilot_precedent(situation, verdict)
+        if not basis['ok']:
+            logger.info(
+                'Autopilot skipped alert %s - precedent gate refused %s: %s (awaiting analyst)',
+                alert_id, verdict, basis['reason'],
+            )
+            return decision
+        logger.info(
+            'Autopilot approving alert %s - %s on precedent: %s',
+            alert_id, verdict, basis['reason'],
+        )
+    else:
+        logger.info(
+            'Autopilot approving alert %s - %s at %s%% confidence (>= %s%%); precedent gate '
+            'is DISABLED, so this is a confidence-only approval',
+            alert_id, verdict, confidence, AUTOPILOT_MIN_CONFIDENCE,
+        )
+
+    approved = await approve_tier2_decision(
+        alert_id, approved_by=AUTOPILOT_APPROVER, wait=wait, autopilot_basis=basis,
     )
-    approved = await approve_tier2_decision(alert_id, approved_by=AUTOPILOT_APPROVER, wait=wait)
     return approved or decision
 
 

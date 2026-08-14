@@ -6,6 +6,7 @@ import { SeverityChip, StatusPill } from '@/components/ui/chip';
 import { RecommendedActions } from '@/components/dashboard/RecommendedActions';
 import { AiExplanation } from '@/components/dashboard/AiExplanation';
 import { SituationPanel } from '@/components/dashboard/SituationPanel';
+import { IntelPrecedentPanel } from '@/components/dashboard/IntelPrecedentPanel';
 import { useAoSoc } from '@/store/useAoSoc';
 import { api } from '@/lib/api';
 import type { Incident } from '@/types';
@@ -89,6 +90,7 @@ export const IncidentDetailsPage: React.FC = () => {
           </Card>
 
           <SituationPanel />
+          <IntelPrecedentPanel />
           <AiExplanation />
         </div>
 
