@@ -56,19 +56,27 @@
   <text class="ext-note" x="50" y="586">verifies what the model asserted;</text>
   <text class="ext-note" x="50" y="606">unverified never reads as verified</text>
 
-  <!-- ================= External: execution (right) ================= -->
-  <rect x="1330" y="160" width="290" height="292" rx="10" fill="#ffffff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="7 5"/>
-  <rect x="1330" y="160" width="290" height="38" rx="10" fill="#e2e8f0"/>
-  <text class="ext-title" x="1475" y="185" text-anchor="middle">EXTERNAL TOOLS — EXECUTION</text>
+  <!-- Nothing crosses the boundary outward above layer 5. The space beside
+       layers 1-3 is empty on this side on purpose, and says so. -->
+  <text class="ext-note" x="1350" y="280">Nothing leaves the boundary</text>
+  <text class="ext-note" x="1350" y="300">above this line — AI-SOC reads,</text>
+  <text class="ext-note" x="1350" y="320">correlates and decides before</text>
+  <text class="ext-note" x="1350" y="340">anything is dispatched.</text>
 
-  <text class="ext-item" x="1350" y="228">SOAR platforms — driven by a connector</text>
-  <text class="ext-note" x="1350" y="248">Shuffle · Cortex XSOAR · Tines</text>
-  <text class="ext-item" x="1350" y="278">EDR response — isolate host</text>
-  <text class="ext-item" x="1350" y="306">Firewall — block address</text>
-  <text class="ext-item" x="1350" y="334">Identity (IdP) — revoke session</text>
-  <line x1="1350" y1="356" x2="1600" y2="356" stroke="#e2e8f0" stroke-width="1.5"/>
-  <text class="ext-note" x="1350" y="398">One connector per role; the action</text>
-  <text class="ext-note" x="1350" y="416">class chooses it. Execution still</text>
+  <!-- ================= External: execution (right, beside layer 6) ================= -->
+  <rect x="1330" y="648" width="290" height="246" rx="10" fill="#ffffff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="7 5"/>
+  <rect x="1330" y="648" width="290" height="38" rx="10" fill="#e2e8f0"/>
+  <text class="ext-title" x="1475" y="673" text-anchor="middle">EXTERNAL TOOLS — EXECUTION</text>
+
+  <text class="ext-item" x="1350" y="712">SOAR platforms — driven by a connector</text>
+  <text class="ext-note" x="1350" y="730">Shuffle · Cortex XSOAR · Tines</text>
+  <text class="ext-item" x="1350" y="757">EDR response — isolate host</text>
+  <text class="ext-item" x="1350" y="784">Firewall — block address</text>
+  <text class="ext-item" x="1350" y="811">Identity (IdP) — revoke session</text>
+  <line x1="1350" y1="829" x2="1600" y2="829" stroke="#e2e8f0" stroke-width="1.5"/>
+  <text class="ext-note" x="1350" y="851">One connector per role; the action</text>
+  <text class="ext-note" x="1350" y="869">class chooses it. Execution still</text>
+  <text class="ext-note" x="1350" y="887">belongs to these tools.</text>
 
   <!-- External: system of record -->
   <rect x="1330" y="472" width="290" height="150" rx="10" fill="#ffffff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="7 5"/>

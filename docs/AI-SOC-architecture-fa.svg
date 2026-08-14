@@ -57,20 +57,26 @@
   <text class="ext-note" x="1600" y="586" text-anchor="start">ادعاهای مدل راستی‌آزمایی می‌شود؛</text>
   <text class="ext-note" x="1600" y="606" text-anchor="start">راستی‌آزمایی‌نشده هرگز «تأییدشده» خوانده نمی‌شود</text>
 
-  <!-- ================= External: execution (left) ================= -->
-  <rect x="30" y="160" width="290" height="292" rx="10" fill="#ffffff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="7 5"/>
-  <rect x="30" y="160" width="290" height="38" rx="10" fill="#e2e8f0"/>
-  <text class="ext-title" x="175" y="186" text-anchor="middle">ابزارهای بیرونی — اجرا</text>
+  <!-- بالاتر از لایهٔ ۵ چیزی از مرز خارج نمی‌شود؛ خالی‌بودن این بخش عمدی است. -->
+  <text class="ext-note" x="300" y="280" text-anchor="start">بالاتر از این خط چیزی از مرز</text>
+  <text class="ext-note" x="300" y="300" text-anchor="start">خارج نمی‌شود — AI-SOC نخست</text>
+  <text class="ext-note" x="300" y="320" text-anchor="start">می‌خواند، همبسته می‌کند و</text>
+  <text class="ext-note" x="300" y="340" text-anchor="start">تصمیم می‌گیرد، سپس می‌فرستد.</text>
 
-  <text class="ext-item" x="300" y="228" text-anchor="start">سکوهای SOAR — با رابط اختصاصی</text>
-  <text class="ext-note ltr" x="300" y="248" text-anchor="end">Shuffle · Cortex XSOAR · Tines</text>
-  <text class="ext-item" x="300" y="278" text-anchor="start">واکنش EDR — قرنطینهٔ میزبان</text>
-  <text class="ext-item" x="300" y="306" text-anchor="start">فایروال — مسدودسازی نشانی</text>
-  <text class="ext-item" x="300" y="334" text-anchor="start">هویت (IdP) — ابطال نشست</text>
-  <line x1="50" y1="356" x2="300" y2="356" stroke="#e2e8f0" stroke-width="1.5"/>
-  <text class="ext-note" x="300" y="398" text-anchor="start">برای هر نقش یک رابط؛</text>
-  <text class="ext-note" x="300" y="416" text-anchor="start">ردهٔ اقدام آن را انتخاب می‌کند.</text>
-  <text class="ext-note" x="300" y="434" text-anchor="start">اجرا بر عهدهٔ این ابزارهاست.</text>
+  <!-- ================= External: execution (left, beside layer 6) ================= -->
+  <rect x="30" y="648" width="290" height="246" rx="10" fill="#ffffff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="7 5"/>
+  <rect x="30" y="648" width="290" height="38" rx="10" fill="#e2e8f0"/>
+  <text class="ext-title" x="175" y="674" text-anchor="middle">ابزارهای بیرونی — اجرا</text>
+
+  <text class="ext-item" x="300" y="712" text-anchor="start">سکوهای SOAR — با رابط اختصاصی</text>
+  <text class="ext-note ltr" x="300" y="730" text-anchor="end">Shuffle · Cortex XSOAR · Tines</text>
+  <text class="ext-item" x="300" y="757" text-anchor="start">واکنش EDR — قرنطینهٔ میزبان</text>
+  <text class="ext-item" x="300" y="784" text-anchor="start">فایروال — مسدودسازی نشانی</text>
+  <text class="ext-item" x="300" y="811" text-anchor="start">هویت (IdP) — ابطال نشست</text>
+  <line x1="50" y1="829" x2="300" y2="829" stroke="#e2e8f0" stroke-width="1.5"/>
+  <text class="ext-note" x="300" y="851" text-anchor="start">برای هر نقش یک رابط؛</text>
+  <text class="ext-note" x="300" y="869" text-anchor="start">ردهٔ اقدام آن را انتخاب می‌کند.</text>
+  <text class="ext-note" x="300" y="887" text-anchor="start">اجرا بر عهدهٔ این ابزارهاست.</text>
 
   <!-- External: ticketing -->
   <rect x="30" y="472" width="290" height="150" rx="10" fill="#ffffff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="7 5"/>
