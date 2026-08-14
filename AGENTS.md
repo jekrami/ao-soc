@@ -6,6 +6,17 @@ use codegraph for indexing and grepping , discovering the files and logic
 diagram in English and Persian. **They are a pair. Never update one without the other,
 in the same commit.**
 
+`docs/AI-SOC-dataflow-en.svg` and `docs/AI-SOC-dataflow-fa.svg` are a **second** such
+pair and follow every rule in this section. They answer a different question: the
+architecture pair says *what is built*, layer by layer; the data-flow pair traces *one
+alert in order* — intake, correlation, the queue split, the analysis job, the verdict,
+the human, dispatch, the outcome — and, just as importantly, every branch that refuses
+(401, 422/400, the 202s, the 502 that still stores the detection, dead letters, the
+rules fallback, the autopilot gates, `BLOCKED`, `SIMULATED`). Their footers carry the
+`VERSION` of the app rather than the plan version, because they describe the running
+pipeline. Update them when the *order of steps or the set of refusals* changes — a new
+adapter or connector does not change either drawing.
+
 Update them after every progress that changes what the picture claims:
 
 - a milestone changes status (the coloured dots: green built / amber partial / red not

@@ -1,0 +1,402 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2000 2720" width="2000" height="2720" font-family="Inter, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <style>
+    .t1 { font-size: 34px; font-weight: 700; fill: #0f172a; letter-spacing: 0.5px; }
+    .t2 { font-size: 18px; fill: #334155; }
+    .t3 { font-size: 14px; fill: #64748b; }
+    .pill { font-size: 14px; font-weight: 700; fill: #0f172a; letter-spacing: 1.2px; }
+    .box-title { font-size: 16px; font-weight: 700; fill: #ffffff; }
+    .box-sub { font-size: 12.5px; fill: #e2e8f0; }
+    .ext-title { font-size: 15px; font-weight: 700; fill: #1e293b; letter-spacing: 0.5px; }
+    .ext-item { font-size: 13px; fill: #334155; }
+    .ext-note { font-size: 12px; fill: #64748b; }
+    .side-title { font-size: 14px; font-weight: 700; fill: #ffffff; letter-spacing: 0.4px; }
+    .side-row { font-size: 12.5px; font-weight: 700; fill: #e2e8f0; }
+    .side-note { font-size: 11.5px; fill: #94a3b8; }
+    .br-title { font-size: 13px; font-weight: 700; fill: #0f172a; }
+    .br-note { font-size: 12px; fill: #475569; }
+    .lbl { font-size: 12px; fill: #475569; paint-order: stroke; stroke: #f8fafc; stroke-width: 3px; stroke-linejoin: round; }
+    .loop { font-size: 12px; font-weight: 700; fill: #fbbf24; }
+    .legend { font-size: 13.5px; fill: #334155; }
+    .foot { font-size: 13px; fill: #64748b; }
+  </style>
+
+  <defs>
+    <marker id="arw" markerWidth="10" markerHeight="10" refX="9" refY="4" orient="auto">
+      <path d="M0,0 L9,4 L0,8 z" fill="#334155"/>
+    </marker>
+    <marker id="arwd" markerWidth="10" markerHeight="10" refX="9" refY="4" orient="auto">
+      <path d="M0,0 L9,4 L0,8 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="arwl" markerWidth="10" markerHeight="10" refX="9" refY="4" orient="auto">
+      <path d="M0,0 L9,4 L0,8 z" fill="#f59e0b"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="2000" height="2720" fill="#f8fafc"/>
+
+  <!-- ================= Title ================= -->
+  <text class="t1" x="1000" y="54" text-anchor="middle">AI-SOC DATA FLOW</text>
+  <text class="t2" x="1000" y="84" text-anchor="middle">One alert, end to end — from an external detection tool to a closed case</text>
+  <text class="t3" x="1000" y="108" text-anchor="middle">Version 2.7.1 — Summer 2026</text>
+
+  <!-- ================= PHASE A ================= -->
+  <rect x="384" y="134" width="1080" height="28" rx="14" fill="#e2e8f0"/>
+  <text class="pill" x="924" y="153" text-anchor="middle">PHASE A — SYNCHRONOUS INTAKE · NOTHING MAY BE LOST</text>
+
+  <!-- b1 external detection -->
+  <rect x="384" y="176" width="1080" height="78" rx="9" fill="#ffffff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="7 5"/>
+  <text class="ext-title" x="924" y="206" text-anchor="middle">A Splunk saved search fires · its alert action POSTs the raw result</text>
+  <text class="ext-note" x="924" y="228" text-anchor="middle">POST /detections?adapter=splunk    —    POST /splunk-alert is a thin compatibility alias for the same thing</text>
+  <text class="ext-note" x="924" y="246" text-anchor="middle">AI-SOC does not poll, holds no index and never receives raw logs. Detection belongs to the external tool.</text>
+
+  <!-- b2 auth -->
+  <rect x="384" y="280" width="1080" height="78" rx="9" fill="#334155"/>
+  <text class="box-title" x="924" y="308" text-anchor="middle">1 · Authentication gate — scope detections:write</text>
+  <text class="box-sub" x="924" y="330" text-anchor="middle">Checked before the body is read. The ingest role holds this one scope and nothing else.</text>
+  <text class="box-sub" x="924" y="348" text-anchor="middle">This is the route that, with autopilot enabled, ends in a dispatched network action.</text>
+
+  <!-- b3 adapter -->
+  <rect x="384" y="384" width="1080" height="96" rx="9" fill="#0f766e"/>
+  <text class="box-title" x="924" y="412" text-anchor="middle">2 · Adapter — the only place in the system where a vendor is named</text>
+  <text class="box-sub" x="924" y="434" text-anchor="middle">Splunk's field names become the Detection Intake contract: source tool · rule identity · detected_at converted to UTC ·</text>
+  <text class="box-sub" x="924" y="452" text-anchor="middle">severity normalised from the vendor's own scale beside the verbatim value · the ATT&amp;CK the tool itself asserted · entities · raw payload</text>
+  <text class="box-sub" x="924" y="470" text-anchor="middle">Placeholders (unknown · - · n/a) are stripped here: correlating on one would join every unrelated detection in the window into one situation.</text>
+
+  <!-- b4 registry -->
+  <rect x="384" y="506" width="1080" height="58" rx="9" fill="#475569"/>
+  <text class="box-title" x="924" y="532" text-anchor="middle">3 · Source registry and metrics</text>
+  <text class="box-sub" x="924" y="554" text-anchor="middle">Last seen, adapter version, health and trust weight for that tool — recorded before anything downstream can fail.</text>
+
+  <!-- b5 correlation -->
+  <rect x="384" y="590" width="1080" height="96" rx="9" fill="#6d28d9"/>
+  <text class="box-title" x="924" y="618" text-anchor="middle">4 · Cross-tool correlation → SECURITY SITUATION</text>
+  <text class="box-sub" x="924" y="640" text-anchor="middle">Joins on a shared strong entity — user · host · address · file hash · URL — inside the correlation window. Never on the text of a rule name.</text>
+  <text class="box-sub" x="924" y="658" text-anchor="middle">Deterministic risk score with its factors kept beside it: highest severity · +12 per corroborating tool · volume · lateral shape · × source trust.</text>
+  <text class="box-sub" x="924" y="676" text-anchor="middle">Two situations a later detection ties together are merged. One whose decision has left PENDING stops absorbing, and the next opens its own.</text>
+
+  <!-- b6 queue split -->
+  <rect x="384" y="712" width="1080" height="96" rx="9" fill="#475569"/>
+  <text class="box-title" x="924" y="740" text-anchor="middle">5 · The split — parse, store and correlate are synchronous; the model call is a job</text>
+  <text class="box-sub" x="924" y="762" text-anchor="middle">Everything above this line is fast and must never be lost. Below it is the slow, failable half — and the only part worth retrying.</text>
+  <text class="box-sub" x="924" y="780" text-anchor="middle">Inline is the default, so a caller still carries its own decision back in the response.</text>
+  <text class="box-sub" x="924" y="798" text-anchor="middle">Back-pressure sheds latency, never data.</text>
+
+  <!-- ================= PHASE B ================= -->
+  <rect x="384" y="834" width="1080" height="28" rx="14" fill="#e2e8f0"/>
+  <text class="pill" x="924" y="853" text-anchor="middle">PHASE B — THE ANALYSIS JOB · SLOW, FAILABLE, RETRYABLE</text>
+
+  <!-- b7 reload -->
+  <rect x="384" y="876" width="1080" height="56" rx="9" fill="#4338ca"/>
+  <text class="box-title" x="924" y="902" text-anchor="middle">6 · The worker reloads the situation by id, not the object it was handed</text>
+  <text class="box-sub" x="924" y="924" text-anchor="middle">Between the job being written and the job being run the situation may have grown — the analysis must be of the situation as it is.</text>
+
+  <!-- b8 intel -->
+  <rect x="384" y="958" width="1080" height="80" rx="9" fill="#4338ca"/>
+  <text class="box-title" x="924" y="986" text-anchor="middle">7 · Threat-intelligence enrichment — a client, never a platform</text>
+  <text class="box-sub" x="924" y="1008" text-anchor="middle">Four buckets: malicious · suspicious · not_found (asked, no record) · skipped (never asked, with a reason). UNKNOWN is not BENIGN.</text>
+  <text class="box-sub" x="924" y="1026" text-anchor="middle">Private, loopback and reserved addresses are never sent out. A feed that times out reports degraded — never empty-and-therefore-clean.</text>
+
+  <!-- b9 precedent -->
+  <rect x="384" y="1064" width="1080" height="80" rx="9" fill="#4338ca"/>
+  <text class="box-title" x="924" y="1092" text-anchor="middle">8 · Precedent retrieval — what this SOC decided the last time it saw this shape</text>
+  <text class="box-sub" x="924" y="1114" text-anchor="middle">Weighted similarity over past settled decisions: techniques 30 · narrative 20 · sources 15 · entities 15 · entity shape 10 · severity 10.</text>
+  <text class="box-sub" x="924" y="1132" text-anchor="middle">A failure here costs the analyst context, not the verdict — it logs and returns nothing.</text>
+
+  <!-- b10 prompt -->
+  <rect x="384" y="1170" width="1080" height="66" rx="9" fill="#4338ca"/>
+  <text class="box-title" x="924" y="1198" text-anchor="middle">9 · Prompt assembly</text>
+  <text class="box-sub" x="924" y="1220" text-anchor="middle">The situation document (N detections from M tools · the entity graph · the time span · the tools' own techniques) · the intel report · precedents to cite</text>
+
+  <!-- b11 inference -->
+  <rect x="384" y="1262" width="1080" height="80" rx="9" fill="#4338ca"/>
+  <text class="box-title" x="924" y="1290" text-anchor="middle">10 · Local inference</text>
+  <text class="box-sub" x="924" y="1312" text-anchor="middle">Enforced JSON output · the reasoning preamble suppressed · a token budget wide enough for the whole object · low temperature.</text>
+  <text class="box-sub" x="924" y="1330" text-anchor="middle">The model reasons over the situation, not over one alert. A model-free mode runs this entire path with no inference at all.</text>
+
+  <!-- b12 normalise -->
+  <rect x="384" y="1368" width="1080" height="96" rx="9" fill="#4338ca"/>
+  <text class="box-title" x="924" y="1396" text-anchor="middle">11 · Parse and normalise — where the model is held to account</text>
+  <text class="box-sub" x="924" y="1418" text-anchor="middle">A response that will not parse raises. It never falls back to the reply envelope, which would parse cleanly and silently default every field.</text>
+  <text class="box-sub" x="924" y="1436" text-anchor="middle">The tool's asserted technique outranks the model's. Every ID is checked against the catalogue: verified · unlisted · unknown · malformed.</text>
+  <text class="box-sub" x="924" y="1454" text-anchor="middle">A precedent id the model invented is dropped from the reasoning — and kept, because a model that invents case ids is a fact worth having.</text>
+
+  <!-- b13 persist -->
+  <rect x="384" y="1490" width="1080" height="58" rx="9" fill="#475569"/>
+  <text class="box-title" x="924" y="1516" text-anchor="middle">12 · Persist the analysed record</text>
+  <text class="box-sub" x="924" y="1538" text-anchor="middle">A new situation creates one. A situation that has grown is re-analysed in place and its proposal re-derived over the enlarged picture.</text>
+
+  <!-- b14 tier2 -->
+  <rect x="384" y="1574" width="1080" height="96" rx="9" fill="#b91c1c"/>
+  <text class="box-title" x="924" y="1602" text-anchor="middle">13 · Tier-2 verdict — CONTAIN · ESCALATE · INVESTIGATE · MONITOR · IGNORE</text>
+  <text class="box-sub" x="924" y="1624" text-anchor="middle">Validation is deliberately asymmetric: a verdict outside the vocabulary discards the whole proposal; a missing field falls back on its own.</text>
+  <text class="box-sub" x="924" y="1642" text-anchor="middle">Each action is classified READ · LOW_WRITE · HIGH_WRITE · DESTRUCTIVE and its target parsed. An unmodelled verb is HIGH_WRITE, never READ.</text>
+  <text class="box-sub" x="924" y="1660" text-anchor="middle">A refused action keeps its row, its position in the plan and its reason, and the analyst sees it before approving. Status: PENDING.</text>
+
+  <!-- b15 case -->
+  <rect x="384" y="1696" width="1080" height="58" rx="9" fill="#1d4ed8"/>
+  <text class="box-title" x="924" y="1722" text-anchor="middle">14 · A case is opened the moment the situation is analysed</text>
+  <text class="box-sub" x="924" y="1744" text-anchor="middle">Not when an analyst first opens it — a case created on first view cannot answer “what came in overnight and who has it”.</text>
+
+  <!-- b16 autopilot -->
+  <rect x="384" y="1780" width="1080" height="80" rx="9" fill="#b45309"/>
+  <text class="box-title" x="924" y="1808" text-anchor="middle">15 · Autopilot gate — off by default; Stage 2 means a human confirms</text>
+  <text class="box-sub" x="924" y="1830" text-anchor="middle">All four gates must hold and the plan is all-or-nothing. Any refusal leaves the decision PENDING for a person.</text>
+  <text class="box-sub" x="924" y="1848" text-anchor="middle">The machine's own approvals are marked as such, so autopilot can never become its own precedent.</text>
+
+  <!-- ================= PHASE C ================= -->
+  <rect x="384" y="1886" width="1080" height="28" rx="14" fill="#e2e8f0"/>
+  <text class="pill" x="924" y="1905" text-anchor="middle">PHASE C — HUMAN CONFIRMATION AND DISPATCH</text>
+
+  <!-- b17 human -->
+  <rect x="384" y="1928" width="1080" height="96" rx="9" fill="#b45309"/>
+  <text class="box-title" x="924" y="1956" text-anchor="middle">16 · The analyst — Approve · Reject · Edit</text>
+  <text class="box-sub" x="924" y="1978" text-anchor="middle">The dashboard shows the verdict, the rationale, the intel report, the cited precedents, and the plan with its blocked actions already marked.</text>
+  <text class="box-sub" x="924" y="1996" text-anchor="middle">An edit writes the correction before the decision row is overwritten: original verdict and its source, corrected verdict, actions added and removed.</text>
+  <text class="box-sub" x="924" y="2014" text-anchor="middle">Approve and Reject record that the machine was wrong. Only an edit records what right looks like.</text>
+
+  <!-- b18 approve -->
+  <rect x="384" y="2050" width="1080" height="58" rx="9" fill="#047857"/>
+  <text class="box-title" x="924" y="2076" text-anchor="middle">17 · Approved — a whitelist, not a blacklist</text>
+  <text class="box-sub" x="924" y="2098" text-anchor="middle">Only a PENDING decision may be approved. Actions move to QUEUED, execution runs in the background and the API returns at once.</text>
+
+  <!-- b19 deliver -->
+  <rect x="384" y="2134" width="1080" height="96" rx="9" fill="#047857"/>
+  <text class="box-title" x="924" y="2162" text-anchor="middle">18 · Delivery, action by action</text>
+  <text class="box-sub" x="924" y="2184" text-anchor="middle">Policy is re-checked at dispatch. Routing is by action class, not by deployment — block-ip to the firewall, isolate to the EDR, the rest to SOAR.</text>
+  <text class="box-sub" x="924" y="2202" text-anchor="middle">Every action carries an idempotency key stable across retries. Only transport failures are retried: a refusal is an answer, delivered once.</text>
+  <text class="box-sub" x="924" y="2220" text-anchor="middle">A success code is not delivery — a connector that cannot observe success never reports DONE.</text>
+
+  <!-- b20 settle -->
+  <rect x="384" y="2256" width="1080" height="78" rx="9" fill="#047857"/>
+  <text class="box-title" x="924" y="2284" text-anchor="middle">19 · Settle</text>
+  <text class="box-sub" x="924" y="2306" text-anchor="middle">Every action delivered → the alert is mitigated and the decision reads DONE. Any failure → FAILED.</text>
+  <text class="box-sub" x="924" y="2324" text-anchor="middle">Rendering a simulation as a completed containment is the most dangerous thing this system could get wrong.</text>
+
+  <!-- ================= PHASE D ================= -->
+  <rect x="384" y="2360" width="1080" height="28" rx="14" fill="#e2e8f0"/>
+  <text class="pill" x="924" y="2379" text-anchor="middle">PHASE D — THE LOOP CLOSES</text>
+
+  <!-- b21 case sync -->
+  <rect x="384" y="2402" width="1080" height="66" rx="9" fill="#1d4ed8"/>
+  <text class="box-title" x="924" y="2430" text-anchor="middle">20 · Case sync with the system of record</text>
+  <text class="box-sub" x="924" y="2452" text-anchor="middle">AI-SOC owns severity, verdict and evidence; the ticketing system owns owner, state and closure. An inbound message can never cause an action.</text>
+
+  <!-- b22 outcome -->
+  <rect x="384" y="2494" width="1080" height="80" rx="9" fill="#1d4ed8"/>
+  <text class="box-title" x="924" y="2522" text-anchor="middle">21 · Outcome, inside the feedback window</text>
+  <text class="box-sub" x="924" y="2544" text-anchor="middle">TRUE_POSITIVE · FALSE_POSITIVE · REOPENED. The window exists because the judgement perishes: three days is answerable, three months is not.</text>
+  <text class="box-sub" x="924" y="2562" text-anchor="middle">Precision is reported per detection source as well as per decision source — a bad upstream rule and a bad model produce the same symptom.</text>
+
+  <!-- ================= Spine arrows ================= -->
+  <line x1="924" y1="256" x2="924" y2="274" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="924" y1="360" x2="924" y2="378" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="924" y1="482" x2="924" y2="500" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="924" y1="566" x2="924" y2="584" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="924" y1="688" x2="924" y2="706" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="924" y1="810" x2="924" y2="828" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="924" y1="864" x2="924" y2="870" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="924" y1="934" x2="924" y2="952" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="924" y1="1040" x2="924" y2="1058" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="924" y1="1146" x2="924" y2="1164" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="924" y1="1238" x2="924" y2="1256" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="924" y1="1344" x2="924" y2="1362" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="924" y1="1466" x2="924" y2="1484" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="924" y1="1550" x2="924" y2="1568" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="924" y1="1672" x2="924" y2="1690" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="924" y1="1756" x2="924" y2="1774" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="924" y1="1862" x2="924" y2="1880" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="924" y1="1916" x2="924" y2="1922" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="924" y1="2026" x2="924" y2="2044" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="924" y1="2110" x2="924" y2="2128" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="924" y1="2232" x2="924" y2="2250" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="924" y1="2336" x2="924" y2="2354" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="924" y1="2390" x2="924" y2="2396" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="924" y1="2470" x2="924" y2="2488" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+
+  <!-- ================= Decision store rail (left) ================= -->
+  <rect x="30" y="384" width="330" height="2190" rx="10" fill="#1e293b"/>
+  <rect x="30" y="384" width="330" height="40" rx="10" fill="#0f172a"/>
+  <text class="side-title" x="195" y="410" text-anchor="middle">THE DECISION STORE</text>
+
+  <text class="side-row" x="50" y="447">detections</text>
+  <text class="side-note" x="50" y="465">contract 1 — the vendor payload verbatim</text>
+
+  <text class="side-row" x="50" y="632">situations</text>
+  <text class="side-note" x="50" y="650">contract 2 — members · entity graph ·</text>
+  <text class="side-note" x="50" y="666">risk score with its factors</text>
+
+  <text class="side-row" x="50" y="754">analysis_jobs</text>
+  <text class="side-note" x="50" y="772">what still owes a decision · attempts ·</text>
+  <text class="side-note" x="50" y="788">the dead letters</text>
+
+  <text class="side-row" x="50" y="1098">read — the precedent corpus</text>
+  <text class="side-note" x="50" y="1116">past settled decisions, and whether</text>
+  <text class="side-note" x="50" y="1132">each of them turned out to be right</text>
+
+  <text class="side-row" x="50" y="1513">security_events</text>
+  <text class="side-note" x="50" y="1531">the analysed record + containment steps</text>
+
+  <text class="side-row" x="50" y="1616">tier2_decisions</text>
+  <text class="side-note" x="50" y="1634">with provenance: llm · rules · human —</text>
+  <text class="side-note" x="50" y="1650">the column that makes a silent model</text>
+  <text class="side-note" x="50" y="1666">failure detectable at all</text>
+
+  <text class="side-row" x="50" y="1719">cases · case_events</text>
+  <text class="side-note" x="50" y="1737">append-only, every entry stamped</text>
+  <text class="side-note" x="50" y="1753">human · system · sync</text>
+
+  <text class="side-row" x="50" y="1970">decision_corrections</text>
+  <text class="side-note" x="50" y="1988">the label corpus — what a human</text>
+  <text class="side-note" x="50" y="2004">changed, and what had been proposed</text>
+
+  <text class="side-row" x="50" y="2176">alert_soar_actions</text>
+  <text class="side-note" x="50" y="2194">receipts · risk class · policy verdict ·</text>
+  <text class="side-note" x="50" y="2210">idempotency key · attempts</text>
+
+  <text class="side-row" x="50" y="2528">decision_outcomes</text>
+  <text class="side-note" x="50" y="2546">attributed to the detection source</text>
+
+  <line x1="50" y1="2298" x2="340" y2="2298" stroke="#475569" stroke-width="1.5"/>
+  <text class="side-note" x="50" y="2322">Retention drops copies of documents</text>
+  <text class="side-note" x="50" y="2338">the upstream tool still holds. It never</text>
+  <text class="side-note" x="50" y="2354">touches a decision, a correction, an</text>
+  <text class="side-note" x="50" y="2370">outcome or a receipt — those exist in</text>
+  <text class="side-note" x="50" y="2386">exactly one place, and nothing</text>
+  <text class="side-note" x="50" y="2402">upstream can reproduce them.</text>
+
+  <!-- store connectors: writes -->
+  <path d="M380 432 L338 432" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arwd)"/>
+  <path d="M380 638 L338 638" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arwd)"/>
+  <path d="M380 760 L338 760" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arwd)"/>
+  <path d="M380 1519 L338 1519" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arwd)"/>
+  <path d="M380 1622 L338 1622" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arwd)"/>
+  <path d="M380 1725 L338 1725" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arwd)"/>
+  <path d="M380 1976 L338 1976" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arwd)"/>
+  <path d="M380 2182 L338 2182" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arwd)"/>
+  <path d="M380 2534 L338 2534" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arwd)"/>
+
+  <!-- store connector: the read that closes the loop -->
+  <path d="M338 1104 L380 1104" stroke="#fbbf24" stroke-width="2.5" stroke-dasharray="6 4" marker-end="url(#arwl)"/>
+  <text class="loop" x="50" y="1154">— this is where the loop closes</text>
+
+  <!-- ================= Right gutter — branches and external systems ================= -->
+
+  <!-- R1 401 -->
+  <rect x="1486" y="280" width="484" height="52" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+  <rect x="1486" y="280" width="6" height="52" rx="3" fill="#dc2626"/>
+  <text class="br-title" x="1508" y="303">401 — unauthenticated</text>
+  <text class="br-note" x="1508" y="322">Refused before the body is even parsed.</text>
+
+  <!-- R2 422/400 -->
+  <rect x="1486" y="384" width="484" height="70" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+  <rect x="1486" y="384" width="6" height="70" rx="3" fill="#dc2626"/>
+  <text class="br-title" x="1508" y="407">422 · 400 — the payload is not a detection</text>
+  <text class="br-note" x="1508" y="426">Unreadable, or missing a required key. One carrying</text>
+  <text class="br-note" x="1508" y="444">neither a rule nor an entity is refused, not ingested.</text>
+
+  <!-- R3 202 / 502 -->
+  <rect x="1486" y="712" width="484" height="110" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+  <rect x="1486" y="712" width="6" height="110" rx="3" fill="#f59e0b"/>
+  <text class="br-title" x="1508" y="735">202 — stored and correlated, decision queued</text>
+  <text class="br-note" x="1508" y="754">When the deployment asked for it, the backlog is past the</text>
+  <text class="br-note" x="1508" y="772">high-water mark, or this situation is already being analysed.</text>
+  <text class="br-title" x="1508" y="795">502 — the model is down</text>
+  <text class="br-note" x="1508" y="814">The detection and situation are stored, and a retry is scheduled.</text>
+
+  <!-- R4 external TI -->
+  <rect x="1486" y="958" width="484" height="80" rx="8" fill="#ffffff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="7 5"/>
+  <text class="ext-title" x="1508" y="983">EXTERNAL — THREAT INTELLIGENCE</text>
+  <text class="ext-item" x="1508" y="1004">An on-prem MISP · a local indicator file · none</text>
+  <text class="ext-note" x="1508" y="1024">“none” is honest rather than empty: nothing then reads as verified.</text>
+
+  <!-- R5 precedent note -->
+  <rect x="1486" y="1064" width="484" height="80" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+  <rect x="1486" y="1064" width="6" height="80" rx="3" fill="#f59e0b"/>
+  <text class="br-title" x="1508" y="1087">The corpus is decisions, not documents</text>
+  <text class="br-note" x="1508" y="1106">Entity identity is deliberately outweighed by technique and</text>
+  <text class="br-note" x="1508" y="1124">shape: precedent is about the shape of an intrusion, not</text>
+  <text class="br-note" x="1508" y="1138">about the same host offending twice.</text>
+
+  <!-- R6 inference -->
+  <rect x="1486" y="1262" width="484" height="80" rx="8" fill="#ffffff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="7 5"/>
+  <text class="ext-title" x="1508" y="1287">ON-PREM INFERENCE</text>
+  <text class="ext-item" x="1508" y="1308">A local model server. No cloud inference, ever.</text>
+  <text class="ext-note" x="1508" y="1328">The confidence it reports is uncalibrated — display and ordering only.</text>
+
+  <!-- R7 silent failures -->
+  <rect x="1486" y="1368" width="484" height="96" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+  <rect x="1486" y="1368" width="6" height="96" rx="3" fill="#f59e0b"/>
+  <text class="br-title" x="1508" y="1391">The three failures that look like success</text>
+  <text class="br-note" x="1508" y="1410">· a truncated response a tolerant parser “rescues”</text>
+  <text class="br-note" x="1508" y="1428">· a thinking model that returns an empty string</text>
+  <text class="br-note" x="1508" y="1446">· the reply envelope parsed as if it were the answer</text>
+
+  <!-- R8 rules fallback -->
+  <rect x="1486" y="1574" width="484" height="96" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+  <rect x="1486" y="1574" width="6" height="96" rx="3" fill="#f59e0b"/>
+  <text class="br-title" x="1508" y="1597">When the proposal is unusable</text>
+  <text class="br-note" x="1508" y="1616">The severity rule decides instead and the row is stamped</text>
+  <text class="br-note" x="1508" y="1634">decision_source = rules, so a later review can find every</text>
+  <text class="br-note" x="1508" y="1652">decision a degraded or absent model produced.</text>
+
+  <!-- R9 four gates -->
+  <rect x="1486" y="1780" width="484" height="96" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+  <rect x="1486" y="1780" width="6" height="96" rx="3" fill="#b45309"/>
+  <text class="br-title" x="1508" y="1803">The four gates</text>
+  <text class="br-note" x="1508" y="1822">1 · the verdict is auto-executable   2 · confidence clears a floor</text>
+  <text class="br-note" x="1508" y="1840">3 · every action passes the risk policy   4 · precedent supports it</text>
+  <text class="br-note" x="1508" y="1858">Gates 3 and 4 are the ones that protect the network.</text>
+
+  <!-- R10 edit refusals -->
+  <rect x="1486" y="1928" width="484" height="96" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+  <rect x="1486" y="1928" width="6" height="96" rx="3" fill="#dc2626"/>
+  <text class="br-title" x="1508" y="1951">An edit can be refused</text>
+  <text class="br-note" x="1508" y="1970">422 — the edited plan contains an action that could never</text>
+  <text class="br-note" x="1508" y="1988">dispatch; storing it would show a plan that silently blocks.</text>
+  <text class="br-note" x="1508" y="2010">409 — already approved: the row is now the record of what was sent.</text>
+
+  <!-- R11 external execution -->
+  <rect x="1486" y="2134" width="484" height="96" rx="8" fill="#ffffff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="7 5"/>
+  <text class="ext-title" x="1508" y="2159">EXTERNAL — EXECUTION</text>
+  <text class="ext-item" x="1508" y="2180">SOAR · EDR · firewall · identity provider</text>
+  <text class="ext-note" x="1508" y="2200">A refused action is BLOCKED before a packet leaves, and keeps its</text>
+  <text class="ext-note" x="1508" y="2218">row, its position in the plan and the reason it was refused.</text>
+
+  <!-- R12 dry run -->
+  <rect x="1486" y="2256" width="484" height="78" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+  <rect x="1486" y="2256" width="6" height="78" rx="3" fill="#f59e0b"/>
+  <text class="br-title" x="1508" y="2279">A dry run is SIMULATED, never DONE</text>
+  <text class="br-note" x="1508" y="2298">Nothing was sent, the alert is not mitigated and the decision</text>
+  <text class="br-note" x="1508" y="2316">never reads DONE. Start every deployment here.</text>
+
+  <!-- R13 external system of record -->
+  <rect x="1486" y="2402" width="484" height="66" rx="8" fill="#ffffff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="7 5"/>
+  <text class="ext-title" x="1508" y="2427">EXTERNAL — SYSTEM OF RECORD</text>
+  <text class="ext-item" x="1508" y="2448">TheHive · Jira · ServiceNow · a directory drop</text>
+
+  <!-- gutter connectors -->
+  <path d="M1468 306 L1482 306" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arwd)"/>
+  <path d="M1468 419 L1482 419" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arwd)"/>
+  <path d="M1468 767 L1482 767" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arwd)"/>
+  <path d="M1468 998 L1482 998" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arwd)"/>
+  <path d="M1468 1302 L1482 1302" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arwd)"/>
+  <path d="M1468 1820 L1482 1820" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arwd)"/>
+  <path d="M1468 2182 L1482 2182" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <path d="M1468 2435 L1482 2435" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arwd)"/>
+
+  <!-- ================= Legend ================= -->
+  <rect x="384" y="2606" width="1080" height="52" rx="9" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+  <text class="legend" x="406" y="2638">Legend:</text>
+  <rect x="470" y="2626" width="16" height="16" rx="4" fill="#0f766e"/>
+  <text class="legend" x="494" y="2638">the main path</text>
+  <rect x="600" y="2626" width="16" height="16" rx="4" fill="#ffffff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="4 3"/>
+  <text class="legend" x="624" y="2638">external tool — out of scope</text>
+  <rect x="852" y="2626" width="6" height="16" rx="3" fill="#dc2626"/>
+  <text class="legend" x="868" y="2638">refused</text>
+  <rect x="944" y="2626" width="6" height="16" rx="3" fill="#f59e0b"/>
+  <text class="legend" x="960" y="2638">held, degraded or deferred — never lost</text>
+  <text class="legend" x="1230" y="2638">dashed = an external dependency or a store access</text>
+
+  <!-- ================= Footer ================= -->
+  <text class="foot" x="1000" y="2690" text-anchor="middle">Written by J.Ekrami · Co-written with Claude (Opus 5) · © J.Ekrami-Labs · Summer 2026 · matches AO-SOC v2.7.1</text>
+</svg>

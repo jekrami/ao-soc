@@ -155,7 +155,7 @@ ao-soc/
 
 ## Run It
 
-**Version:** 2.7.0 — see `VERSION` at repo root (bump on every release).
+**Version:** 2.7.1 — see `VERSION` at repo root (bump on every release).
 
 One-time setup (each machine):
 
@@ -493,6 +493,7 @@ matches the types in `frontend/src/types.ts`.
 
 ## New Features
 
+- **v2.7.1 — The data-flow diagram pair.** `docs/AI-SOC-dataflow-en.svg` and `docs/AI-SOC-dataflow-fa.svg` trace one alert end to end — a Splunk saved search firing, through the adapter, correlation, the queue split, the analysis job, the Tier-2 verdict, a human, dispatch, and the outcome that becomes precedent for the next one. Documentation only; no code change. It is deliberately a different drawing from the architecture pair: that one answers *what is built*, layer by layer, and this one answers *what happens to a single alert, in order, and what happens instead when something refuses*. Every branch is on it — 401, 422/400, the four ways intake returns 202, the 502 that still stores the detection, the retry-to-dead-letter path, the rules fallback when a proposal is unusable, the four autopilot gates, 422/409 on an edit, `BLOCKED` before a packet leaves, and `SIMULATED` — because the refusals are where this design actually lives and the layered diagram cannot show them. A store rail runs the height of the page recording what is written at each step, and the one arrow that reads back out of it is the loop closing: outcomes and corrections become the precedent corpus the next decision is gated on.
 - **v2.7.0 — Phase E: production. Somewhere for an action to actually go, and somebody to own the case.** Through v2.6 the decision layer reasoned well and dispatched to a JSON file. Phase E gives it real executors, the human workflow around a decision, and the operational surface a site needs before it depends on any of it.
   - **E1 — Real response connectors (M12).** `response.py` is the delivery contract and `connectors/<tool>.py` is the only place an executor is named — the third boundary after `adapters/` and `intel/`, enforced by the same structural test. Ships a generic authenticated `webhook` (which is what every SOAR platform, orchestration runner and home-grown response service accepts) and a vendor one, `wazuh` active response, written to prove the boundary the way the Wazuh *adapter* proved the intake's. An action is routed by the **policy rule name** `action_policy` already assigns it — `block-ip` to the firewall, `isolate` to the EDR, `disable-account` to the IdP — which is a closed vocabulary a model cannot extend by rephrasing. Five properties, each because the alternative is an incident rather than a bug: a connector **declares what it performs** and anything else is `BLOCKED` before a packet leaves; every action carries an **idempotency key** stable across retries, because "retry on timeout" otherwise means "isolate the host twice"; a **4xx is an answer** and is delivered once, while only a timeout, a reset or a 5xx is repeated; **2xx is not delivery** — the Wazuh connector reads the envelope, because Wazuh answers `200` with `total_affected_items: 0` for a request it accepted and did nothing with; and a dry run reports **`SIMULATED`, never `DONE`**, does not mitigate the alert, and is drawn in amber, because a simulated containment rendered as a completed one is the most dangerous thing this system could show.
   - **E2 — Case management (M11).** Assignment, escalation, analyst notes and a case lifecycle — the gap M11 named. A case is a third thing, separate from the situation (what the tools observed) and the decision (what was concluded): it is *who is working it and what state the humans consider it in*, and those three change on different clocks. The timeline is append-only, transitions are a **whitelist** (C3's lesson: a gate listing the states that block it is approvable by omission the day a state is added), the actor is the authenticated identity rather than a body field, and **nothing here can approve, reject, dispatch or alter a decision**.
@@ -548,6 +549,6 @@ matches the types in `frontend/src/types.ts`.
 
 ## Authorship
 
-**Version:** 2.7.0 (see `VERSION` — increment on each release commit)
+**Version:** 2.7.1 (see `VERSION` — increment on each release commit)
 
 Written by J.Ekrami, co-written with GitHub Copilot, Composer (Cursor AI), and Claude (Opus 5).

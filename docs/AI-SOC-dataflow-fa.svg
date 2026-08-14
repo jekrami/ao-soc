@@ -1,0 +1,403 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2000 2720" width="2000" height="2720" font-family="Vazirmatn, 'Segoe UI', Tahoma, 'Iranian Sans', sans-serif">
+  <style>
+    text { direction: rtl; }
+    .ltr { direction: ltr; unicode-bidi: isolate; }
+    .t1 { font-size: 34px; font-weight: 700; fill: #0f172a; }
+    .t2 { font-size: 18px; fill: #334155; }
+    .t3 { font-size: 14px; fill: #64748b; }
+    .pill { font-size: 14px; font-weight: 700; fill: #0f172a; }
+    .box-title { font-size: 16px; font-weight: 700; fill: #ffffff; }
+    .box-sub { font-size: 12.5px; fill: #e2e8f0; }
+    .ext-title { font-size: 15px; font-weight: 700; fill: #1e293b; }
+    .ext-item { font-size: 13px; fill: #334155; }
+    .ext-note { font-size: 12px; fill: #64748b; }
+    .side-title { font-size: 14px; font-weight: 700; fill: #ffffff; }
+    .side-row { font-size: 12.5px; font-weight: 700; fill: #e2e8f0; }
+    .side-note { font-size: 11.5px; fill: #94a3b8; }
+    .br-title { font-size: 13px; font-weight: 700; fill: #0f172a; }
+    .br-note { font-size: 12px; fill: #475569; }
+    .loop { font-size: 12px; font-weight: 700; fill: #fbbf24; }
+    .legend { font-size: 13.5px; fill: #334155; }
+    .foot { font-size: 13px; fill: #64748b; }
+  </style>
+
+  <defs>
+    <marker id="arw" markerWidth="10" markerHeight="10" refX="9" refY="4" orient="auto">
+      <path d="M0,0 L9,4 L0,8 z" fill="#334155"/>
+    </marker>
+    <marker id="arwd" markerWidth="10" markerHeight="10" refX="9" refY="4" orient="auto">
+      <path d="M0,0 L9,4 L0,8 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="arwl" markerWidth="10" markerHeight="10" refX="9" refY="4" orient="auto">
+      <path d="M0,0 L9,4 L0,8 z" fill="#f59e0b"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="2000" height="2720" fill="#f8fafc"/>
+
+  <!-- ================= Title ================= -->
+  <text class="t1" x="1000" y="54" text-anchor="middle">جریان داده در AI-SOC</text>
+  <text class="t2" x="1000" y="84" text-anchor="middle">یک هشدار، از آغاز تا پایان — از ابزار تشخیصِ بیرونی تا بسته‌شدن پرونده</text>
+  <text class="t3" x="1000" y="108" text-anchor="middle">نسخهٔ ۲.۷.۱ — تابستان ۱۴۰۵</text>
+
+  <!-- ================= PHASE A ================= -->
+  <rect x="536" y="134" width="1080" height="28" rx="14" fill="#e2e8f0"/>
+  <text class="pill" x="1076" y="153" text-anchor="middle">مرحلهٔ الف — دریافتِ هم‌زمان · هیچ‌چیز نباید از دست برود</text>
+
+  <!-- b1 external detection -->
+  <rect x="536" y="176" width="1080" height="78" rx="9" fill="#ffffff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="7 5"/>
+  <text class="ext-title" x="1076" y="206" text-anchor="middle">جست‌وجوی ذخیره‌شدهٔ Splunk فعال می‌شود · کنشِ هشدارِ آن، نتیجهٔ خام را ارسال می‌کند</text>
+  <text class="ext-note" x="1076" y="228" text-anchor="middle">POST /detections?adapter=splunk    —    مسیر POST /splunk-alert تنها نامی سازگار برای همین است</text>
+  <text class="ext-note" x="1076" y="246" text-anchor="middle">‏AI-SOC نه نظرسنجی می‌کند، نه نمایه‌ای دارد و هرگز لاگ خام دریافت نمی‌کند. تشخیص کارِ ابزار بیرونی است.</text>
+
+  <!-- b2 auth -->
+  <rect x="536" y="280" width="1080" height="78" rx="9" fill="#334155"/>
+  <text class="box-title" x="1076" y="308" text-anchor="middle">۱ · دروازهٔ احراز هویت — دامنهٔ detections:write</text>
+  <text class="box-sub" x="1076" y="330" text-anchor="middle">پیش از خوانده‌شدنِ بدنهٔ درخواست بررسی می‌شود. نقش ingest تنها همین یک دامنه را دارد و هیچ چیز دیگر.</text>
+  <text class="box-sub" x="1076" y="348" text-anchor="middle">این همان مسیری است که با فعال‌بودنِ خلبان خودکار، به یک اقدامِ شبکه‌ایِ ارسال‌شده ختم می‌شود.</text>
+
+  <!-- b3 adapter -->
+  <rect x="536" y="384" width="1080" height="96" rx="9" fill="#0f766e"/>
+  <text class="box-title" x="1076" y="412" text-anchor="middle">۲ · آداپتور — تنها جایی در سامانه که نام یک فروشنده برده می‌شود</text>
+  <text class="box-sub" x="1076" y="434" text-anchor="middle">نام میدان‌های Splunk به «قرارداد دریافت تشخیص» بدل می‌شود: ابزار مبدأ · شناسهٔ قاعده · زمانِ تشخیص، تبدیل‌شده به UTC ·</text>
+  <text class="box-sub" x="1076" y="452" text-anchor="middle">شدت، هم عیناً و هم نرمال‌شده از مقیاسِ خودِ فروشنده · تکنیک ATT&amp;CK که خودِ ابزار ادعا کرده · موجودیت‌ها · محمولهٔ خام</text>
+  <text class="box-sub" x="1076" y="470" text-anchor="middle">مقادیر جانشین (unknown · - · n/a) همین‌جا حذف می‌شوند: همبستگی بر پایهٔ یکی از آن‌ها، کل پنجره را به یک وضعیت می‌دوخت.</text>
+
+  <!-- b4 registry -->
+  <rect x="536" y="506" width="1080" height="58" rx="9" fill="#475569"/>
+  <text class="box-title" x="1076" y="532" text-anchor="middle">۳ · دفترِ ثبت منابع و سنجه‌ها</text>
+  <text class="box-sub" x="1076" y="554" text-anchor="middle">آخرین دریافت، نسخهٔ آداپتور، سلامت و وزنِ اعتمادِ آن ابزار — پیش از آنکه چیزی در پایین‌دست بتواند شکست بخورد.</text>
+
+  <!-- b5 correlation -->
+  <rect x="536" y="590" width="1080" height="96" rx="9" fill="#6d28d9"/>
+  <text class="box-title" x="1076" y="618" text-anchor="middle">۴ · همبستگی میان‌ابزاری ← «وضعیت امنیتی»</text>
+  <text class="box-sub" x="1076" y="640" text-anchor="middle">بر پایهٔ یک موجودیتِ قویِ مشترک — کاربر · میزبان · نشانی · درهم‌ریزهٔ فایل · نشانی وب — درون پنجرهٔ زمانی. هرگز بر پایهٔ متنِ نام قاعده.</text>
+  <text class="box-sub" x="1076" y="658" text-anchor="middle">امتیاز ریسکِ قطعی، همراه با عواملش: بالاترین شدت · ۱۲+ به‌ازای هر ابزار مؤیّد · حجم · شکلِ حرکت جانبی · × اعتماد منبع.</text>
+  <text class="box-sub" x="1076" y="676" text-anchor="middle">دو وضعیتی که تشخیصِ بعدی به‌هم می‌دوزد ادغام می‌شوند. وضعیتی که تصمیمش از PENDING خارج شده دیگر جذب نمی‌کند و بعدی وضعیت خود را می‌گشاید.</text>
+
+  <!-- b6 queue split -->
+  <rect x="536" y="712" width="1080" height="96" rx="9" fill="#475569"/>
+  <text class="box-title" x="1076" y="740" text-anchor="middle">۵ · نقطهٔ جدایی — تجزیه، ذخیره و همبستگی هم‌زمان‌اند؛ فراخوانِ مدل یک «کار» است</text>
+  <text class="box-sub" x="1076" y="762" text-anchor="middle">هرچه بالای این خط است سریع است و هرگز نباید گم شود. پایینِ آن نیمهٔ کند و شکست‌پذیر است — و تنها بخشی که ارزشِ تکرار دارد.</text>
+  <text class="box-sub" x="1076" y="780" text-anchor="middle">حالت درون‌خطی پیش‌فرض است، تا فراخوان‌کننده همچنان تصمیم خود را در پاسخ دریافت کند.</text>
+  <text class="box-sub" x="1076" y="798" text-anchor="middle">فشارِ برگشتی «تأخیر» را کم می‌کند، نه «داده» را.</text>
+
+  <!-- ================= PHASE B ================= -->
+  <rect x="536" y="834" width="1080" height="28" rx="14" fill="#e2e8f0"/>
+  <text class="pill" x="1076" y="853" text-anchor="middle">مرحلهٔ ب — کارِ تحلیل · کند، شکست‌پذیر، قابل تکرار</text>
+
+  <!-- b7 reload -->
+  <rect x="536" y="876" width="1080" height="56" rx="9" fill="#4338ca"/>
+  <text class="box-title" x="1076" y="902" text-anchor="middle">۶ · کارگر، وضعیت را با شناسه بازخوانی می‌کند، نه شیئی که به او سپرده شده بود</text>
+  <text class="box-sub" x="1076" y="924" text-anchor="middle">میان نوشته‌شدنِ کار و اجرای آن، وضعیت ممکن است بزرگ‌تر شده باشد — تحلیل باید از وضعیتی باشد که «هست»، نه آنچه بود.</text>
+
+  <!-- b8 intel -->
+  <rect x="536" y="958" width="1080" height="80" rx="9" fill="#4338ca"/>
+  <text class="box-title" x="1076" y="986" text-anchor="middle">۷ · غنی‌سازی با اطلاعات تهدید — یک «کارخواه»، نه یک سکو</text>
+  <text class="box-sub" x="1076" y="1008" text-anchor="middle">چهار سبد: مخرب · مشکوک · یافت‌نشد (پرسیده شد، رکوردی نبود) · پرسیده‌نشد (با ذکر دلیل). «نامعلوم» به‌معنای «بی‌خطر» نیست.</text>
+  <text class="box-sub" x="1076" y="1026" text-anchor="middle">نشانی‌های داخلی، حلقهٔ برگشتی و رزروشده هرگز بیرون فرستاده نمی‌شوند. فیدی که پاسخ ندهد «تنزل‌یافته» گزارش می‌شود، نه «خالی و بنابراین پاک».</text>
+
+  <!-- b9 precedent -->
+  <rect x="536" y="1064" width="1080" height="80" rx="9" fill="#4338ca"/>
+  <text class="box-title" x="1076" y="1092" text-anchor="middle">۸ · بازیابی سابقه — این مرکز عملیات، بارِ پیش که چنین شکلی دید چه تصمیمی گرفت</text>
+  <text class="box-sub" x="1076" y="1114" text-anchor="middle">شباهتِ وزن‌دار بر تصمیم‌های نهایی‌شدهٔ پیشین: تکنیک ۳۰ · روایت ۲۰ · منابع ۱۵ · موجودیت‌ها ۱۵ · شکلِ موجودیت ۱۰ · شدت ۱۰.</text>
+  <text class="box-sub" x="1076" y="1132" text-anchor="middle">شکست در این مرحله «زمینه» را از تحلیلگر می‌گیرد، نه «رأی» را — ثبت می‌شود و چیزی برنمی‌گرداند.</text>
+
+  <!-- b10 prompt -->
+  <rect x="536" y="1170" width="1080" height="66" rx="9" fill="#4338ca"/>
+  <text class="box-title" x="1076" y="1198" text-anchor="middle">۹ · ساختِ پرسمان</text>
+  <text class="box-sub" x="1076" y="1220" text-anchor="middle">سندِ وضعیت (n تشخیص از m ابزار · گرافِ موجودیت · بازهٔ زمانی · تکنیک‌های خودِ ابزارها) · گزارش اطلاعات تهدید · سوابقی که باید استناد شوند</text>
+
+  <!-- b11 inference -->
+  <rect x="536" y="1262" width="1080" height="80" rx="9" fill="#4338ca"/>
+  <text class="box-title" x="1076" y="1290" text-anchor="middle">۱۰ · استنتاجِ محلی</text>
+  <text class="box-sub" x="1076" y="1312" text-anchor="middle">خروجی JSON الزام‌شده · حذفِ مقدمهٔ استدلالی · بودجهٔ توکن به‌اندازهٔ کلِ شیء · دمای پایین.</text>
+  <text class="box-sub" x="1076" y="1330" text-anchor="middle">مدل بر «وضعیت» استدلال می‌کند، نه بر یک هشدار. حالتِ بدون‌مدل، همین مسیر را بی‌هیچ استنتاجی اجرا می‌کند.</text>
+
+  <!-- b12 normalise -->
+  <rect x="536" y="1368" width="1080" height="96" rx="9" fill="#4338ca"/>
+  <text class="box-title" x="1076" y="1396" text-anchor="middle">۱۱ · تجزیه و نرمال‌سازی — جایی که مدل پاسخ‌گو نگه داشته می‌شود</text>
+  <text class="box-sub" x="1076" y="1418" text-anchor="middle">پاسخی که تجزیه نشود خطا می‌دهد. هرگز به پاکتِ پاسخ عقب‌نشینی نمی‌کند، که تمیز تجزیه می‌شد و هر میدان را خاموشانه پیش‌فرض می‌گرفت.</text>
+  <text class="box-sub" x="1076" y="1436" text-anchor="middle">تکنیکی که ابزار ادعا کرده بر ادعای مدل مقدم است. هر شناسه با فهرست سنجیده می‌شود: تأییدشده · فهرست‌نشده · ناشناخته · بدشکل.</text>
+  <text class="box-sub" x="1076" y="1454" text-anchor="middle">شناسهٔ سابقه‌ای که مدل از خود ساخته، از استدلال حذف — و نگهداری — می‌شود؛ مدلی که شناسهٔ پرونده می‌سازد، خودْ واقعیتی ارزشمند است.</text>
+
+  <!-- b13 persist -->
+  <rect x="536" y="1490" width="1080" height="58" rx="9" fill="#475569"/>
+  <text class="box-title" x="1076" y="1516" text-anchor="middle">۱۲ · ثبتِ رکوردِ تحلیل‌شده</text>
+  <text class="box-sub" x="1076" y="1538" text-anchor="middle">وضعیتِ تازه رکوردِ تازه می‌سازد. وضعیتی که بزرگ شده، در جای خود دوباره تحلیل و پیشنهادش بر تصویرِ گسترده‌تر بازتولید می‌شود.</text>
+
+  <!-- b14 tier2 -->
+  <rect x="536" y="1574" width="1080" height="96" rx="9" fill="#b91c1c"/>
+  <text class="box-title" x="1076" y="1602" text-anchor="middle">۱۳ · رأیِ تیر ۲ — مهار · تشدید · بررسی · پایش · نادیده‌گرفتن</text>
+  <text class="box-sub" x="1076" y="1624" text-anchor="middle">اعتبارسنجی عمداً نامتقارن است: رأیی بیرون از واژگان، کلِ پیشنهاد را باطل می‌کند؛ اما میدانِ جاافتاده به‌تنهایی جایگزین می‌شود.</text>
+  <text class="box-sub" x="1076" y="1642" text-anchor="middle">هر اقدام در ردهٔ خواندن · نوشتنِ کم‌خطر · نوشتنِ پرخطر · مخرب می‌نشیند و هدفش تجزیه می‌شود. فعلِ مدل‌نشده «پرخطر» است، نه «خواندن».</text>
+  <text class="box-sub" x="1076" y="1660" text-anchor="middle">اقدامِ ردشده سطر، جایگاه و دلیل خود را نگه می‌دارد و تحلیلگر پیش از تأیید آن را می‌بیند. وضعیت: PENDING.</text>
+
+  <!-- b15 case -->
+  <rect x="536" y="1696" width="1080" height="58" rx="9" fill="#1d4ed8"/>
+  <text class="box-title" x="1076" y="1722" text-anchor="middle">۱۴ · پرونده همان لحظه‌ای گشوده می‌شود که وضعیت تحلیل می‌شود</text>
+  <text class="box-sub" x="1076" y="1744" text-anchor="middle">نه وقتی تحلیلگر نخستین‌بار بازش می‌کند — پرونده‌ای که در نخستین نگاه ساخته شود نمی‌تواند بگوید «شبِ گذشته چه آمد و دستِ کیست».</text>
+
+  <!-- b16 autopilot -->
+  <rect x="536" y="1780" width="1080" height="80" rx="9" fill="#b45309"/>
+  <text class="box-title" x="1076" y="1808" text-anchor="middle">۱۵ · دروازهٔ خلبان خودکار — پیش‌فرض خاموش؛ مرحلهٔ ۲ یعنی انسان تأیید می‌کند</text>
+  <text class="box-sub" x="1076" y="1830" text-anchor="middle">هر چهار دروازه باید برقرار باشد و طرح «همه یا هیچ» است. هر ردی، تصمیم را در حالت PENDING برای یک انسان می‌گذارد.</text>
+  <text class="box-sub" x="1076" y="1848" text-anchor="middle">تأییدهای خودِ ماشین نشان‌گذاری می‌شوند، تا خلبان خودکار هرگز نتواند سابقهٔ خودش شود.</text>
+
+  <!-- ================= PHASE C ================= -->
+  <rect x="536" y="1886" width="1080" height="28" rx="14" fill="#e2e8f0"/>
+  <text class="pill" x="1076" y="1905" text-anchor="middle">مرحلهٔ ج — تأیید انسانی و ارسال</text>
+
+  <!-- b17 human -->
+  <rect x="536" y="1928" width="1080" height="96" rx="9" fill="#b45309"/>
+  <text class="box-title" x="1076" y="1956" text-anchor="middle">۱۶ · تحلیلگر — تأیید · رد · ویرایش</text>
+  <text class="box-sub" x="1076" y="1978" text-anchor="middle">داشبورد، رأی، دلیل، گزارش اطلاعات تهدید، سوابقِ استنادشده و طرحِ اقدام را با اقدام‌های مسدودشدهٔ نشان‌دار نمایش می‌دهد.</text>
+  <text class="box-sub" x="1076" y="1996" text-anchor="middle">ویرایش، اصلاح را پیش از بازنویسیِ سطرِ تصمیم ثبت می‌کند: رأی اصلی و منبعش، رأی اصلاح‌شده، اقدام‌های افزوده و حذف‌شده.</text>
+  <text class="box-sub" x="1076" y="2014" text-anchor="middle">تأیید و رد ثبت می‌کنند که ماشین اشتباه کرد. تنها ویرایش ثبت می‌کند که «درست» چه شکلی است.</text>
+
+  <!-- b18 approve -->
+  <rect x="536" y="2050" width="1080" height="58" rx="9" fill="#047857"/>
+  <text class="box-title" x="1076" y="2076" text-anchor="middle">۱۷ · تأییدشده — فهرستِ مجاز، نه فهرستِ ممنوع</text>
+  <text class="box-sub" x="1076" y="2098" text-anchor="middle">تنها تصمیمِ PENDING تأییدپذیر است. اقدام‌ها به صف می‌روند، اجرا در پس‌زمینه انجام می‌شود و رابط بی‌درنگ پاسخ می‌دهد.</text>
+
+  <!-- b19 deliver -->
+  <rect x="536" y="2134" width="1080" height="96" rx="9" fill="#047857"/>
+  <text class="box-title" x="1076" y="2162" text-anchor="middle">۱۸ · تحویل، اقدام به اقدام</text>
+  <text class="box-sub" x="1076" y="2184" text-anchor="middle">سیاست هنگام ارسال دوباره بررسی می‌شود. مسیریابی بر پایهٔ ردهٔ اقدام است، نه استقرار — مسدودسازی نشانی به دیوارهٔ آتش، جداسازی به EDR، بقیه به SOAR.</text>
+  <text class="box-sub" x="1076" y="2202" text-anchor="middle">هر اقدام کلیدِ تکرارپذیریِ ایمن دارد که در بازپخش‌ها ثابت می‌ماند. تنها خطاهای انتقال تکرار می‌شوند: «رد کردن» خودْ یک پاسخ است، و یک‌بار تحویل شده.</text>
+  <text class="box-sub" x="1076" y="2220" text-anchor="middle">کدِ موفقیت به‌معنای تحویل نیست — کارگزاری که نتواند موفقیت را ببیند، هرگز DONE گزارش نمی‌کند.</text>
+
+  <!-- b20 settle -->
+  <rect x="536" y="2256" width="1080" height="78" rx="9" fill="#047857"/>
+  <text class="box-title" x="1076" y="2284" text-anchor="middle">۱۹ · نهایی‌شدن</text>
+  <text class="box-sub" x="1076" y="2306" text-anchor="middle">تحویلِ همهٔ اقدام‌ها ← هشدار مهار می‌شود و تصمیم DONE می‌خواند. هر شکستی ← FAILED.</text>
+  <text class="box-sub" x="1076" y="2324" text-anchor="middle">نمایشِ یک اجرای آزمایشی به‌عنوانِ مهارِ انجام‌شده، خطرناک‌ترین چیزی است که این سامانه می‌تواند اشتباه کند.</text>
+
+  <!-- ================= PHASE D ================= -->
+  <rect x="536" y="2360" width="1080" height="28" rx="14" fill="#e2e8f0"/>
+  <text class="pill" x="1076" y="2379" text-anchor="middle">مرحلهٔ د — حلقه بسته می‌شود</text>
+
+  <!-- b21 case sync -->
+  <rect x="536" y="2402" width="1080" height="66" rx="9" fill="#1d4ed8"/>
+  <text class="box-title" x="1076" y="2430" text-anchor="middle">۲۰ · هم‌گام‌سازی پرونده با «سامانهٔ مرجع»</text>
+  <text class="box-sub" x="1076" y="2452" text-anchor="middle">شدت، رأی و شواهد از آنِ AI-SOC است؛ مالک، وضعیت و بسته‌شدن از آنِ سامانهٔ تیکتینگ. پیامِ ورودی هرگز نمی‌تواند اقدامی را سبب شود.</text>
+
+  <!-- b22 outcome -->
+  <rect x="536" y="2494" width="1080" height="80" rx="9" fill="#1d4ed8"/>
+  <text class="box-title" x="1076" y="2522" text-anchor="middle">۲۱ · نتیجه، درونِ پنجرهٔ بازخورد</text>
+  <text class="box-sub" x="1076" y="2544" text-anchor="middle">مثبتِ واقعی · مثبتِ کاذب · بازگشایی. این پنجره از آن روست که قضاوت فاسدشدنی است: سه روز پاسخ‌پذیر است، سه ماه نه.</text>
+  <text class="box-sub" x="1076" y="2562" text-anchor="middle">دقت، هم به تفکیکِ منبعِ تشخیص گزارش می‌شود و هم منبعِ تصمیم — قاعدهٔ بدِ بالادست و مدلِ بد، نشانهٔ یکسانی می‌سازند.</text>
+
+  <!-- ================= Spine arrows ================= -->
+  <line x1="1076" y1="256" x2="1076" y2="274" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="1076" y1="360" x2="1076" y2="378" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="1076" y1="482" x2="1076" y2="500" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="1076" y1="566" x2="1076" y2="584" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="1076" y1="688" x2="1076" y2="706" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="1076" y1="810" x2="1076" y2="828" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="1076" y1="864" x2="1076" y2="870" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="1076" y1="934" x2="1076" y2="952" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="1076" y1="1040" x2="1076" y2="1058" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="1076" y1="1146" x2="1076" y2="1164" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="1076" y1="1238" x2="1076" y2="1256" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="1076" y1="1344" x2="1076" y2="1362" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="1076" y1="1466" x2="1076" y2="1484" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="1076" y1="1550" x2="1076" y2="1568" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="1076" y1="1672" x2="1076" y2="1690" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="1076" y1="1756" x2="1076" y2="1774" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="1076" y1="1862" x2="1076" y2="1880" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="1076" y1="1916" x2="1076" y2="1922" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="1076" y1="2026" x2="1076" y2="2044" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="1076" y1="2110" x2="1076" y2="2128" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="1076" y1="2232" x2="1076" y2="2250" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="1076" y1="2336" x2="1076" y2="2354" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="1076" y1="2390" x2="1076" y2="2396" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <line x1="1076" y1="2470" x2="1076" y2="2488" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+
+  <!-- ================= Decision store rail (right) ================= -->
+  <rect x="1640" y="384" width="330" height="2190" rx="10" fill="#1e293b"/>
+  <rect x="1640" y="384" width="330" height="40" rx="10" fill="#0f172a"/>
+  <text class="side-title" x="1805" y="410" text-anchor="middle">انبارهٔ تصمیم</text>
+
+  <text class="side-row ltr" x="1950" y="447" text-anchor="end">detections</text>
+  <text class="side-note" x="1950" y="465" text-anchor="start">قرارداد نخست — محمولهٔ فروشنده عیناً</text>
+
+  <text class="side-row ltr" x="1950" y="632" text-anchor="end">situations</text>
+  <text class="side-note" x="1950" y="650" text-anchor="start">قرارداد دوم — اعضا · گرافِ موجودیت ·</text>
+  <text class="side-note" x="1950" y="666" text-anchor="start">امتیاز ریسک همراه با عواملش</text>
+
+  <text class="side-row ltr" x="1950" y="754" text-anchor="end">analysis_jobs</text>
+  <text class="side-note" x="1950" y="772" text-anchor="start">آنچه هنوز تصمیمی بدهکار است · تلاش‌ها ·</text>
+  <text class="side-note" x="1950" y="788" text-anchor="start">نامه‌های مرده</text>
+
+  <text class="side-row" x="1950" y="1098" text-anchor="start">خواندن — پیکرهٔ سابقه</text>
+  <text class="side-note" x="1950" y="1116" text-anchor="start">تصمیم‌های نهایی‌شدهٔ پیشین، و اینکه</text>
+  <text class="side-note" x="1950" y="1132" text-anchor="start">هر یک درست از آب درآمد یا نه</text>
+  <text class="loop" x="1950" y="1154" text-anchor="start">— حلقه اینجا بسته می‌شود</text>
+
+  <text class="side-row ltr" x="1950" y="1513" text-anchor="end">security_events</text>
+  <text class="side-note" x="1950" y="1531" text-anchor="start">رکوردِ تحلیل‌شده + گام‌های مهار</text>
+
+  <text class="side-row ltr" x="1950" y="1616" text-anchor="end">tier2_decisions</text>
+  <text class="side-note" x="1950" y="1634" text-anchor="start">با منشأ: llm · rules · human —</text>
+  <text class="side-note" x="1950" y="1650">ستونی که شکستِ خاموشِ مدل را</text>
+  <text class="side-note" x="1950" y="1666" text-anchor="start">اصلاً قابل تشخیص می‌کند</text>
+
+  <text class="side-row ltr" x="1950" y="1719" text-anchor="end">cases · case_events</text>
+  <text class="side-note" x="1950" y="1737" text-anchor="start">فقط‌افزودنی، هر مدخل مهرخوردهٔ</text>
+  <text class="side-note" x="1950" y="1753" text-anchor="start">human · system · sync</text>
+
+  <text class="side-row ltr" x="1950" y="1970" text-anchor="end">decision_corrections</text>
+  <text class="side-note" x="1950" y="1988" text-anchor="start">پیکرهٔ برچسب — آنچه انسان تغییر داد،</text>
+  <text class="side-note" x="1950" y="2004" text-anchor="start">و آنچه ماشین پیشنهاد کرده بود</text>
+
+  <text class="side-row ltr" x="1950" y="2176" text-anchor="end">alert_soar_actions</text>
+  <text class="side-note" x="1950" y="2194" text-anchor="start">رسیدها · ردهٔ ریسک · رأی سیاست ·</text>
+  <text class="side-note" x="1950" y="2210" text-anchor="start">کلید تکرارپذیری · تلاش‌ها</text>
+
+  <text class="side-row ltr" x="1950" y="2528" text-anchor="end">decision_outcomes</text>
+  <text class="side-note" x="1950" y="2546" text-anchor="start">منسوب به منبعِ تشخیص</text>
+
+  <line x1="1660" y1="2298" x2="1950" y2="2298" stroke="#475569" stroke-width="1.5"/>
+  <text class="side-note" x="1950" y="2322" text-anchor="start">نگه‌داشتِ داده تنها رونوشتِ اسنادی را</text>
+  <text class="side-note" x="1950" y="2338" text-anchor="start">حذف می‌کند که ابزار بالادست هنوز</text>
+  <text class="side-note" x="1950" y="2354" text-anchor="start">دارد. هرگز به تصمیم، اصلاح، نتیجه یا</text>
+  <text class="side-note" x="1950" y="2370" text-anchor="start">رسید دست نمی‌زند — آن‌ها تنها در یک</text>
+  <text class="side-note" x="1950" y="2386" text-anchor="start">جا هستند و هیچ ابزار بالادستی</text>
+  <text class="side-note" x="1950" y="2402" text-anchor="start">نمی‌تواند بازتولیدشان کند.</text>
+
+  <!-- store connectors: writes -->
+  <path d="M1620 432 L1662 432" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arwd)"/>
+  <path d="M1620 638 L1662 638" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arwd)"/>
+  <path d="M1620 760 L1662 760" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arwd)"/>
+  <path d="M1620 1519 L1662 1519" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arwd)"/>
+  <path d="M1620 1622 L1662 1622" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arwd)"/>
+  <path d="M1620 1725 L1662 1725" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arwd)"/>
+  <path d="M1620 1976 L1662 1976" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arwd)"/>
+  <path d="M1620 2182 L1662 2182" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arwd)"/>
+  <path d="M1620 2534 L1662 2534" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arwd)"/>
+
+  <!-- store connector: the read that closes the loop -->
+  <path d="M1662 1104 L1620 1104" stroke="#fbbf24" stroke-width="2.5" stroke-dasharray="6 4" marker-end="url(#arwl)"/>
+
+  <!-- ================= Left gutter — branches and external systems ================= -->
+
+  <!-- R1 401 -->
+  <rect x="30" y="280" width="484" height="52" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+  <rect x="508" y="280" width="6" height="52" rx="3" fill="#dc2626"/>
+  <text class="br-title" x="492" y="303" text-anchor="start">401 — احراز هویت نشده</text>
+  <text class="br-note" x="492" y="322" text-anchor="start">پیش از آنکه بدنه اصلاً تجزیه شود رد می‌شود.</text>
+
+  <!-- R2 422/400 -->
+  <rect x="30" y="384" width="484" height="70" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+  <rect x="508" y="384" width="6" height="70" rx="3" fill="#dc2626"/>
+  <text class="br-title" x="492" y="407" text-anchor="start">422 · 400 — محموله یک تشخیص نیست</text>
+  <text class="br-note" x="492" y="426" text-anchor="start">ناخوانا، یا کلید لازم را ندارد. محموله‌ای که نه قاعده دارد</text>
+  <text class="br-note" x="492" y="444" text-anchor="start">و نه موجودیت، رد می‌شود؛ دریافت نمی‌شود.</text>
+
+  <!-- R3 202 / 502 -->
+  <rect x="30" y="712" width="484" height="110" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+  <rect x="508" y="712" width="6" height="110" rx="3" fill="#f59e0b"/>
+  <text class="br-title" x="492" y="735" text-anchor="start">202 — ذخیره و همبسته شد، تصمیم در صف</text>
+  <text class="br-note" x="492" y="754" text-anchor="start">وقتی استقرار چنین خواسته، انباشت از خطِ بالا گذشته،</text>
+  <text class="br-note" x="492" y="772" text-anchor="start">یا همین وضعیت هم‌اکنون در حال تحلیل است.</text>
+  <text class="br-title" x="492" y="795" text-anchor="start">502 — مدل از دسترس خارج است</text>
+  <text class="br-note" x="492" y="814" text-anchor="start">تشخیص و وضعیت ذخیره‌اند و تکرار زمان‌بندی شده است.</text>
+
+  <!-- R4 external TI -->
+  <rect x="30" y="958" width="484" height="80" rx="8" fill="#ffffff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="7 5"/>
+  <text class="ext-title" x="492" y="983" text-anchor="start">بیرونی — اطلاعات تهدید</text>
+  <text class="ext-item" x="492" y="1004" text-anchor="start">‏MISP درون‌سازمانی · فایلِ نشانهٔ محلی · هیچ</text>
+  <text class="ext-note" x="492" y="1024" text-anchor="start">«هیچ» صادقانه است نه خالی: آنگاه چیزی «تأییدشده» خوانده نمی‌شود.</text>
+
+  <!-- R5 precedent note -->
+  <rect x="30" y="1064" width="484" height="80" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+  <rect x="508" y="1064" width="6" height="80" rx="3" fill="#f59e0b"/>
+  <text class="br-title" x="492" y="1087" text-anchor="start">پیکره از «تصمیم»هاست، نه «سند»ها</text>
+  <text class="br-note" x="492" y="1106" text-anchor="start">هویتِ موجودیت عمداً از تکنیک و شکل کم‌وزن‌تر است:</text>
+  <text class="br-note" x="492" y="1124" text-anchor="start">سابقه دربارهٔ شکلِ نفوذ است، نه دربارهٔ میزبانی که</text>
+  <text class="br-note" x="492" y="1138" text-anchor="start">دوباره قربانی شده است.</text>
+
+  <!-- R6 inference -->
+  <rect x="30" y="1262" width="484" height="80" rx="8" fill="#ffffff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="7 5"/>
+  <text class="ext-title" x="492" y="1287" text-anchor="start">استنتاجِ درون‌سازمانی</text>
+  <text class="ext-item" x="492" y="1308" text-anchor="start">کارسازِ مدلِ محلی. هرگز استنتاجِ ابری.</text>
+  <text class="ext-note" x="492" y="1328" text-anchor="start">اطمینانی که گزارش می‌کند کالیبره نیست — تنها برای نمایش و ترتیب.</text>
+
+  <!-- R7 silent failures -->
+  <rect x="30" y="1368" width="484" height="96" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+  <rect x="508" y="1368" width="6" height="96" rx="3" fill="#f59e0b"/>
+  <text class="br-title" x="492" y="1391" text-anchor="start">سه شکستی که شبیهِ موفقیت‌اند</text>
+  <text class="br-note" x="492" y="1410" text-anchor="start">· پاسخِ بریده‌ای که تجزیه‌گرِ بردبار «نجاتش» می‌دهد</text>
+  <text class="br-note" x="492" y="1428" text-anchor="start">· مدلِ اندیشنده‌ای که رشتهٔ خالی برمی‌گرداند</text>
+  <text class="br-note" x="492" y="1446" text-anchor="start">· پاکتِ پاسخ که انگار خودِ پاسخ است تجزیه شود</text>
+
+  <!-- R8 rules fallback -->
+  <rect x="30" y="1574" width="484" height="96" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+  <rect x="508" y="1574" width="6" height="96" rx="3" fill="#f59e0b"/>
+  <text class="br-title" x="492" y="1597" text-anchor="start">وقتی پیشنهاد به‌کار نمی‌آید</text>
+  <text class="br-note" x="492" y="1616" text-anchor="start">قاعدهٔ شدت به‌جای آن تصمیم می‌گیرد و سطر با</text>
+  <text class="br-note" x="492" y="1634" text-anchor="start">‏decision_source = rules مهر می‌خورد، تا بازبینیِ بعدی</text>
+  <text class="br-note" x="492" y="1652" text-anchor="start">هر تصمیمِ مدلِ تنزل‌یافته یا غایب را بیابد.</text>
+
+  <!-- R9 four gates -->
+  <rect x="30" y="1780" width="484" height="96" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+  <rect x="508" y="1780" width="6" height="96" rx="3" fill="#b45309"/>
+  <text class="br-title" x="492" y="1803" text-anchor="start">چهار دروازه</text>
+  <text class="br-note" x="492" y="1822" text-anchor="start">۱ · رأی خوداجراشدنی است   ۲ · اطمینان از کف می‌گذرد</text>
+  <text class="br-note" x="492" y="1840" text-anchor="start">۳ · همهٔ اقدام‌ها از سیاستِ ریسک می‌گذرند   ۴ · سابقه پشتیبان است</text>
+  <text class="br-note" x="492" y="1858" text-anchor="start">دروازه‌های ۳ و ۴ همان‌هایی‌اند که از شبکه محافظت می‌کنند.</text>
+
+  <!-- R10 edit refusals -->
+  <rect x="30" y="1928" width="484" height="96" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+  <rect x="508" y="1928" width="6" height="96" rx="3" fill="#dc2626"/>
+  <text class="br-title" x="492" y="1951" text-anchor="start">ویرایش می‌تواند رد شود</text>
+  <text class="br-note" x="492" y="1970" text-anchor="start">‏422 — طرحِ ویرایش‌شده اقدامی دارد که هرگز ارسال نمی‌شود؛</text>
+  <text class="br-note" x="492" y="1988" text-anchor="start">ذخیره‌اش طرحی را نشان می‌داد که خاموش مسدود می‌شود.</text>
+  <text class="br-note" x="492" y="2010" text-anchor="start">‏409 — پیش‌تر تأیید شده: سطر اکنون سندِ آن چیزی است که فرستاده شد.</text>
+
+  <!-- R11 external execution -->
+  <rect x="30" y="2134" width="484" height="96" rx="8" fill="#ffffff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="7 5"/>
+  <text class="ext-title" x="492" y="2159" text-anchor="start">بیرونی — اجرا</text>
+  <text class="ext-item" x="492" y="2180" text-anchor="start">‏SOAR · EDR · دیوارهٔ آتش · ارائه‌دهندهٔ هویت</text>
+  <text class="ext-note" x="492" y="2200" text-anchor="start">اقدامِ ردشده پیش از خروجِ بسته BLOCKED می‌شود و سطر، جایگاهش</text>
+  <text class="ext-note" x="492" y="2218" text-anchor="start">در طرح و دلیلِ رد را نگه می‌دارد.</text>
+
+  <!-- R12 dry run -->
+  <rect x="30" y="2256" width="484" height="78" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+  <rect x="508" y="2256" width="6" height="78" rx="3" fill="#f59e0b"/>
+  <text class="br-title" x="492" y="2279" text-anchor="start">اجرای آزمایشی SIMULATED است، هرگز DONE</text>
+  <text class="br-note" x="492" y="2298" text-anchor="start">چیزی فرستاده نشد، هشدار مهار نشده و تصمیم هرگز</text>
+  <text class="br-note" x="492" y="2316" text-anchor="start">‏DONE نمی‌خواند. هر استقرار را از همین‌جا آغاز کنید.</text>
+
+  <!-- R13 external system of record -->
+  <rect x="30" y="2402" width="484" height="66" rx="8" fill="#ffffff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="7 5"/>
+  <text class="ext-title" x="492" y="2427" text-anchor="start">بیرونی — سامانهٔ مرجع</text>
+  <text class="ext-item" x="492" y="2448" text-anchor="start">‏TheHive · Jira · ServiceNow · یک پوشهٔ تبادل</text>
+
+  <!-- gutter connectors -->
+  <path d="M532 306 L518 306" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arwd)"/>
+  <path d="M532 419 L518 419" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arwd)"/>
+  <path d="M532 767 L518 767" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arwd)"/>
+  <path d="M532 998 L518 998" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arwd)"/>
+  <path d="M532 1302 L518 1302" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arwd)"/>
+  <path d="M532 1820 L518 1820" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arwd)"/>
+  <path d="M532 2182 L518 2182" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
+  <path d="M532 2435 L518 2435" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arwd)"/>
+
+  <!-- ================= Legend ================= -->
+  <rect x="536" y="2606" width="1080" height="52" rx="9" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+  <text class="legend" x="1594" y="2638" text-anchor="start">راهنما:</text>
+  <rect x="1514" y="2626" width="16" height="16" rx="4" fill="#0f766e"/>
+  <text class="legend" x="1500" y="2638" text-anchor="start">مسیر اصلی</text>
+  <rect x="1400" y="2626" width="16" height="16" rx="4" fill="#ffffff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="4 3"/>
+  <text class="legend" x="1386" y="2638" text-anchor="start">ابزار بیرونی — خارج از دامنه</text>
+  <rect x="1206" y="2626" width="6" height="16" rx="3" fill="#dc2626"/>
+  <text class="legend" x="1194" y="2638" text-anchor="start">ردشده</text>
+  <rect x="1128" y="2626" width="6" height="16" rx="3" fill="#f59e0b"/>
+  <text class="legend" x="1116" y="2638" text-anchor="start">نگه‌داشته، تنزل‌یافته یا به‌تعویق‌افتاده — هرگز گم‌نشده</text>
+  <text class="legend" x="800" y="2638" text-anchor="start">خط‌چین = وابستگی بیرونی یا دسترسی به انباره</text>
+
+  <!-- ================= Footer ================= -->
+  <text class="foot" x="1000" y="2690" text-anchor="middle">نویسنده: J.Ekrami · هم‌نویسنده: Claude (Opus 5) · © J.Ekrami-Labs · تابستان ۱۴۰۵ · برابر با AO-SOC نسخهٔ ۲.۷.۱</text>
+</svg>
