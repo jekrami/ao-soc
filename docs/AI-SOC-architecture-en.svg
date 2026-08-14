@@ -29,7 +29,7 @@
   <!-- ================= Title ================= -->
   <text class="t1" x="830" y="52" text-anchor="middle">AI-SOC SOFTWARE ARCHITECTURE</text>
   <text class="t2" x="830" y="82" text-anchor="middle">AI-Powered Security Operations Center — the Decision Layer</text>
-  <text class="t3" x="830" y="106" text-anchor="middle">Version 2.6.1 — Summer 2026</text>
+  <text class="t3" x="830" y="106" text-anchor="middle">Version 2.6.2 — Summer 2026</text>
 
   <!-- ================= External: detection sources (left) ================= -->
   <rect x="30" y="160" width="290" height="292" rx="10" fill="#ffffff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="7 5"/>
@@ -123,7 +123,7 @@
   <circle cx="1248" cy="534" r="7" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"/>
   <text class="box-title" x="916" y="539" text-anchor="middle">4. AI SOC Analyst (Tier 2)</text>
   <text class="box-sub" x="916" y="563" text-anchor="middle">Verdict: CONTAIN · ESCALATE · INVESTIGATE · MONITOR · IGNORE</text>
-  <text class="box-sub" x="916" y="583" text-anchor="middle">confidence · rationale · risk of the action itself · bundled action plan</text>
+  <text class="box-sub" x="916" y="583" text-anchor="middle">confidence · rationale · risk of the action itself · bundled plan — precedent, not confidence, grants autonomy</text>
 
   <!-- L5 human -->
   <rect x="560" y="614" width="712" height="76" rx="9" fill="#b45309"/>
@@ -210,5 +210,5 @@
   <text class="legend" x="1010" y="946">dashed line = external dependency</text>
 
   <!-- ================= Footer ================= -->
-  <text class="foot" x="830" y="994" text-anchor="middle">Written by J.Ekrami · Co-written with Claude (Opus 5) · © J.Ekrami-Labs · Summer 2026 · matches plan v2.6.1</text>
+  <text class="foot" x="830" y="994" text-anchor="middle">Written by J.Ekrami · Co-written with Claude (Opus 5) · © J.Ekrami-Labs · Summer 2026 · matches plan v2.6.2</text>
 </svg>

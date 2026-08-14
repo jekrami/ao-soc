@@ -30,7 +30,7 @@
   <!-- ================= Title ================= -->
   <text class="t1" x="830" y="52" text-anchor="middle">معماری نرم‌افزاری AI-SOC</text>
   <text class="t2" x="830" y="82" text-anchor="middle">مرکز عملیات امنیت مبتنی بر هوش مصنوعی — «لایهٔ تصمیم»</text>
-  <text class="t3" x="830" y="106" text-anchor="middle">نسخهٔ ۲.۶.۱ — تابستان ۱۴۰۵</text>
+  <text class="t3" x="830" y="106" text-anchor="middle">نسخهٔ ۲.۶.۲ — تابستان ۱۴۰۵</text>
 
   <!-- ================= External: detection sources (right) ================= -->
   <rect x="1330" y="160" width="290" height="292" rx="10" fill="#ffffff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="7 5"/>
@@ -123,7 +123,7 @@
   <circle cx="372" cy="534" r="7" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"/>
   <text class="box-title" x="704" y="539" text-anchor="middle">۴. تحلیلگر ارشد هوش مصنوعی (تیر ۲)</text>
   <text class="box-sub" x="704" y="563" text-anchor="middle">رأی: مهار · تشدید · بررسی · پایش · نادیده‌گرفتن</text>
-  <text class="box-sub" x="704" y="583" text-anchor="middle">درجهٔ اطمینان · دلیل · ریسکِ خودِ اقدام · طرح اقدام بسته‌بندی‌شده</text>
+  <text class="box-sub" x="704" y="583" text-anchor="middle">درجهٔ اطمینان · دلیل · ریسکِ خودِ اقدام · طرح اقدام بسته‌بندی‌شده — خودگردانی را سابقه می‌گشاید، نه عددِ اطمینان</text>
 
   <!-- L5 human -->
   <rect x="348" y="614" width="712" height="76" rx="9" fill="#b45309"/>
@@ -210,5 +210,5 @@
   <text class="legend" x="560" y="946" text-anchor="start">خط‌چین = وابستگی بیرونی</text>
 
   <!-- ================= Footer ================= -->
-  <text class="foot" x="830" y="994" text-anchor="middle">نویسنده: J.Ekrami · هم‌نویسنده: Claude (Opus 5) · © J.Ekrami-Labs · تابستان ۱۴۰۵ · برابر با طرح نسخهٔ ۲.۶.۱</text>
+  <text class="foot" x="830" y="994" text-anchor="middle">نویسنده: J.Ekrami · هم‌نویسنده: Claude (Opus 5) · © J.Ekrami-Labs · تابستان ۱۴۰۵ · برابر با طرح نسخهٔ ۲.۶.۲</text>
 </svg>
