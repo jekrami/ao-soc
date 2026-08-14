@@ -19,14 +19,31 @@ Detection Intake contract is wrong and must be fixed rather than worked around
 """
 from detection import register_adapter
 
+from adapters.cef import CefAdapter
+from adapters.crowdstrike import CrowdStrikeAdapter
+from adapters.elastic import ElasticAdapter
 from adapters.native import NativeIntakeAdapter
+from adapters.sentinel import SentinelAdapter
 from adapters.splunk import SplunkAdapter
 from adapters.wazuh import WazuhAdapter
 
 #: Registration order is auto-detection order in reverse: the last registered
-#: is tried first. The native contract adapter goes last so it is consulted
-#: first — a payload that already speaks the contract needs no sniffing.
-BUILTIN_ADAPTERS = (SplunkAdapter(), WazuhAdapter(), NativeIntakeAdapter())
+#: is tried first.
+#:
+#: `splunk` is registered first — that is, sniffed **last** — deliberately. Its
+#: payload is the loosest shape here (a bare search result can be almost
+#: anything), so it must not claim a document a more specific adapter would
+#: have parsed properly. The native contract adapter goes last so it is
+#: consulted first: a payload that already speaks the contract needs no sniffing.
+BUILTIN_ADAPTERS = (
+    SplunkAdapter(),
+    CefAdapter(),
+    ElasticAdapter(),
+    SentinelAdapter(),
+    CrowdStrikeAdapter(),
+    WazuhAdapter(),
+    NativeIntakeAdapter(),
+)
 
 
 def register_builtins() -> None:
@@ -37,4 +54,8 @@ def register_builtins() -> None:
 
 register_builtins()
 
-__all__ = ['BUILTIN_ADAPTERS', 'NativeIntakeAdapter', 'SplunkAdapter', 'WazuhAdapter', 'register_builtins']
+__all__ = [
+    'BUILTIN_ADAPTERS', 'CefAdapter', 'CrowdStrikeAdapter', 'ElasticAdapter',
+    'NativeIntakeAdapter', 'SentinelAdapter', 'SplunkAdapter', 'WazuhAdapter',
+    'register_builtins',
+]

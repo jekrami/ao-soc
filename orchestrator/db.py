@@ -186,7 +186,11 @@ situations = Table(
     # the identity the dashboard and every Phase-A route already speak.
     Column('alert_id', String(64), nullable=True, index=True),
     Column('title', String(255), nullable=False, default=''),
+    # OPEN · CLOSED · MERGED. A merged situation keeps every row it ever had
+    # (Rule 4 — mark, don't drop); `merged_into` is where its detections went.
     Column('status', String(16), nullable=False, default='OPEN', index=True),
+    Column('merged_into', String(64), nullable=True, index=True),
+    Column('merged_at', DateTime, nullable=True),
     Column('first_seen', DateTime, nullable=False),
     Column('last_seen', DateTime, nullable=False),
     Column('detection_count', Integer, nullable=False, default=0),
@@ -198,6 +202,34 @@ situations = Table(
     Column('risk_factors_json', String, nullable=True),
     Column('created_at', DateTime, nullable=False),
     Column('updated_at', DateTime, nullable=False),
+)
+
+# C2. The reliable decision path. Ingest stores the detection and correlates it
+# synchronously — that part must never be lost — and then enqueues the *analysis*,
+# which is the slow, failable half because it calls a model. A row here is the
+# record that a situation still owes somebody a decision.
+#
+# There is no separate dead-letter table: a job that exhausts its attempts stays
+# on this one as FAILED with its last error. A DLQ nobody queries is a way of
+# forgetting things quietly, and this is the table the queue endpoint already
+# reads.
+analysis_jobs = Table(
+    'analysis_jobs',
+    metadata,
+    Column('id', Integer, primary_key=True, autoincrement=True),
+    Column('situation_id', String(64), nullable=False, index=True),
+    # What put it here — 'intake' or 'retry'. Provenance again: a queue full of
+    # retries is a different problem from a queue full of arrivals.
+    Column('trigger', String(16), nullable=False, default='intake'),
+    Column('status', String(16), nullable=False, default='PENDING', index=True),
+    Column('attempts', Integer, nullable=False, default=0),
+    Column('max_attempts', Integer, nullable=False, default=3),
+    Column('last_error', String, nullable=True),
+    Column('next_attempt_at', DateTime, nullable=False, index=True),
+    Column('created_at', DateTime, nullable=False),
+    Column('updated_at', DateTime, nullable=False),
+    Column('started_at', DateTime, nullable=True),
+    Column('finished_at', DateTime, nullable=True),
 )
 
 # B5. Health and trust of the tools feeding the decision layer. Trust weight is
@@ -274,6 +306,18 @@ async def init_db() -> None:
         await conn.run_sync(_migrate_security_events)
         await conn.run_sync(_migrate_tier2_decisions)
         await conn.run_sync(_migrate_alert_soar_actions)
+        await conn.run_sync(_migrate_situations)
+
+
+def _migrate_situations(conn) -> None:
+    """Pre-2.5 situations were never merged; NULL says exactly that."""
+    cols = {row[1] for row in conn.execute(text('PRAGMA table_info(situations)')).fetchall()}
+    if not cols:
+        return
+    if 'merged_into' not in cols:
+        conn.execute(text('ALTER TABLE situations ADD COLUMN merged_into TEXT'))
+    if 'merged_at' not in cols:
+        conn.execute(text('ALTER TABLE situations ADD COLUMN merged_at DATETIME'))
 
 
 def _migrate_security_events(conn) -> None:

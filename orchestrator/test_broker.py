@@ -16,6 +16,10 @@ os.environ['TIER2_AUTOPILOT'] = '1'
 os.environ['TIER2_AUTOPILOT_MIN_CONFIDENCE'] = '90'
 os.environ['SOAR_LOG_FILE'] = 'test_soar_actions.jsonl'
 os.environ['SOAR_STEP_DELAY'] = '0'
+# C2: a short retry budget and no real backoff, so the dead-letter path
+# is reachable in a test rather than only after fifteen minutes.
+os.environ['ANALYSIS_MAX_ATTEMPTS'] = '2'
+os.environ['ANALYSIS_RETRY_BASE_SECONDS'] = '1'
 # Read at import by auth, so it must be set before soc_orchestrator loads.
 os.environ['BROKER_API_KEYS'] = (
     'test-ui:service:service-secret,'
@@ -23,7 +27,12 @@ os.environ['BROKER_API_KEYS'] = (
     'test-desk:viewer:viewer-secret'
 )
 
+import sqlalchemy
+from datetime import datetime, timedelta, timezone
+
+import analysis_queue
 import db
+import decision_store
 import soc_orchestrator as broker
 import llm
 import llm_provider
@@ -154,7 +163,9 @@ def check_detection_contract() -> None:
     wazuh_payload = {'rule': {'level': 10, 'id': '5710', 'description': 'x'},
                      'agent': {'name': 'H1', 'ip': '10.9.4.7'}}
     assert parse_detection(wazuh_payload).adapter == 'wazuh'
-    assert {a.name for a in list_adapters()} == {'splunk', 'wazuh', 'native'}
+    assert {a.name for a in list_adapters()} == {
+        'splunk', 'wazuh', 'native', 'elastic', 'sentinel', 'crowdstrike', 'cef',
+    }
 
     # The native path is the contract itself, and it refuses fields the
     # contract does not define rather than dropping them silently.
@@ -436,6 +447,330 @@ async def check_phase_b_dod(client, ingest: dict, viewer: dict) -> None:
         set_provider(ScriptedProvider(lambda _prompt: MOCK_LLM_RESPONSE))
 
 
+def check_phase_c_adapters() -> None:
+    """C1: four more vendor shapes, all read only inside adapters/."""
+    # Elastic ships both nested ECS and the flattened dotted form, depending on
+    # whether it came from the alerts index, a connector or Logstash.
+    nested = parse_detection({
+        '@timestamp': '2026-08-14T09:00:00.000Z',
+        'kibana': {'alert': {'severity': 'high', 'rule': {
+            'name': 'Suspicious PowerShell', 'uuid': 'r-1',
+            'threat': {'technique': {'id': ['T1059.001']}}}}},
+        'host': {'hostname': 'HR-WIN-11', 'ip': '10.9.4.7'},
+        'user': {'name': 'mmalek'}, 'source': {'ip': '203.0.113.44'},
+    })
+    assert nested.adapter == 'elastic' and nested.severity == 'HIGH'
+    assert nested.vendor_techniques == ('T1059.001',)
+    assert nested.entities.host == 'HR-WIN-11' and nested.entities.host_ip == '10.9.4.7'
+    flat = parse_detection({
+        '@timestamp': '2026-08-14T09:00:00Z', 'ecs.version': '1.12',
+        'signal.rule.name': 'Old stack rule', 'signal.rule.severity': 'critical',
+        'source.ip': '1.2.3.4',
+    })
+    assert flat.adapter == 'elastic' and flat.severity == 'CRITICAL'
+
+    # Sentinel describes entities as a typed list, not named fields. A bare Ip
+    # entity carries no direction, so it must not be written as a flow end.
+    sentinel = parse_detection({'object': {'properties': {
+        'title': 'Multi-stage incident', 'incidentNumber': 4412, 'severity': 'High',
+        'createdTimeUtc': '2026-08-14T09:05:00Z',
+        'relatedEntities': [
+            {'kind': 'Ip', 'properties': {'address': '10.9.4.7'}},
+            {'kind': 'Account', 'properties': {'accountName': 'mmalek'}},
+            {'kind': 'Host', 'properties': {'hostName': 'HR-WIN-11'}},
+        ]}}})
+    assert sentinel.adapter == 'sentinel'
+    assert sentinel.entities.host_ip == '10.9.4.7'
+    assert not sentinel.entities.src_ip and not sentinel.entities.dst_ip
+
+    # CrowdStrike's 1-5 scale disagrees with the generic normaliser, which would
+    # read a bare 4 on its 0-15 branch and call it MEDIUM. For Falcon it is High.
+    for level, expected in ((1, 'LOW'), (3, 'MEDIUM'), (4, 'HIGH'), (5, 'CRITICAL')):
+        falcon = parse_detection({
+            'metadata': {'eventType': 'DetectionSummaryEvent'},
+            'event': {'DetectName': 'Credential Dumping', 'Severity': level,
+                      'TechniqueId': 'T1003.001', 'ComputerName': 'HR-WIN-11'},
+        })
+        assert falcon.adapter == 'crowdstrike', falcon.adapter
+        assert falcon.severity == expected, (level, falcon.severity)
+    named = parse_detection({'metadata': {'eventType': 'DetectionSummaryEvent'},
+                             'event': {'DetectName': 'x', 'Severity': 2,
+                                       'SeverityName': 'Critical', 'ComputerName': 'H1'}})
+    assert named.severity == 'CRITICAL', 'SeverityName is authoritative where it is sent'
+
+    # CEF is the long tail, and its two traps are escaped pipes in the header
+    # and multi-word extension values.
+    cef = parse_detection({'cef': (
+        'CEF:0|Palo Alto|PAN-OS|10.2|1234|Threat \\| blocked|8|'
+        'rt=1786000000000 src=10.9.4.7 dst=198.51.100.9 suser=mmalek '
+        'msg=egress to low reputation host cs1Label=Technique cs1=T1071.001'
+    )})
+    assert cef.adapter == 'cef'
+    assert cef.rule_name == 'Threat | blocked', cef.rule_name
+    assert cef.message == 'egress to low reputation host', cef.message
+    assert cef.source_tool == 'palo-alto-pan-os', cef.source_tool
+    # 8 on CEF's 0-10 scale is HIGH; unscaled it would read as LOW.
+    assert cef.severity == 'HIGH', cef.severity
+    assert cef.vendor_techniques == ('T1071.001',)
+    assert (cef.entities.src_ip, cef.entities.dst_ip) == ('10.9.4.7', '198.51.100.9')
+    # An unlabelled custom string is not a technique — it must not be guessed at.
+    plain = parse_detection({'cef': 'CEF:0|V|P|1|9|Name|3|src=10.0.0.1 cs1=whatever'})
+    assert plain.vendor_techniques == ()
+
+
+def check_evidence_pointers() -> None:
+    """C4: a pointer back to the tool, derived from the frozen contract."""
+    decision_store.SOURCE_LINK_TEMPLATES.clear()
+    decision_store.SOURCE_LINK_TEMPLATES.update({
+        'wazuh': 'https://wazuh.corp/hunt?rule={rule_id}&t={epoch}',
+        'splunk': 'https://splunk.corp/search?sid={rule_id}',
+    })
+
+    when = '2026-08-14T09:00:00'
+    epoch = int(datetime.fromisoformat(when).replace(tzinfo=timezone.utc).timestamp())
+    linked = decision_store.evidence_pointer({
+        'detection_id': 'DET-1', 'source_tool': 'wazuh', 'rule_id': '92100',
+        'rule_name': 'Priv esc', 'detected_at': when,
+    })
+    # The timestamp is treated as UTC, matching every other stamp in the store.
+    assert linked['url'] == f'https://wazuh.corp/hunt?rule=92100&t={epoch}', linked['url']
+
+    # A template whose field this detection never carried would render
+    # '?sid=' — a link that looks right and goes nowhere. No link instead.
+    unlinked = decision_store.evidence_pointer({
+        'detection_id': 'DET-2', 'source_tool': 'splunk', 'rule_id': '',
+        'rule_name': 'Search with no id', 'detected_at': '2026-08-14T09:00:00',
+    })
+    assert unlinked['url'] is None
+    assert 'rule_id' in unlinked['link_unavailable']
+
+    # A source with no template still gets a pointer — the tool and rule an
+    # analyst types into their own console.
+    bare = decision_store.evidence_pointer({
+        'detection_id': 'DET-3', 'source_tool': 'edge-firewall', 'rule_id': 'R9',
+        'rule_name': 'Egress', 'detected_at': '2026-08-14T09:00:00',
+    })
+    assert bare['url'] is None and bare['rule_id'] == 'R9'
+    decision_store.SOURCE_LINK_TEMPLATES.clear()
+
+
+async def check_phase_c_dod(client, ingest: dict, viewer: dict, analyst: dict) -> None:
+    """Plan §8, Phase C Definition of Done — reliability, merging, search.
+
+    > a detection whose analysis fails is retried and, if it keeps failing, is
+    > visible and re-runnable rather than lost; two situations that turn out to
+    > be one are merged without destroying either record; and an analyst can
+    > find a past decision by entity, source, verdict or outcome.
+    """
+    # --- C2: the model goes down mid-shift ------------------------------
+    outage = {'down': True}
+
+    def flaky(_prompt: str) -> str:
+        if outage['down']:
+            raise RuntimeError('Ollama is down')
+        return DOD_LLM_RESPONSE
+
+    set_provider(ScriptedProvider(flaky))
+    try:
+        failed = await client.post('/detections', headers=ingest, json={
+            'source_tool': 'edge-firewall', 'rule_name': 'Egress during the outage',
+            'severity': 'HIGH', 'entities': {'src_ip': '10.77.0.5', 'dst_ip': '198.51.100.77'},
+        })
+        assert failed.status_code == 502, failed.status_code
+
+        # The detection survived the outage. That is the property that matters:
+        # correlation happens before the model is called, so an inference
+        # failure costs the analysis and never the evidence.
+        stored = (await client.get('/api/search/situations?entity=10.77.0.5', headers=viewer)).json()
+        assert stored['total'] == 1, stored
+        situation_id = stored['items'][0]['situation_id']
+        assert stored['items'][0]['alert_id'] is None, 'no decision was reached, and none is claimed'
+
+        queue = (await client.get('/api/queue', headers=viewer)).json()
+        job = next(j for j in queue['items'] if j['situation_id'] == situation_id)
+        assert job['status'] == 'PENDING' and job['attempts'] == 1
+        assert 'Ollama is down' in job['last_error']
+        assert queue['stats']['pending'] >= 1
+
+        # A second detection must not create a second job for one situation —
+        # that would mean two analyses racing to overwrite each other.
+        await client.post('/detections', headers=ingest, json={
+            'source_tool': 'edge-firewall', 'rule_name': 'Egress again',
+            'severity': 'HIGH', 'entities': {'src_ip': '10.77.0.5'},
+        })
+        after = (await client.get('/api/queue', headers=viewer)).json()
+        assert len([j for j in after['items'] if j['situation_id'] == situation_id]) == 1
+
+        # Drain it the way a worker does. Still failing, so the attempts run out
+        # and it dead-letters — visibly, on the queue an operator already reads.
+        # The sleep is the real backoff: a job is deliberately not claimable
+        # again until its retry is due, and skipping that would test a queue
+        # this one is not.
+        for _ in range(analysis_queue.ANALYSIS_MAX_ATTEMPTS):
+            await asyncio.sleep(analysis_queue.ANALYSIS_RETRY_BASE_SECONDS + 0.2)
+            claimed = await analysis_queue._claim_next()
+            if claimed is None:
+                break
+            try:
+                await analysis_queue.run_job(claimed, broker.run_analysis)
+            except Exception:
+                pass
+        dead = (await client.get('/api/queue?status=FAILED', headers=viewer)).json()
+        assert dead['count'] >= 1, 'an exhausted analysis must be visible, not silently gone'
+        dead_job = next(j for j in dead['items'] if j['situation_id'] == situation_id)
+
+        # Fix the cause, put it back on the queue, and the decision arrives.
+        outage['down'] = False
+        requeued = await client.post(f'/api/queue/{dead_job["id"]}/retry', headers=analyst)
+        assert requeued.status_code == 202
+        assert requeued.json()['status'] == 'PENDING' and requeued.json()['attempts'] == 0
+        assert (await client.post(f'/api/queue/{dead_job["id"]}/retry', headers=viewer)).status_code == 403
+
+        claimed = await analysis_queue._claim_next()
+        await analysis_queue.run_job(claimed, broker.run_analysis)
+        recovered = await situations.get_situation(situation_id)
+        assert recovered.alert_id, 'the retried analysis must produce the decision that was owed'
+
+        # Back-pressure sheds latency, not data: the detection is stored and
+        # correlated, and only the answer is deferred.
+        await analysis_queue.enqueue('SIT-SYNTHETIC-BACKLOG')
+        original_high_water = analysis_queue.ANALYSIS_QUEUE_HIGH_WATER
+        analysis_queue.ANALYSIS_QUEUE_HIGH_WATER = 0
+        try:
+            shed = await client.post('/detections', headers=ingest, json={
+                'source_tool': 'edge-firewall', 'rule_name': 'Arrived during a backlog',
+                'severity': 'HIGH', 'entities': {'src_ip': '10.77.9.9'},
+            })
+            assert shed.status_code == 202, shed.status_code
+            body = shed.json()
+            assert body['analysis']['mode'] == 'queued'
+            assert 'high water' in body['analysis']['reason']
+            assert body['detection_id'] and body['situation']['detection_count'] == 1
+        finally:
+            analysis_queue.ANALYSIS_QUEUE_HIGH_WATER = original_high_water
+
+        # --- C3: two situations that turn out to be one ------------------
+        set_provider(ScriptedProvider(lambda _p: DOD_LLM_RESPONSE))
+        left = await client.post('/detections', headers=ingest, json={
+            'source_tool': 'sentinel', 'rule_name': 'Impossible travel',
+            'severity': 'HIGH', 'entities': {'user': 'rkhosravi'},
+        })
+        right = await client.post('/detections', headers=ingest, json={
+            'source_tool': 'crowdstrike', 'rule_name': 'Credential dumping',
+            'severity': 'HIGH', 'entities': {'host': 'FIN-WIN-22'},
+        })
+        left_sit = left.json()['situation']['situation_id']
+        right_sit = right.json()['situation']['situation_id']
+        assert left_sit != right_sit, 'they share nothing yet'
+        assert left.json()['id'] != right.json()['id'], 'two decisions, for now'
+
+        # The detection that names both is the evidence they were always one.
+        bridge = await client.post('/detections', headers=ingest, json={
+            'source_tool': 'edge-firewall', 'rule_name': 'Egress after the dump',
+            'severity': 'HIGH',
+            'entities': {'user': 'rkhosravi', 'host': 'FIN-WIN-22', 'dst_ip': '198.51.100.5'},
+        })
+        correlation = bridge.json()['correlation']
+        assert len(correlation['merged']) == 1, correlation
+        winner_id = correlation['situation_id']
+        loser_id = correlation['merged'][0]
+        assert {winner_id, loser_id} == {left_sit, right_sit}
+        assert bridge.json()['situation']['detection_count'] == 3
+        assert bridge.json()['id'] == (left if winner_id == left_sit else right).json()['id']
+
+        # Nothing was destroyed (Rule 4): the absorbed situation keeps its row,
+        # its analysed record and its decision, marked for what happened.
+        absorbed = (await client.get(f'/api/situations/{loser_id}', headers=viewer)).json()
+        assert absorbed['status'] == 'MERGED' and absorbed['merged_into'] == winner_id
+        loser_alert = (left if loser_id == left_sit else right).json()['id']
+        loser_decision = (
+            await client.get(f'/api/alerts/{loser_alert}/decision', headers=viewer)
+        ).json()
+        assert loser_decision['approval_status'] == 'SUPERSEDED'
+        assert winner_id in loser_decision['rejection_note']
+        assert (await client.get(f'/api/alerts/{loser_alert}', headers=viewer)).status_code == 200
+
+        # ...and a superseded plan cannot be dispatched. This used to be
+        # reachable: the approval gate listed the states that block it, so a
+        # state added later was approvable by omission.
+        blocked = await client.post(
+            f'/api/alerts/{loser_alert}/decision/approve', headers=analyst, json={}
+        )
+        assert blocked.json()['approval_status'] == 'SUPERSEDED', blocked.json()
+
+        # A situation somebody already settled is named, never merged.
+        await client.post(f'/api/alerts/{bridge.json()["id"]}/decision/reject',
+                          headers=analyst, json={'note': 'authorised migration'})
+        late = await client.post('/detections', headers=ingest, json={
+            'source_tool': 'edge-firewall', 'rule_name': 'Egress once more',
+            'severity': 'HIGH', 'entities': {'user': 'rkhosravi'},
+        })
+        late_correlation = late.json()['correlation']
+        assert late_correlation['situation_created'], 'a settled situation must not absorb'
+        assert late_correlation['merged'] == []
+        assert winner_id in late_correlation['related_settled'], late_correlation
+
+        # --- C4: find it again -------------------------------------------
+        by_entity = (await client.get('/api/search/situations?entity=rkhosravi', headers=viewer)).json()
+        assert by_entity['total'] >= 2, by_entity['total']
+        by_host = (await client.get('/api/search/situations?entity=FIN-WIN-22', headers=viewer)).json()
+        assert any(i['situation_id'] == winner_id for i in by_host['items'])
+        merged_only = (await client.get('/api/search/situations?status=MERGED', headers=viewer)).json()
+        assert merged_only['total'] == 1
+
+        page = (await client.get('/api/search/situations?limit=1', headers=viewer)).json()
+        assert page['count'] == 1 and page['has_more'] and page['total'] > 1
+
+        rejected = (await client.get('/api/search/decisions?status=REJECTED', headers=viewer)).json()
+        assert any(d['alert_id'] == bridge.json()['id'] for d in rejected['items'])
+        superseded = (await client.get('/api/search/decisions?status=SUPERSEDED', headers=viewer)).json()
+        assert superseded['total'] == 1
+        # The reviewable question is not "which were CONTAIN" but "which did a
+        # human change" — so the correction table is joined in.
+        edited = (await client.get('/api/search/decisions?corrected=true', headers=viewer)).json()
+        assert all(d['corrected'] for d in edited['items'])
+
+        # --- C4: retention drops the copy, keeps the judgement ------------
+        off = await decision_store.prune_raw_payloads(0)
+        assert off['pruned'] == 0 and 'Retention is off' in off['note']
+
+        async with db.async_session() as session:
+            await session.execute(
+                sqlalchemy.update(db.detections).values(
+                    received_at=datetime.now() - timedelta(days=40)
+                )
+            )
+            await session.commit()
+
+        preview = await decision_store.prune_raw_payloads(30, dry_run=True)
+        assert preview['pruned'] > 0 and preview['dry_run']
+        async with db.async_session() as session:
+            still_there = (
+                await session.execute(sqlalchemy.select(db.detections.c.raw_payload).limit(1))
+            ).scalar_one()
+        assert 'retention' not in still_there, 'a dry run must not write'
+
+        pruned = await decision_store.prune_raw_payloads(30, dry_run=False)
+        assert pruned['pruned'] == preview['pruned']
+        async with db.async_session() as session:
+            marker = (
+                await session.execute(sqlalchemy.select(db.detections.c.raw_payload).limit(1))
+            ).scalar_one()
+        # A marker, not NULL: "we dropped this" and "we never had it" are
+        # different facts and an evidence trail has to keep them apart.
+        assert 'retention' in marker, marker
+
+        # Everything that constitutes a judgement survives, because it is not a
+        # copy of anybody's logs — it is the corpus the autonomy ramp reads.
+        assert (await client.get('/api/corrections', headers=viewer)).json()['count'] >= 1
+        assert (await client.get('/api/decisions', headers=viewer)).json()['count'] >= 1
+        assert (await client.get(f'/api/situations/{winner_id}', headers=viewer)).status_code == 200
+        assert (await decision_store.prune_raw_payloads(30, dry_run=False))['pruned'] == 0, \
+            'pruning twice must be a no-op'
+    finally:
+        set_provider(ScriptedProvider(lambda _prompt: MOCK_LLM_RESPONSE))
+
+
 def check_adapter_boundary() -> None:
     """Rule 9 / B6: only adapters know a vendor's field names.
 
@@ -551,7 +886,9 @@ async def run_test() -> None:
     check_endpoint_resolution()
     check_action_policy()
     check_detection_contract()
+    check_phase_c_adapters()
     check_risk_scoring()
+    check_evidence_pointers()
     check_adapter_boundary()
     await check_empty_response_raises()
     await check_provider_abstraction()
@@ -563,6 +900,12 @@ async def run_test() -> None:
     async with httpx.AsyncClient(transport=transport, base_url='http://test') as client:
         await check_phase_b_dod(
             client, ingest={'X-API-Key': 'service-secret'}, viewer={'X-API-Key': 'viewer-secret'}
+        )
+        await check_phase_c_dod(
+            client,
+            ingest={'X-API-Key': 'service-secret'},
+            viewer={'X-API-Key': 'viewer-secret'},
+            analyst={'X-API-Key': 'service-secret'},
         )
 
     splunk_payload = {
@@ -787,8 +1130,10 @@ async def run_test() -> None:
     os.remove('test_soc_matrix.db')
     os.remove('test_soar_actions.jsonl')
     print(
-        'PASS: Detection Intake contract, cross-tool correlation into one situation, '
-        'situation-driven Tier-2 decision, autopilot policy and SOAR delivery all verified.'
+        'PASS: Detection Intake contract (7 adapters), cross-tool correlation and merging '
+        'into one situation, situation-driven Tier-2 decision, retry/dead-letter/back-pressure '
+        'on the analysis queue, decision search and retention, autopilot policy and SOAR '
+        'delivery all verified.'
     )
 
 

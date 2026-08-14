@@ -5,6 +5,7 @@ import { Card, CardHeader, CardTitle, CardSubtitle, CardBody } from '@/component
 import { SeverityChip, StatusPill } from '@/components/ui/chip';
 import { RecommendedActions } from '@/components/dashboard/RecommendedActions';
 import { AiExplanation } from '@/components/dashboard/AiExplanation';
+import { SituationPanel } from '@/components/dashboard/SituationPanel';
 import { useAoSoc } from '@/store/useAoSoc';
 import { api } from '@/lib/api';
 import type { Incident } from '@/types';
@@ -78,7 +79,7 @@ export const IncidentDetailsPage: React.FC = () => {
                         <Clock className="h-3 w-3" /> {s.time}
                       </span>
                       <span className="text-sm font-medium text-fg">{s.label}</span>
-                      <span className="kbd">{s.mitre}</span>
+                      {s.mitre && <span className="kbd">{s.mitre}</span>}
                     </div>
                     <div className="text-sm text-muted mt-0.5">{s.detail}</div>
                   </li>
@@ -87,6 +88,7 @@ export const IncidentDetailsPage: React.FC = () => {
             </CardBody>
           </Card>
 
+          <SituationPanel />
           <AiExplanation />
         </div>
 

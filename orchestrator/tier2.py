@@ -33,6 +33,10 @@ logger = logging.getLogger(__name__)
 DECISION_TYPES = frozenset({'IGNORE', 'MONITOR', 'INVESTIGATE', 'CONTAIN', 'ESCALATE'})
 APPROVAL_STATUSES = frozenset({
     'PENDING', 'APPROVED', 'REJECTED', 'EXECUTING', 'DONE', 'FAILED',
+    # C3: this proposal was overtaken when its situation was merged into
+    # another. Distinct from REJECTED on purpose — nobody rejected it, and
+    # recording a human verdict nobody gave would poison the label corpus.
+    'SUPERSEDED',
 })
 ACTION_STATUSES = frozenset({'PENDING', 'QUEUED', 'EXECUTING', 'DONE', 'FAILED', 'BLOCKED'})
 # 'human' is not a third guess at the verdict — it means a person overrode
@@ -1040,9 +1044,15 @@ async def approve_tier2_decision(
         row = await _load_decision_row(session, alert_id)
         if not row:
             return None
-        if row['approval_status'] == 'REJECTED':
-            return _format_decision(row, await _load_actions(session, row['id']))
-        if row['approval_status'] in ('EXECUTING', 'DONE', 'FAILED', 'APPROVED'):
+        # Whitelist, not a blacklist. This used to enumerate the states that
+        # block approval, so a state added later — SUPERSEDED, in C3 — became
+        # approvable by omission: a plan whose situation had been merged into
+        # another could still be dispatched, containing a host twice.
+        if row['approval_status'] != 'PENDING':
+            logger.info(
+                'Approval ignored for alert %s — the decision is %s, not PENDING',
+                alert_id, row['approval_status'],
+            )
             return _format_decision(row, await _load_actions(session, row['id']))
 
         now = _utcnow()

@@ -4,10 +4,10 @@
 |---|---|
 | **Project** | AI-SOC / AO-SOC Command Center |
 | **Document** | Master Project Plan, Milestones & Coding-Agent Roadmap |
-| **Version** | 2.3 (replan of v1.0; boundary corrected in v2.1; Phase A delivered in v2.2; **Phase B delivered in v2.3**) |
+| **Version** | 2.4 (replan of v1.0; boundary corrected in v2.1; Phases A and B delivered in v2.2-2.3; **Phase C delivered in v2.4**) |
 | **Supersedes** | Plan v1.0, Summer 2026 |
 | **Date** | Summer 2026 |
-| **Status** | Re-sequenced against implemented reality, re-scoped against the tool boundary; Phases A and B complete in `ao-soc` 2.4.0 |
+| **Status** | Re-sequenced against implemented reality, re-scoped against the tool boundary; Phases A, B and C complete in `ao-soc` 2.5.0 |
 | **Writer** | J.Ekrami |
 | **Co-writer** | Claude (Opus 5) |
 | **Copyright** | © J.Ekrami-Labs |
@@ -117,19 +117,19 @@ integration, stated in the evidence column.
 | ID | Milestone | v1.0 said | Actual | Evidence |
 |---|---|---|---|---|
 | M00 | Architecture & Repo Foundation | 🟢 | 🟡 | No `configs/`, no Docker, no DB abstraction beyond SQLAlchemy tables. Auth foundation done (A1) |
-| M01 | Data Source Framework | 🟢 | 🟡 | **B5 delivered:** `detection_sources` (tool, adapter, adapter version, health, detection count, trust weight), self-populating, `GET /api/detection-sources`, trust feeds situation scoring. Missing: per-source enable/disable enforcement, quality SLAs |
-| M02 | Data Ingestion Engine | 🟡 | 🟡 | **B1/B6 delivered:** `DetectionAdapter` per tool (`splunk`, `wazuh`, `native`) behind one `POST /detections`; auto-detection by payload shape. `raw_payload` preserved verbatim on every detection ✅ Rule 4. Missing: queue, retry, DLQ, back-pressure (Phase C) |
+| M01 | Data Source Framework | 🟢 | **🟢** | **B5 delivered:** `detection_sources` (tool, adapter, adapter version, health, detection count, trust weight), self-populating, `GET /api/detection-sources`, trust feeds situation scoring and is settable per source. **C1:** seven adapters registered. Missing: quality SLAs per source, which needs a corpus first |
+| M02 | Data Ingestion Engine | 🟡 | **🟢** | **B1/B6 + C1/C2 delivered:** seven `DetectionAdapter`s (`splunk`, `wazuh`, `elastic`, `sentinel`, `crowdstrike`, `cef`, `native`) behind one `POST /detections` with auto-detection. `raw_payload` verbatim ✅ Rule 4. **Reliable path:** `analysis_jobs` with backoff, a bounded attempt budget, terminal `FAILED` as the dead-letter view, bounded concurrency, orphan recovery at start-up, and back-pressure that returns 202 rather than dropping anything |
 | M03 | Normalization & Event Model | 🟡 | **🟢** | **B1 delivered — contract frozen.** `detection.Detection`: source tool, adapter + version, rule identity, detected/received timestamps, 9 entity fields, vendor severity (normalised across word / 1-5 / 0-15 / 0-100 scales), vendor-asserted techniques, verbatim payload. No vendor name above `adapters/` |
-| M04 | Security Data Platform | 🟡 | ⬛→🟡 | Log platform is **external**. In scope: decision store, evidence pointers, decision search + retention. Today: `detections` / `situations` / decision tables with read APIs; no search, filter or retention (Phase C) |
+| M04 | Security Data Platform | 🟡 | ⬛→**🟢** | Log platform is **external**. In scope and **delivered (C4)**: search over situations (entity / source / severity / status / risk / time / text, paged) and decisions (verdict / status / source / outcome / corrected); evidence pointers derived from the frozen contract, with no link at all rather than a broken one; retention that drops vendor payload copies and never the decision, correction, outcome or receipt |
 | M05 | Detection Engine | 🔴 | **⬛ EXT** | **Removed from scope.** Detection is the upstream tool's job. Obligation met: three vendor shapes consumed with no special-casing above the adapter |
-| M06 | Correlation Engine | 🔴 | **🟢** | **B2/B4 delivered.** Entity + time-window join across vendors into a `Situation` with an entity graph, contributing sources and a deterministic, explainable risk score. Measured: five detections from three tools → one situation, one decision. Missing: merging two already-analysed situations (Phase C) |
+| M06 | Correlation Engine | 🔴 | **🟢** | **B2/B4 + C3 delivered.** Entity + time-window join across vendors into a `Situation` with an entity graph, contributing sources and a deterministic, explainable risk score. Measured: five detections from three tools → one situation, one decision. **Merging (C3):** two situations a later detection ties together are folded into one, the absorbed one kept as `MERGED` with its decision `SUPERSEDED`; a settled situation is reported as `related_settled`, never merged |
 | M07 | Threat Intelligence | 🔴 | ⬛→🔴 | Feeds/TIP **external**. In scope: a TI **client** to verify LLM-asserted IOCs and techniques. Today: no feed. **Partially mitigated (B3):** where the detecting tool asserted a technique it is preferred and stored as `source='tool'`; a model's own claim is stored as `source='llm'` — provenance, not verification |
 | M08 | **AI Analysis Engine** | 🔴 | **🟢** | Structured output (severity, confidence, evidence, reasoning, MITRE, recommendations), validated, JSON-enforced, benchmarked across 14 local models, behind an `LLMProvider` abstraction with a model-free `echo` mode (A3), and **reasoning over a Security Situation rather than a single alert** (B3) |
 | M09 | RAG & Knowledge Base | 🔴 | 🔴 | None. **Core scope** — precedent is the autonomy gate (§7) |
 | M10 | **AI SOC Analyst / Tier-2** | 🔴 | **🟡→🟢** | Verdict (`CONTAIN`/`ESCALATE`/`INVESTIGATE`/`MONITOR`/`IGNORE`) + confidence + rationale + risk-of-action + bundled action plan + human approval **+ human edit captured as a label** (A4) + provenance (`llm`/`rules`/`human`). **One decision per situation, re-derived as it grows and frozen once a human or a dispatch claims it** (B3). Missing: investigation & attack-reconstruction depth |
 | M11 | Incident & Case Management | 🔴 | 🟡 | Incident object, timeline, evidence, status lifecycle, archive, audit trail, **`decision_outcomes` + feedback window** (A5). Missing: assignment, escalation, analyst notes, **sync to the external system of record** |
 | M12 | Response & Integration | 🔴 | 🟡 | Playbook plan, policy gate, background executor, pluggable SOAR adapter, action audit with receipts, **action risk classification + target-shape validation** (A2). Missing: real connectors |
-| M13 | SOC Dashboard | 🔴 | **🟢** | 7 routes, EN/FA + RTL, executive KPIs, MITRE heatmap, live telemetry, Tier-2 panel with edit + outcome capture, archive |
+| M13 | SOC Dashboard | 🔴 | **🟢** | 7 routes, EN/FA + RTL, executive KPIs, MITRE heatmap, live telemetry, Tier-2 panel with edit + outcome capture, archive, **and the situation panel (C5)**: every member detection with its source tool, the entity graph, and each term of the risk score — in both languages |
 | M14 | Security & Governance | 🔴 | 🟡 | **A1 delivered:** API-key authentication with roles on both services, CORS allow-list, authenticated approver identity, no unauthenticated path. Missing: real IdP/SSO, per-object RBAC, secrets management, TLS termination |
 | M15 | Production Hardening | 🔴 | 🔴 | No Docker, monitoring, backup, HA |
 | M16 | Pilot SOC | 🔴 | 🔴 | — |
@@ -139,19 +139,20 @@ integration, stated in the evidence column.
               AI-SOC DEVELOPMENT STATUS (scoped to the decision layer)
 Architecture                   ████████████████████ 100%
 Foundation                     ████████████░░░░░░░░  60%
-Detection-Source Framework     ██████████████░░░░░░  70%
-Detection Adapters             ██████████████░░░░░░  70%
+Detection-Source Framework     █████████████████░░░  85%
+Detection Adapters             ██████████████████░░  90%  (7 vendors)
 Detection Intake Contract      ███████████████████░  95%  (frozen)
-Decision Store                 ████████░░░░░░░░░░░░  40%
+Decision Store                 ████████████████░░░░  80%
+Reliable Decision Path         ██████████████████░░  90%
 Detection Engine               ────── external ──────  n/a
-Correlation → Situation        █████████████████░░░  85%
+Correlation → Situation        ███████████████████░  95%
 Threat-Intel Client            ░░░░░░░░░░░░░░░░░░░░   0%  (technique provenance only)
 AI Analysis                    ███████████████████░  95%
 RAG / Precedent                ░░░░░░░░░░░░░░░░░░░░   0%  (corpus capture live)
 AI SOC Analyst                 █████████████████░░░  85%
 Case Management                ████████████░░░░░░░░  60%
 Response Dispatch              █████████████░░░░░░░  65%
-Dashboard                      ██████████████████░░  90%
+Dashboard                      ███████████████████░  95%
 Security / Governance          ████████░░░░░░░░░░░░  40%
 Production                     ░░░░░░░░░░░░░░░░░░░░   0%
 ```
@@ -170,6 +171,14 @@ adapters that core logic cannot see, and M06 — 0% through every prior version 
 plan and the one thing no upstream tool does — is built and measured. The remaining gaps
 are the *reliability* of the decision path (queue, retry, DLQ) and the decision store's
 query surface, which is Phase C, plus knowledge (M07/M09), which is Phase D.
+
+**v2.4 update.** Phase C closed the remaining half of (a). The integration surface is now
+seven vendors wide and the decision path is reliable: an analysis that fails is retried,
+and one that keeps failing is a visible, re-runnable row rather than a lost decision. The
+decision store is queryable, and correlation merges situations that turn out to be one
+rather than leaving two decisions about one intrusion. **What is left is knowledge**
+(M07/M09, Phase D) **and production** (M15-M17, Phase E) — nothing on the integration
+surface is now a blocker for either.
 
 **What correlation is worth, stated so it can be checked.** `GET /api/correlation/metrics`
 reports `detections_per_situation` and `multi_source_situations`. The first is how many
@@ -257,13 +266,13 @@ upper-layer features before contract 2 is frozen means rewriting the AI layer tw
 |---|---|---|
 | 1 — Do not redesign architecture | ✅ | Layers unchanged; v2.0 re-sequenced, v2.1 drew the build/buy line |
 | 2 — Milestone by milestone | ⚠️ | v2.x shipped features across M08/M10/M12/M13 simultaneously. Phase A and Phase B each shipped as one coherent milestone set with a stated DoD, which is the intent |
-| 3 — Never break existing functionality | ✅ | `test_broker.py`, `testUnify.js`, typecheck, build gate every change. Phase B kept `POST /splunk-alert` and every Phase-A route working, verified by the original assertions |
+| 3 — Never break existing functionality | ✅ | `test_broker.py`, `testUnify.js`, typecheck, build gate every change. Phase B kept `POST /splunk-alert` and every Phase-A route working; Phase C put a queue under the intake without changing what a synchronous caller receives, verified by the same assertions |
 | 4 — Preserve raw security evidence | ✅ | `detections.raw_payload` stores each tool's payload verbatim, per detection; the analysed record keeps the correlated view that produced it; archive append-only; SOAR receipts immutable |
 | 5 — **AI must be modular** | ✅ *(v2.2)* | `LLMProvider` abstraction with `OllamaProvider`, a model-free `EchoProvider` (`LLM_PROVIDER=echo`) and a `ScriptedProvider` for the demo tooling. `soc_orchestrator` no longer imports `llm` |
 | 6 — AI output must be structured | ✅ | JSON-enforced (`format: json`), vocabulary-gated, `decision_source` provenance (`llm` / `rules` / `human`); MITRE techniques now carry `source` = `tool` / `llm` so a rule's assertion and a model's guess are distinguishable (R4, partial) |
 | 7 — **Human approval for dangerous actions** | ✅ *(v2.2)* | Approval gate plus `action_policy.py`: `READ` / `LOW_WRITE` / `HIGH_WRITE` / `DESTRUCTIVE`, unknown verbs default to HIGH_WRITE, per-class target-shape validation before dispatch, autopilot risk ceiling, DESTRUCTIVE off unless deliberately enabled |
-| 8 — Everything observable | ⚠️ | `/health` (auth-scoped) + INFO logging done; risk class, policy reason, correction/outcome trails, **correlation decisions (`joined_on`, `also_matched`) and detection-source health** are queryable. No metrics, no latency histograms |
-| **9 — Every external tool sits behind an adapter** *(new, v2.1)* | ✅ *(v2.3)* | Corollary of §2 and the sibling of Rule 5. SOAR complied already; **intake now does too** — `adapters/` is the only package where a vendor's field names appear, `POST /detections` is vendor-neutral, `/splunk-alert` is a thin alias, and `test_broker.check_adapter_boundary` fails the build if a core module imports the package or the broker names an adapter class. **R7 closed** |
+| 8 — Everything observable | ✅ *(v2.4)* | `/health` (auth-scoped) reports the LLM provider, autopilot, action policy, correlation, source registry, adapters, **analysis queue depth and dead letters**, and retention. Risk class, policy reason, correction/outcome trails, correlation decisions (`joined_on`, `merged`, `related_settled`), source health and the decision store are all queryable. *Residual:* no latency histograms — a metrics exporter is Phase E |
+| **9 — Every external tool sits behind an adapter** *(new, v2.1)* | ✅ *(v2.3)* | Corollary of §2 and the sibling of Rule 5. SOAR complied already; **intake now does too** — `adapters/` is the only package where a vendor's field names appear, `POST /detections` is vendor-neutral, `/splunk-alert` is a thin alias, and `test_broker.check_adapter_boundary` fails the build if a core module imports the package or the broker names an adapter class. **Seven vendors as of v2.4 (C1), none of which needed a change outside `adapters/`. R7 closed** |
 
 ### Rule 7 is not theoretical
 
@@ -295,6 +304,7 @@ validity of what it dispatches is not a detail.
 | **R6** | Confidence-only autonomy gate | **Low** *(v2.2)* | Autopilot now also gates on the **action risk class** of the plan and on target-shape validity — factual properties of what would be dispatched, unlike the self-reported number. Still open in full until §7's precedent gate replaces the threshold (Phase D) |
 | ~~**R7**~~ | ~~**Vendor coupling at the intake**~~ *(v2.1)* | **Closed v2.3** | The route is `POST /detections`, the field mapping is one file per vendor under `adapters/`, and the columns are the contract's. Demonstrated by writing the Wazuh adapter without editing anything outside that package (B6), and enforced by a test that refuses a core import of it. *Residual:* the adapters themselves still have to be written and kept current per vendor — that is the cost the boundary was chosen to pay |
 | **R8** | **Decision quality is bounded by upstream detection quality** *(v2.1)* | Medium | AI-SOC cannot see what the SIEM did not alert on, and inherits its false-positive rate. Accepted deliberately. **Measurable since v2.2:** `GET /api/decisions/outcomes` reports precision per detection source, so a bad upstream rule no longer reads as bad AI. **Reduced in v2.3:** cross-tool corroboration is exactly the mitigation — a situation two independent tools agree on is less bounded by either one's error rate, which is why it scores higher. A multi-source situation's `detection_source` reads `splunk+wazuh`, so precision is still attributable and never guessed |
+| ~~**R10**~~ | ~~**A failed analysis is a lost decision**~~ *(raised and closed, v2.4)* | **Closed v2.4** | Phase B stored the detection before calling the model, so evidence was never lost — but the *analysis* was: a failure returned 502 and the situation stayed unanalysed unless another detection happened to join it. C2 makes it a job with backoff, a bounded attempt budget and a visible, re-runnable dead-letter state. Recorded here rather than quietly fixed, because it was a real gap in a phase that had already been called done |
 | **R9** | **A busy entity chains a situation into a shift** *(new, v2.3)* | Low | Correlation joins on entities inside a window, so a heavily-alerting host could absorb unrelated detections indefinitely. Bounded three ways: `SITUATION_MAX_MEMBERS` (default 25), `CORRELATION_WINDOW_MINUTES` (default 30), and joining only on strong namespaces — a shared *process name* or *domain* is not enough, because half a fleet runs `powershell.exe`. All three are settings, not truths, and want re-calibrating on a real corpus |
 
 ---
@@ -311,6 +321,11 @@ The intended production flow, and where each phase stands:
 5. Human role diminishes                                  ⚠️ risk-class ceiling added, nothing learns yet
 6. Autopilot on RAG-enriched precedent                    ❌ threshold + risk class today
 ```
+
+**Step 1 is also now reliable, not merely correct (v2.4).** A verdict that never arrived
+because inference failed is, from the ramp's point of view, indistinguishable from a
+situation nobody reasoned about — and the corpus phases 4-6 read would have had a hole in
+it shaped exactly like the days Ollama was down. The queue closes that.
 
 **Step 1 was previously a half-truth and is no longer.** Through v2.2 the AI received an
 alert and the word "situation" was aspirational. Since v2.3 it receives a real one, which
@@ -398,20 +413,39 @@ and the reliability of the decision path — queue, retry, DLQ, back-pressure. C
 is correct before it is durable, in that order, because a lost detection is recoverable
 and a wrong join is not visible.
 
-### Phase C — Integration breadth and the decision store *(next)*
+### Phase C — Integration breadth and the decision store ✅ *(delivered, `ao-soc` 2.5.0)*
 
-Additional detection adapters (Sentinel, CrowdStrike, Elastic, generic CEF/ECS) — now
-cheap, because contract 1 is frozen and each is one file. A reliable decision path
-(queue, retry, DLQ, back-pressure). **Situation merging** (§4): when a detection matches
-several open situations it currently joins the best and reports the rest in
-`also_matched`; merging them means reconciling two decisions about one thing. And the
-decision store: search, filter and retention over **situations, decisions, corrections
-and receipts** — with evidence pointers back to the upstream tool rather than copies of
-its logs (M02, M04). Also the dashboard surface for situations, which Phase B left as an
-API: the panel still shows one decision, and now that decision may stand on five
-detections from three tools that a human should be able to see.
+| Task | Milestone | Addresses | State |
+|---|---|---|---|
+| C1. Additional adapters against the frozen contract | M01/M02 | Rule 9, R7 residual | ✅ `elastic` (ECS, nested and dotted; 7.x `signal.*` and 8.x `kibana.alert.*`), `sentinel` (typed entity list), `crowdstrike` (Falcon streaming), `cef` (generic ArcSight). **Seven adapters, no core change.** Vendor scales mapped where the scale is knowable — Falcon 1-5 and CEF 0-10 both mean the opposite of what the generic normaliser would read |
+| C2. Reliable decision path — queue, retry, DLQ, back-pressure | M02 | **R10** | ✅ `analysis_queue.py` + `analysis_jobs`. Parse/store/correlate stay synchronous; the model call is a job with exponential backoff, a bounded attempt budget and a terminal `FAILED` that **is** the dead-letter view. Concurrency defaults to 1 (one local GPU). Back-pressure returns **202**, never an error. Orphaned `RUNNING` jobs recovered at start-up with their attempt counted |
+| C3. Situation merging | M06 | §4 deferral | ✅ `merge_situations`. Detections move to the oldest; the absorbed situation keeps its row, record and decision as `MERGED` / `SUPERSEDED`. A dispatched or human-corrected situation is never merged — it is reported as `related_settled` |
+| C4. Decision store: search, evidence pointers, retention | M04 | M04 | ✅ `decision_store.py`. `GET /api/search/{situations,decisions}` with paging; entity search covers every entity kind through one parameter. Pointers derived from the frozen contract, suppressed rather than rendered broken. Retention drops vendor payload copies only — decisions, corrections, outcomes and receipts have no code path that deletes them |
+| C5. The situation, in the dashboard | M13 | B left it an API | ✅ `SituationPanel`: member detections with their source tool, entities, techniques, adapter version and upstream link; the entity graph; and every term of the risk score with its points. EN/FA + RTL, with structured factor params so the Persian UI is Persian |
 
-### Phase D — Knowledge and adaptive autonomy
+**DoD:** five vendor shapes arrive through adapters written only in `adapters/`; a
+detection whose analysis fails is retried and, if it keeps failing, is visible and
+re-runnable rather than lost; two situations that turn out to be one are merged without
+destroying either record; an analyst can find a past decision by entity, source, verdict
+or outcome; and the dashboard shows the detections a decision stands on. — **Met.**
+Verified by `test_broker.check_phase_c_adapters`, `check_evidence_pointers` and
+`check_phase_c_dod` (one scenario covering an inference outage through retry,
+dead-lettering, manual requeue and recovery; back-pressure; a two-into-one merge with the
+absorbed record intact and undispatchable; and search by entity, status and correction),
+plus `backend/testUnify.js`.
+
+**One bug worth recording,** because it is the shape of bug this project keeps finding:
+the approval gate enumerated the states that *block* approval rather than the one that
+permits it, so `SUPERSEDED` — added in C3 — became approvable by omission, and a plan
+whose situation had been merged away could still have been dispatched. It is a whitelist
+now. Blacklists of states rot every time a state is added.
+
+**Deliberately deferred:** per-source quality SLAs (they need a real corpus first), and
+full-text search over rationale and analyst notes (the entity and verdict filters answer
+the questions analysts actually ask; a text index is a Phase E concern if it is one at
+all).
+
+### Phase D — Knowledge and adaptive autonomy *(next)*
 
 Threat-intelligence **client** (M07) — MISP / OpenCTI / reputation lookups used to verify
 IOCs and techniques the model asserted (R4). RAG over procedures, playbooks, asset/user
@@ -468,12 +502,18 @@ The AI layer must remain provider-independent regardless (Rule 5, task A3).
 > the route, the correlation layer, the prompt or the store. Everything above the intake
 > reads a `Situation`, never an alert; a single detection is the degenerate case and must
 > stay that way. A situation that has been dispatched or corrected by a human is history
-> and is never rewritten. The immediate priority is now Phase C: more adapters against
-> the frozen contract, a reliable decision path (queue, retry, DLQ), situation merging,
-> the decision store's query surface, and the dashboard view of a situation. Preserve raw
-> detection evidence, require structured AI output, classify every action by risk, and
-> consider a milestone complete only after implementation, testing, documentation,
-> logging, error handling and verification.**
+> and is never rewritten. **Phase C is done** (2.5.0): seven adapters, an analysis queue
+> with retry and visible dead letters between correlation and the model, situation
+> merging, a searchable decision store, and the situation panel. Three rules follow from
+> it and must not be regressed — **ingest is synchronous and analysis is a job**, so a
+> model outage costs latency and never evidence; **retention deletes copies of a vendor's
+> data and nothing else**, never a decision, correction, outcome or receipt; and **state
+> gates are whitelists**, because C3 found an approval gate that listed the states which
+> block it and was therefore approvable by omission. The immediate priority is now Phase
+> D: the threat-intelligence client (M07) and RAG over precedent (M09), leading to the
+> precedent-gated autonomy of §7. Preserve raw detection evidence, require structured AI
+> output, classify every action by risk, and consider a milestone complete only after
+> implementation, testing, documentation, logging, error handling and verification.**
 
 ---
 
@@ -496,6 +536,7 @@ instead of to log parsers.
 |---|---|---|---|
 | 1.0 | Summer 2026 | Initial master plan, milestones M00-M17 | J.Ekrami |
 | 2.0 | Summer 2026 | Replan against implemented reality: corrected status (intelligence layers built, data foundation and governance not), Security Situation contract as next architectural artifact, governance moved from last to first, autonomy ramp with edit-capture, measured model selection | J.Ekrami / Claude (Opus 5) |
+| 2.4 | Summer 2026 | **Phase C delivered** (`ao-soc` 2.5.0). C1 four more adapters (`elastic`, `sentinel`, `crowdstrike`, `cef`) — seven vendors, no core change, with Falcon's 1-5 and CEF's 0-10 severity scales mapped inside the adapters that know them; C2 `analysis_queue.py` — the model call becomes a job with exponential backoff, a bounded attempt budget, a visible dead-letter state, bounded concurrency, orphan recovery and back-pressure that returns 202; C3 situation merging, with the absorbed situation kept as `MERGED` / `SUPERSEDED` and settled situations reported rather than absorbed; C4 `decision_store.py` — search over situations and decisions, derived evidence pointers, and retention that drops vendor payload copies and never a judgement; C5 the `SituationPanel` in EN/FA. §3 status (M01/M02/M04 to green), rule audit (Rule 8 ✅), risk register (**R10 raised and closed**), §7 and §10 updated. Fixed an approval gate that was a blacklist of states, and removed two more fabricated MITRE fallbacks from the UI API | J.Ekrami / Claude (Opus 5) |
 | 2.3 | Summer 2026 | **Phase B delivered** (`ao-soc` 2.4.0). B1 Detection Intake contract (`detection.py`) with a `DetectionAdapter` registry, generic `POST /detections` and auto-detection; B2 Security Situation contract (`situation.py`) with a deterministic, factor-stamped risk score; B3 M08/M10 refactored **once** onto situations, with tool-asserted MITRE preferred and stamped `source='tool'`; B4 cross-tool correlation on entities inside a time window, with `GET /api/correlation/metrics`; B5 detection-source registry with health and trust weights; B6 Wazuh and native adapters written with no core change, enforced by a boundary test. §3 status table, §4 (contracts frozen), rule audit (Rule 9 ✅), risk register (**R2 and R7 closed**, R4 reduced, R9 added) and §7 updated. Two fabricated values removed from the enrichment fallback | J.Ekrami / Claude (Opus 5) |
 | 2.2 | Summer 2026 | **Phase A delivered** (`ao-soc` 2.3.0). A1 API-key authentication with roles on the broker and the UI API, CORS allow-list, approver taken from the authenticated identity; A2 action risk classes (`READ`/`LOW_WRITE`/`HIGH_WRITE`/`DESTRUCTIVE`) with per-class target-shape validation and an autopilot risk ceiling; A3 `LLMProvider` abstraction with a model-free `echo` provider; A4 human edit of verdict and plan persisted to `decision_corrections` with `decision_source='human'`; A5 `decision_outcomes` with a feedback window and per-detection-source attribution. Status table, rule audit and risk register updated; R1 and R5 closed, R3 closed, R6 mitigated, R8 now measurable | J.Ekrami / Claude (Opus 5) |
 | 2.1 | Summer 2026 | **System boundary drawn (§2):** detection, log storage, threat-intel feeds and action execution are external market tools; AI-SOC owns the decision. M05 removed from scope; M04/M07 reduced to decision store and TI client; M03 re-scoped from a raw-log event model to a vendor-neutral Detection Intake contract; M06 redefined as cross-tool correlation and promoted to the primary differentiator. Added Rule 9 (every external tool behind an adapter), R7 (vendor coupling at intake), R8 (decision quality bounded by upstream detection quality). Phase B/C rewritten around the two frozen contracts; Master Rule reinterpreted | J.Ekrami / Claude (Opus 5) |

@@ -37,6 +37,14 @@ python soc_orchestrator.py
 | `SITUATION_MAX_MEMBERS` | `25` | Cap, so one busy host cannot chain a situation into a whole shift |
 | `DETECTION_SOURCE_TRUST` | *(all 1.0)* | Per-source trust weight, e.g. `splunk=1.0,wazuh=0.8`. Bounded to 0.1-2.0 |
 | `DETECTION_SOURCE_STALE_HOURS` | `24` | Silence after which a source is reported `STALE` |
+| `INTAKE_MODE` | `sync` | `sync` — the caller waits and gets its decision; `queue` — 202 and the decision is made behind it |
+| `ANALYSIS_CONCURRENCY` | `1` | Analyses in flight at once. One local GPU means one; a second concurrent generate makes both slower |
+| `ANALYSIS_MAX_ATTEMPTS` | `3` | Attempts before an analysis is dead-lettered |
+| `ANALYSIS_RETRY_BASE_SECONDS` | `15` | Backoff base; attempt *N* waits `base × 2^(N-1)` |
+| `ANALYSIS_RETRY_MAX_SECONDS` | `900` | Backoff ceiling |
+| `ANALYSIS_QUEUE_HIGH_WATER` | `50` | Pending depth past which a synchronous caller gets 202 instead of waiting behind the backlog |
+| `RAW_PAYLOAD_RETENTION_DAYS` | `0` *(off)* | Age past which a stored copy of a vendor payload is dropped. Decisions, corrections, outcomes and receipts are never dropped |
+| `DETECTION_SOURCE_LINKS` | *(none)* | Evidence deep links per source, e.g. `wazuh=https://wazuh.corp/hunt?rule={rule_id}&t={epoch}`. Placeholders: `detection_id`, `source_tool`, `rule_id`, `rule_name`, `detected_at`, `epoch` |
 | `ACTION_MAX_AUTOPILOT_RISK` | `HIGH_WRITE` | Highest risk class autopilot may execute. `DESTRUCTIVE` is never reachable here |
 | `ACTION_ALLOW_DESTRUCTIVE` | *(off)* | Allow `DESTRUCTIVE` actions to dispatch at all, even with human approval |
 | `ACTION_RISK_OVERRIDES` | *(none)* | Site verbs, e.g. `reboot switch=DESTRUCTIVE` |
@@ -110,7 +118,16 @@ POST http://127.0.0.1:8500/detections            # auto-detect
 |---------|-------------|-------|
 | `splunk` | `splunk` | `\| sendalert` webhook, raw or CIM-normalised, with or without the `result` wrapper |
 | `wazuh` | `wazuh` | Wazuh manager alert document (`rule` / `agent` / `data`, rule level 0-15, `rule.mitre.id`) |
+| `elastic` | `elastic` | Elastic Security / ECS — nested **or** flattened dotted keys; 7.x `signal.rule.*` and 8.x `kibana.alert.rule.*` |
+| `sentinel` | `sentinel` | Microsoft Sentinel incident: `object.properties` plus a **typed entity list** (`Ip`, `Account`, `Host`, …) |
+| `crowdstrike` | `crowdstrike` | CrowdStrike Falcon streaming detection (`metadata` + `event`), severity on Falcon's own 1-5 scale |
+| `cef` | *(vendor-product)* | Generic ArcSight CEF line — firewall, WAF, proxy, legacy IDS. Names itself from the header's vendor and product |
 | `native` | *(declared)* | A sender that already speaks the Detection Intake contract |
+
+**Vendor scales are mapped inside the adapter that knows them.** Falcon's `4` means High
+and CEF's `8` means High; the contract's generic normaliser would read the first as Medium
+(0-15 branch) and the second as Low (0-100 branch). The scale is only knowable where the
+product is, which is the whole reason adapters exist.
 
 `POST /splunk-alert` still exists and is unchanged — it is a thin alias for
 `?adapter=splunk`, kept because a Splunk alert action in the field already points at it.
@@ -188,6 +205,64 @@ opens its own situation, and the analyst sees both.
 When a situation grows while still pending, the analysis is re-run and the verdict
 re-derived over the enlarged situation.
 
+## The analysis queue (C2)
+
+Parse, store and correlate are **synchronous** — they must never lose anything. The model
+call is a **job**, because it is the slow, failable half:
+
+```
+POST /detections  →  adapter → detection stored → correlated into a situation   (sync)
+                  →  analysis job                                               (queued)
+                  →  LLM → analysed record → Tier-2 decision → autopilot        (worker)
+```
+
+* **201** carries the decision. **202** means the detection is stored and correlated and
+  the decision is queued — the caller polls the situation or the job.
+* A failed analysis is **retried** with exponential backoff. One that exhausts its
+  attempts becomes `FAILED` on `analysis_jobs`, which *is* the dead-letter queue:
+  `GET /api/queue?status=FAILED` lists them with the error that killed each, and
+  `POST /api/queue/{id}/retry` puts one back once its cause is addressed.
+* One situation has at most one outstanding job. Two would mean two analyses of the same
+  thing racing to overwrite each other's verdict.
+* A `RUNNING` job at start-up means the process died mid-analysis. It returns to the
+  queue **with its attempt already counted**, so a job that reliably crashes the broker
+  cannot retry forever.
+* Back-pressure sheds **latency, never data**: past `ANALYSIS_QUEUE_HIGH_WATER` the
+  synchronous caller gets 202 instead of queueing behind the backlog, and the detection is
+  stored and correlated either way.
+
+## Searching the decision store (C4)
+
+```
+GET /api/search/situations?entity=mmalek&since=2026-08-01&multi_source=true
+GET /api/search/decisions?corrected=true&detection_source=wazuh
+```
+
+`entity` matches any entity kind through one parameter — the caller does not need to know
+whether they are holding a username, a hostname, an address or a hash. Decision search
+joins the correction and outcome tables in, because the reviewable question is never
+*"which decisions were CONTAIN"* but *"which CONTAINs did a human change"* and *"which
+verdicts turned out wrong, and did they come from one source"*.
+
+**Evidence pointers** are derived at read time from fields the frozen contract already
+carries, so they cost no storage and required no contract change. Configure a template per
+source with `DETECTION_SOURCE_LINKS`; a template whose field a given detection never
+supplied yields **no link** rather than one that goes to the wrong place.
+
+**Retention** (`RAW_PAYLOAD_RETENTION_DAYS`, off by default) drops
+`detections.raw_payload` — a copy of a document the upstream tool still holds and is the
+proper custodian of — leaving a marker so *"we dropped this"* stays distinguishable from
+*"we never had it"*. The decision, the situation, the human correction, the outcome and
+the action receipt are **never** deleted by it: they are not copies of anybody's logs,
+they are what AI-SOC concluded, and they are the precedent corpus. There is no parameter
+that makes retention touch them.
+
+```bash
+# Dry run is the default — this is the only route that deletes anything.
+curl -XPOST -H "X-API-Key: $KEY" \
+  "http://127.0.0.1:8500/api/maintenance/prune-payloads?older_than_days=90&dry_run=false"
+```
+
 The broker calls Ollama and parses a full enrichment payload: `threat_severity`, `incident_analysis`, `attack_timeline`, `evidence`, `mitre_techniques`, `recommended_actions`, `recommended_containment_steps`, and `tier2_decision` — all persisted to SQLite.
 
 ### Tier-2 decision (`tier2_decision`)
@@ -227,6 +302,11 @@ find decisions a degraded model or an offline Ollama produced.
 | GET | `/api/correlation/metrics` | Detections per situation, correlated and multi-source counts |
 | GET | `/api/detection-sources` | Registry: adapter, version, health, trust weight, detection count |
 | POST | `/api/detection-sources/{tool}/trust` | Set a source's trust weight (`decisions:act`) |
+| GET | `/api/search/situations` | Search by entity, source, severity, status, risk, time, text; paged |
+| GET | `/api/search/decisions` | Search by verdict, status, decision/detection source, outcome, corrected |
+| GET | `/api/queue` | Analysis backlog; `?status=FAILED` is the dead-letter view |
+| POST | `/api/queue/{id}/retry` | Requeue a dead letter (`decisions:act`) |
+| POST | `/api/maintenance/prune-payloads` | Retention; `dry_run=true` by default (`decisions:act`) |
 | GET | `/api/alerts` | List alerts + severity/mitigation metrics |
 | GET | `/api/alerts/{id}` | Single alert with containment checklist |
 | POST | `/api/alerts/{id}/mitigate` | Mark alert CONTAINED, complete all steps |
@@ -357,6 +437,7 @@ the background, so `approve` returns immediately and the dashboard polls
 | Table | Purpose |
 |-------|---------|
 | `detections` | **Contract 1** — one row per detection, with its adapter, entities and the payload verbatim (Rule 4) |
+| `analysis_jobs` | The reliable decision path: what still owes a decision, its attempts, and the dead letters |
 | `situations` | **Contract 2** — correlated situations: members, entity graph, sources, risk score and its factors |
 | `detection_sources` | Which tools feed us: adapter, version, health, trust weight |
 | `security_events` | The analysed record — one per **situation**, with `situation_id` and `detection_source` (`splunk+wazuh` when several tools contributed) |
@@ -380,8 +461,10 @@ python test_broker.py
 Expected output:
 
 ```
-PASS: Detection Intake contract, cross-tool correlation into one situation,
-situation-driven Tier-2 decision, autopilot policy and SOAR delivery all verified.
+PASS: Detection Intake contract (7 adapters), cross-tool correlation and merging
+into one situation, situation-driven Tier-2 decision, retry/dead-letter/back-pressure
+on the analysis queue, decision search and retention, autopilot policy and SOAR
+delivery all verified.
 ```
 
 It covers both decision paths — an LLM verdict honored end to end, an alert without a
@@ -416,3 +499,21 @@ rejected outright — plus the Phase A governance:
   tool(s)` and carries the entity graph and the tools' own ATT&CK techniques. A human
   then corrects the verdict, and a sixth detection opens its own situation instead of
   overwriting what the analyst decided.
+
+…and the Phase C Definition of Done:
+
+- **the adapters**: Elastic nested *and* dotted, Sentinel's typed entity list (a bare `Ip`
+  entity carries no direction, so it must not become a flow end), Falcon's 1-5 severity
+  and CEF's 0-10 both mapped where the scale is knowable, and CEF's escaped pipes and
+  space-containing extension values parsed rather than split;
+- **the reliable path**, as one scenario: the model goes down mid-shift, the caller gets a
+  502 but the detection is stored and correlated anyway, a second detection does not
+  create a duplicate job, the retries run out and it dead-letters *visibly*, a human
+  requeues it once the cause is fixed and the decision that was owed arrives — and a deep
+  backlog produces a 202 rather than a dropped detection;
+- **merging**: two situations a later detection ties together become one, the absorbed one
+  kept as `MERGED` with its decision `SUPERSEDED` and **not dispatchable**, while a
+  situation somebody already settled is named rather than absorbed;
+- **the store**: search by entity of any kind, by status, and by whether a human corrected
+  it; and retention that drops vendor payload copies while every decision, correction and
+  outcome survives, twice in a row without double-pruning.

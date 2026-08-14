@@ -2,7 +2,8 @@ import { create } from 'zustand';
 import { api } from '@/lib/api';
 import type {
   ArchivedIncident, DecisionFeedback, DecisionOutcomeType, Entity, Incident, MitrePayload,
-  PersistedAiExplanation, Summary, SystemHealth, Tier2ActionEdit, Tier2Decision, Tier2DecisionType,
+  PersistedAiExplanation, Situation, Summary, SystemHealth, Tier2ActionEdit, Tier2Decision,
+  Tier2DecisionType,
 } from '@/types';
 
 type SystemState = 'splunk' | 'broker' | 'llm' | 'soar';
@@ -18,6 +19,9 @@ interface AoSocState {
   selectedExplanation: PersistedAiExplanation | null;
   selectedTier2Decision: Tier2Decision | null;
   selectedFeedback: DecisionFeedback | null;
+  /** The correlated situation behind the selected decision. Null for incidents
+   *  ingested before correlation existed, and for mock incidents. */
+  selectedSituation: Situation | null;
   mitre: MitrePayload | null;
   systemHealth: SystemHealth | null;
   highRiskUsers: Entity[];
@@ -75,6 +79,7 @@ export const useAoSoc = create<AoSocState>((set, get) => ({
   selectedExplanation: null,
   selectedTier2Decision: null,
   selectedFeedback: null,
+  selectedSituation: null,
   mitre: null,
   systemHealth: null,
   highRiskUsers: [],
@@ -257,6 +262,7 @@ export const useAoSoc = create<AoSocState>((set, get) => ({
       selectedExplanation: null,
       selectedTier2Decision: null,
       selectedFeedback: null,
+      selectedSituation: null,
     }));
     try {
       const [inc, explanation] = await Promise.all([
@@ -265,15 +271,20 @@ export const useAoSoc = create<AoSocState>((set, get) => ({
       ]);
       let tier2: Tier2Decision | null = null;
       let feedback: DecisionFeedback | null = null;
+      let situation: Situation | null = null;
       if (inc.source === 'broker') {
         tier2 = await api<Tier2Decision>(`/api/incidents/${id}/decision`).catch(() => null);
         feedback = await api<DecisionFeedback>(`/api/incidents/${id}/decision/feedback`).catch(() => null);
+        // 404 is expected and not an error: incidents ingested before Phase B
+        // were never correlated, so there is genuinely no situation to show.
+        situation = await api<Situation>(`/api/incidents/${id}/situation`).catch(() => null);
       }
       set({
         selectedIncident: inc,
         selectedExplanation: explanation,
         selectedTier2Decision: tier2,
         selectedFeedback: feedback,
+        selectedSituation: situation,
       });
     } catch (e) {
       set({
@@ -283,6 +294,7 @@ export const useAoSoc = create<AoSocState>((set, get) => ({
         selectedExplanation: null,
         selectedTier2Decision: null,
         selectedFeedback: null,
+        selectedSituation: null,
       });
     } finally {
       set(s => ({ loading: { ...s.loading, incident: false, incidentExplanation: false } }));

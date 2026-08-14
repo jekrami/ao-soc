@@ -90,7 +90,8 @@
       "MONITORING": "MONITORING",
       "CONTAINED": "CONTAINED",
       "CLOSED": "CLOSED",
-      "PENDING": "PENDING"
+      "PENDING": "PENDING",
+      "SUPERSEDED": "SUPERSEDED"
     },
     "pipeline": {
       "ONLINE": "ONLINE",
@@ -325,5 +326,30 @@
     "openIncident": "Open incident details",
     "clearedNotice": "Cleared and moved to the archive: {{title}}",
     "viewArchive": "View archive"
+  },
+  "situation": {
+    "title": "Security Situation",
+    "subtitle": "The detections this decision stands on",
+    "builtFrom": "{{count}} detection(s) correlated from {{tools}} tool(s)",
+    "none": "No correlated situation — this alert predates cross-tool correlation.",
+    "corroborated": "Independently corroborated",
+    "mergedInto": "This situation was merged into {{id}} — the live decision is there.",
+    "riskScore": "Correlation risk score",
+    "correlatedOn": "Correlated on",
+    "detections": "Member detections",
+    "rule": "Rule",
+    "adapter": "Adapter",
+    "vendorSeverity": "Vendor severity",
+    "openUpstream": "Open in {{tool}}",
+    "noUpstreamLink": "No link configured for {{tool}} — search it there by rule and time.",
+    "factors": {
+      "highest_member_severity": "Highest severity among {{count}} detection(s) is {{severity}}",
+      "cross_tool_corroboration": "Independently detected by {{count}} tools: {{list}}",
+      "detection_volume": "{{count}} detections inside the correlation window",
+      "multiple_hosts": "{{count}} hosts involved — consistent with lateral movement",
+      "multiple_accounts": "{{count}} accounts involved",
+      "multiple_techniques": "{{count}} distinct techniques asserted by the detecting tools: {{list}}",
+      "source_trust_weight": "Mean trust of {{list}} is {{trust}}"
+    }
   }
 }

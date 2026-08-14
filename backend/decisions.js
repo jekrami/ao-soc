@@ -65,3 +65,21 @@ export async function getBrokerOutcomeSummary() {
 export async function listBrokerCorrections() {
   return brokerFetch('/api/corrections');
 }
+
+// Phase B/C — the situation a decision stands on: every member detection with
+// the tool that raised it, the entity graph they were correlated on, and the
+// risk factors. Fetched on demand rather than folded into the incident, because
+// it is the detail view of one decision, not a queue field.
+export async function getBrokerSituation(alertId) {
+  return brokerFetch(`/api/alerts/${encodeURIComponent(alertId)}/situation`);
+}
+
+export async function getBrokerCorrelationMetrics() {
+  if (!(await brokerAvailable())) return null;
+  try {
+    return await brokerFetch('/api/correlation/metrics');
+  } catch (err) {
+    console.warn('[decisions] broker correlation metrics failed:', err.message);
+    return null;
+  }
+}

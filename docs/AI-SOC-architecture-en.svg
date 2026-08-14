@@ -29,7 +29,7 @@
   <!-- ================= Title ================= -->
   <text class="t1" x="830" y="52" text-anchor="middle">AI-SOC SOFTWARE ARCHITECTURE</text>
   <text class="t2" x="830" y="82" text-anchor="middle">AI-Powered Security Operations Center — the Decision Layer</text>
-  <text class="t3" x="830" y="106" text-anchor="middle">Version 2.3 — Summer 2026</text>
+  <text class="t3" x="830" y="106" text-anchor="middle">Version 2.4 — Summer 2026</text>
 
   <!-- ================= External: detection sources (left) ================= -->
   <rect x="30" y="160" width="290" height="292" rx="10" fill="#ffffff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="7 5"/>
@@ -90,14 +90,14 @@
   <circle cx="1248" cy="184" r="7" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"/>
   <text class="box-title" x="810" y="189" text-anchor="middle">1. Detection Intake — one adapter per tool</text>
   <text class="box-sub" x="810" y="213" text-anchor="middle">“Detection Intake contract” (contract 1) · source tool · rule identity · entities · severity · raw payload preserved verbatim</text>
-  <text class="box-sub" x="810" y="231" text-anchor="middle">Rule 9 satisfied — a vendor's field names live only in its adapter; a new tool is one file, not a code change</text>
+  <text class="box-sub" x="810" y="231" text-anchor="middle">Rule 9 satisfied — 7 adapters (Splunk · Wazuh · Elastic · Sentinel · CrowdStrike · CEF · native); a new tool is one file, not a code change</text>
 
   <!-- L2 correlation -->
   <rect x="560" y="260" width="712" height="90" rx="9" fill="#6d28d9"/>
   <circle cx="1248" cy="284" r="7" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"/>
   <text class="box-title" x="916" y="289" text-anchor="middle">2. Cross-tool correlation engine → “Security Situation”</text>
   <text class="box-sub" x="916" y="313" text-anchor="middle">time window · shared entity (user · host · address · file hash · URL) · deterministic risk score, factors kept</text>
-  <text class="box-sub" x="916" y="335" text-anchor="middle">Contract 2, and the differentiator — nothing joins detections across different vendors</text>
+  <text class="box-sub" x="916" y="335" text-anchor="middle">Contract 2, the differentiator — nothing else joins detections across vendors; two that prove to be one are merged</text>
 
   <!-- L3 AI reasoning -->
   <rect x="560" y="372" width="712" height="116" rx="9" fill="#4338ca"/>
@@ -133,7 +133,7 @@
 
   <!-- Side: decision store -->
   <rect x="348" y="260" width="196" height="228" rx="9" fill="#1e293b"/>
-  <circle cx="372" cy="284" r="7" fill="#f59e0b" stroke="#ffffff" stroke-width="1.5"/>
+  <circle cx="372" cy="284" r="7" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"/>
   <text class="side-title" x="446" y="289" text-anchor="middle">DECISION STORE</text>
   <text class="box-sub" x="446" y="318" text-anchor="middle">Security situations</text>
   <text class="box-sub" x="446" y="342" text-anchor="middle">Decisions &amp; rationale</text>
@@ -141,8 +141,8 @@
   <text class="box-sub" x="446" y="390" text-anchor="middle">Action receipts</text>
   <text class="box-sub" x="446" y="414" text-anchor="middle">Evidence pointers</text>
   <line x1="368" y1="432" x2="524" y2="432" stroke="#475569" stroke-width="1.5"/>
-  <text class="box-sub" x="446" y="456" text-anchor="middle">Not a log store —</text>
-  <text class="box-sub" x="446" y="476" text-anchor="middle">only what makes the decision</text>
+  <text class="box-sub" x="446" y="456" text-anchor="middle">Searchable · retention drops</text>
+  <text class="box-sub" x="446" y="476" text-anchor="middle">vendor copies, never decisions</text>
 
   <!-- Side: dashboard -->
   <rect x="348" y="510" width="196" height="278" rx="9" fill="#1d4ed8"/>
@@ -163,7 +163,7 @@
   <rect x="348" y="806" width="924" height="58" rx="9" fill="#334155"/>
   <circle cx="1248" cy="835" r="7" fill="#f59e0b" stroke="#ffffff" stroke-width="1.5"/>
   <text class="box-title" x="810" y="830" text-anchor="middle">GOVERNANCE &amp; SECURITY — authentication · RBAC · secrets management · audit</text>
-  <text class="box-sub" x="810" y="852" text-anchor="middle">Phase A delivered — API-key auth and roles on every route, CORS allow-list, authenticated approver; IdP/SSO, RBAC and secrets remain</text>
+  <text class="box-sub" x="810" y="852" text-anchor="middle">Phase A delivered — API-key auth and roles on every route, CORS allow-list, authenticated approver, observable queue; IdP/SSO and RBAC remain</text>
 
   <!-- ================= Arrows ================= -->
   <line x1="296" y1="199" x2="330" y2="199" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
@@ -202,5 +202,5 @@
   <text class="legend" x="1010" y="946">dashed line = external dependency</text>
 
   <!-- ================= Footer ================= -->
-  <text class="foot" x="830" y="994" text-anchor="middle">Written by J.Ekrami · Co-written with Claude (Opus 5) · © J.Ekrami-Labs · Summer 2026 · matches plan v2.3</text>
+  <text class="foot" x="830" y="994" text-anchor="middle">Written by J.Ekrami · Co-written with Claude (Opus 5) · © J.Ekrami-Labs · Summer 2026 · matches plan v2.4</text>
 </svg>

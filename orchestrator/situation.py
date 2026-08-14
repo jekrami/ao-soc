@@ -41,7 +41,13 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from sqlalchemy import and_, func, select, update
 
-from db import async_session, detections as detections_table, situations, tier2_decisions
+from db import (
+    async_session,
+    detections as detections_table,
+    security_events,
+    situations,
+    tier2_decisions,
+)
 from detection import Detection, Entities, max_severity
 
 logger = logging.getLogger(__name__)
@@ -67,6 +73,12 @@ except ValueError:
 
 STATUS_OPEN = 'OPEN'
 STATUS_CLOSED = 'CLOSED'
+STATUS_MERGED = 'MERGED'
+
+#: What an absorbed situation's decision and analysed record become. Not
+#: REJECTED — nobody rejected anything, and writing a human verdict nobody gave
+#: would poison the label corpus the autonomy ramp reads (plan §7).
+SUPERSEDED = 'SUPERSEDED'
 
 #: Namespaces that are strong enough to join on alone. A shared *domain* or
 #: *process name* is not: half a fleet runs powershell.exe, and joining on that
@@ -122,6 +134,9 @@ class Situation:
     entities: Dict[str, List[str]] = field(default_factory=dict)
     detections: List[Dict[str, Any]] = field(default_factory=list)
     alert_id: Optional[str] = None
+    #: Set once this situation has been folded into another (C3). Its own row,
+    #: analysed record and decision are kept as history; the live one is there.
+    merged_into: Optional[str] = None
 
     @property
     def detection_count(self) -> int:
@@ -215,6 +230,7 @@ class Situation:
             'alert_id': self.alert_id,
             'title': self.title,
             'status': self.status,
+            'merged_into': self.merged_into,
             'severity': self.severity,
             'risk_score': self.risk_score,
             'risk_factors': self.risk_factors,
@@ -255,6 +271,10 @@ def score_situation(
         'factor': 'highest_member_severity',
         'points': score,
         'detail': f'Highest severity among {len(members)} detection(s) is {top}',
+        # Structured alongside the sentence so the dashboard can say it in the
+        # analyst's own language (§9 — Persian in the Persian UI). The English
+        # `detail` stays as the fallback and as the language of record in logs.
+        'params': {'count': len(members), 'severity': top},
     })
 
     sources = sorted({(item.get('source_tool') or 'unknown') for item in members})
@@ -265,6 +285,7 @@ def score_situation(
             'factor': 'cross_tool_corroboration',
             'points': points,
             'detail': f'Independently detected by {len(sources)} tools: {", ".join(sources)}',
+            'params': {'count': len(sources), 'list': ', '.join(sources)},
         })
 
     if len(members) > 1:
@@ -274,6 +295,7 @@ def score_situation(
             'factor': 'detection_volume',
             'points': points,
             'detail': f'{len(members)} detections inside the correlation window',
+            'params': {'count': len(members)},
         })
 
     hosts = {(item.get('entities') or {}).get('host', '').lower() for item in members} - {''}
@@ -283,6 +305,7 @@ def score_situation(
             'factor': 'multiple_hosts',
             'points': MULTI_HOST_POINTS,
             'detail': f'{len(hosts)} hosts involved — consistent with lateral movement',
+            'params': {'count': len(hosts)},
         })
 
     users = {(item.get('entities') or {}).get('user', '').lower() for item in members} - {''}
@@ -292,6 +315,7 @@ def score_situation(
             'factor': 'multiple_accounts',
             'points': MULTI_USER_POINTS,
             'detail': f'{len(users)} accounts involved',
+            'params': {'count': len(users)},
         })
 
     techniques = {t for item in members for t in (item.get('vendor_techniques') or [])}
@@ -302,6 +326,7 @@ def score_situation(
             'points': MULTI_TECHNIQUE_POINTS,
             'detail': f'{len(techniques)} distinct techniques asserted by the detecting tools: '
                       + ', '.join(sorted(techniques)),
+            'params': {'count': len(techniques), 'list': ', '.join(sorted(techniques))},
         })
 
     # B5: a source nobody trusts should not lift a situation as far as one they
@@ -316,6 +341,7 @@ def score_situation(
             'factor': 'source_trust_weight',
             'points': score - before,
             'detail': f'Mean trust of {", ".join(sources)} is {mean_trust:.2f}',
+            'params': {'list': ', '.join(sources), 'trust': f'{mean_trust:.2f}'},
         })
 
     score = max(0, min(100, int(round(score))))
@@ -431,6 +457,7 @@ def _format_situation(row, members: List[Dict[str, Any]]) -> Situation:
         entities=_load(row['entities_json'], {}),
         detections=members,
         alert_id=row['alert_id'],
+        merged_into=row['merged_into'],
     )
 
 
@@ -485,7 +512,11 @@ class CorrelationOutcome:
     detection: Detection
     created: bool
     joined_on: List[str] = field(default_factory=list)
-    also_matched: List[str] = field(default_factory=list)
+    #: Situations folded into this one because the detection tied them together.
+    merged: List[str] = field(default_factory=list)
+    #: Situations that matched but were already decided or dispatched. Named,
+    #: never touched — see ``_partition_candidates``.
+    related: List[str] = field(default_factory=list)
 
     def as_dict(self) -> Dict[str, Any]:
         return {
@@ -493,21 +524,27 @@ class CorrelationOutcome:
             'situation_id': self.situation.situation_id,
             'situation_created': self.created,
             'joined_on': self.joined_on,
-            'also_matched': self.also_matched,
+            'merged': self.merged,
+            'related_settled': self.related,
         }
 
 
-async def _eligible_situation_ids(session, candidate_ids: Sequence[str]) -> List[str]:
-    """Which candidates may still absorb a detection.
+async def _partition_candidates(session, candidate_ids: Sequence[str]) -> Tuple[List[str], List[str]]:
+    """Split candidates into ``(open, frozen)``.
 
     A situation is frozen the moment its decision stops being a machine
     proposal: once a human has corrected it, or it has been approved, rejected
-    or dispatched, the record is what was decided and what was sent. Growing it
-    afterwards would rewrite an audit trail, so the detection starts a new
-    situation instead (and the analyst sees both).
+    or dispatched, the record is what was decided and what was sent. Growing or
+    merging it afterwards would rewrite an audit trail.
+
+    The frozen ones are still worth naming. A detection that matches a
+    situation somebody already contained is a fact an analyst wants — it is
+    either the same intrusion resuming or evidence the containment did not
+    hold — so they come back as ``related`` rather than being dropped in
+    silence, which is what Phase B did.
     """
     if not candidate_ids:
-        return []
+        return [], []
     rows = (
         await session.execute(
             select(situations.c.situation_id, situations.c.alert_id)
@@ -515,7 +552,7 @@ async def _eligible_situation_ids(session, candidate_ids: Sequence[str]) -> List
         )
     ).all()
     alert_ids = {row[1] for row in rows if row[1]}
-    frozen: set = set()
+    frozen_alerts: set = set()
     if alert_ids:
         decisions = (
             await session.execute(
@@ -526,8 +563,86 @@ async def _eligible_situation_ids(session, candidate_ids: Sequence[str]) -> List
         ).all()
         for alert_id, status, source in decisions:
             if status != 'PENDING' or source == 'human':
-                frozen.add(alert_id)
-    return [row[0] for row in rows if not (row[1] and row[1] in frozen)]
+                frozen_alerts.add(alert_id)
+
+    open_ids, frozen_ids = [], []
+    for situation_id, alert_id in rows:
+        (frozen_ids if (alert_id and alert_id in frozen_alerts) else open_ids).append(situation_id)
+    return open_ids, frozen_ids
+
+
+async def merge_situations(winner_id: str, absorbed_ids: Sequence[str]) -> List[str]:
+    """Fold one or more situations into another (C3).
+
+    Phase B deferred this: when a detection matched several situations it took
+    the best and named the rest. But two situations that share an entity *are*
+    one situation — the only reason there were two is that the detection tying
+    them together had not arrived yet. Leaving them apart means two decisions
+    about one intrusion, and an analyst approving containment twice.
+
+    Nothing is deleted (Rule 4). The absorbed situation keeps its row, its
+    analysed record and its decision; the row is marked ``MERGED`` and points
+    at where its detections went, and the decision becomes ``SUPERSEDED`` — a
+    state that says a machine proposal was overtaken by better information,
+    which is exactly what happened and is not the same thing as a human
+    rejecting it.
+
+    Callers must have established that every absorbed situation is still open
+    to change (``_partition_candidates``). Returns the ids actually merged.
+    """
+    targets = [sid for sid in absorbed_ids if sid and sid != winner_id]
+    if not targets:
+        return []
+
+    now = _utcnow()
+    async with async_session() as session:
+        rows = (
+            await session.execute(
+                select(situations).where(situations.c.situation_id.in_(targets))
+            )
+        ).mappings().all()
+        merged: List[str] = []
+
+        for row in rows:
+            if row['status'] != STATUS_OPEN:
+                continue
+            situation_id = row['situation_id']
+
+            await session.execute(
+                update(detections_table)
+                .where(detections_table.c.situation_id == situation_id)
+                .values(situation_id=winner_id)
+            )
+            await session.execute(
+                update(situations)
+                .where(situations.c.id == row['id'])
+                .values(status=STATUS_MERGED, merged_into=winner_id,
+                        merged_at=now, updated_at=now)
+            )
+
+            if row['alert_id']:
+                await session.execute(
+                    update(tier2_decisions)
+                    .where(tier2_decisions.c.alert_id == row['alert_id'])
+                    .where(tier2_decisions.c.approval_status == 'PENDING')
+                    .values(approval_status=SUPERSEDED, completed_at=now,
+                            rejection_note=f'Superseded — situation merged into {winner_id}')
+                )
+                await session.execute(
+                    update(security_events)
+                    .where(security_events.c.alert_id == row['alert_id'])
+                    .values(mitigation_status=SUPERSEDED, updated_at=now)
+                )
+            merged.append(situation_id)
+
+        await session.commit()
+
+    if merged:
+        logger.info(
+            'Merged %s into %s — one situation, one decision',
+            ', '.join(merged), winner_id,
+        )
+    return merged
 
 
 async def correlate(detection: Detection) -> CorrelationOutcome:
@@ -548,7 +663,8 @@ async def correlate(detection: Detection) -> CorrelationOutcome:
 
         chosen_id: Optional[str] = None
         joined_on: List[str] = []
-        also_matched: List[str] = []
+        to_merge: List[str] = []
+        related: List[str] = []
 
         if keys:
             candidate_rows = (
@@ -564,37 +680,50 @@ async def correlate(detection: Detection) -> CorrelationOutcome:
                 )
             ).mappings().all()
 
-            eligible = set(await _eligible_situation_ids(
+            open_ids, frozen_ids = await _partition_candidates(
                 session, [row['situation_id'] for row in candidate_rows]
-            ))
+            )
+            open_set, frozen_set = set(open_ids), set(frozen_ids)
 
-            scored: List[Tuple[int, datetime, str, List[str]]] = []
+            scored: List[Tuple[int, datetime, str, List[str], int]] = []
             for row in candidate_rows:
-                if row['situation_id'] not in eligible:
-                    continue
                 graph = _load(row['entities_json'], {})
                 shared = [
                     f'{ns}:{value}'
                     for ns, value in keys
                     if any(str(existing).lower() == value for existing in graph.get(ns, []))
                 ]
-                if shared:
-                    scored.append((len(shared), row['first_seen'], row['situation_id'], shared))
+                if not shared:
+                    continue
+                if row['situation_id'] in frozen_set:
+                    related.append(row['situation_id'])
+                elif row['situation_id'] in open_set:
+                    scored.append((
+                        len(shared), row['first_seen'], row['situation_id'], shared,
+                        row['detection_count'] or 0,
+                    ))
 
             if scored:
+                # Most shared entities wins; the oldest situation breaks ties,
+                # so the same inputs always pick the same winner.
                 scored.sort(key=lambda item: (-item[0], item[1]))
-                _, _, chosen_id, joined_on = scored[0]
-                also_matched = [item[2] for item in scored[1:]]
-                if also_matched:
-                    # Not merged in Phase B: the other candidates may already
-                    # carry their own analysed record, and merging two analysed
-                    # situations means reconciling two decisions about one
-                    # thing. The link is surfaced instead of silently dropped.
-                    logger.info(
-                        'Detection %s also matched %s — joined %s (best match); '
-                        'situation merge is Phase C',
-                        detection.detection_id, ', '.join(also_matched), chosen_id,
-                    )
+                _, _, chosen_id, joined_on, chosen_count = scored[0]
+
+                # C3: the others are the same situation — this detection is the
+                # evidence of that. Absorb them, up to the member cap, so one
+                # intrusion does not end up with two decisions.
+                budget = SITUATION_MAX_MEMBERS - chosen_count - 1
+                for _, _, candidate_id, _, count in scored[1:]:
+                    if count <= budget:
+                        to_merge.append(candidate_id)
+                        budget -= count
+                    else:
+                        related.append(candidate_id)
+                        logger.info(
+                            'Not merging %s into %s — the combined situation would '
+                            'exceed SITUATION_MAX_MEMBERS (%d)',
+                            candidate_id, chosen_id, SITUATION_MAX_MEMBERS,
+                        )
 
         created = chosen_id is None
         if created:
@@ -621,22 +750,35 @@ async def correlate(detection: Detection) -> CorrelationOutcome:
         )
         await session.commit()
 
+    # C3: outside the session above, because merging opens its own — the
+    # detection is already placed by this point, so a merge that fails leaves
+    # the store consistent with one situation fewer absorbed, never with a
+    # detection belonging to nothing.
+    merged = await merge_situations(chosen_id, to_merge) if to_merge else []
+
     situation = await recompute(chosen_id)
     if situation is None:  # cannot happen: we just wrote both rows
         raise RuntimeError(f'Situation {chosen_id} vanished during correlation')
 
     logger.info(
-        'Detection %s from %s %s situation %s (%d detections, %d tools, risk %d)',
+        'Detection %s from %s %s situation %s (%d detections, %d tools, risk %d)%s',
         detection.detection_id, detection.source_tool,
         'opened' if created else f'joined (on {", ".join(joined_on)})',
         chosen_id, situation.detection_count, len(situation.sources), situation.risk_score,
+        f' after absorbing {", ".join(merged)}' if merged else '',
     )
+    if related:
+        logger.info(
+            'Detection %s also matches already-settled situation(s) %s — left alone',
+            detection.detection_id, ', '.join(sorted(set(related))),
+        )
     return CorrelationOutcome(
         situation=situation,
         detection=detection,
         created=created,
         joined_on=joined_on,
-        also_matched=also_matched,
+        merged=merged,
+        related=sorted(set(related)),
     )
 
 
@@ -662,6 +804,10 @@ async def recompute(situation_id: str) -> Optional[Situation]:
         members = await _members(session, situation_id)
 
     if not members:
+        # A merged situation has had its detections moved to the winner. Its
+        # aggregates are deliberately left as they were — the row is the record
+        # of what it looked like when a decision was proposed for it, and
+        # zeroing that would erase the history the merge is meant to preserve.
         return _format_situation(row, [])
 
     score, severity, factors = score_situation(members, trust)
@@ -763,6 +909,7 @@ async def list_situations(limit: int = 200) -> List[Dict[str, Any]]:
             'alert_id': row['alert_id'],
             'title': row['title'],
             'status': row['status'],
+            'merged_into': row['merged_into'],
             'severity': row['severity'],
             'risk_score': row['risk_score'],
             'detection_count': row['detection_count'],
@@ -789,18 +936,25 @@ async def situation_metrics() -> Dict[str, Any]:
             await session.execute(select(func.count()).select_from(detections_table))
         ).scalar_one()
 
-    total = len(rows)
-    multi_source = sum(1 for row in rows if (row['source_count'] or 0) > 1)
-    correlated = sum(1 for row in rows if (row['detection_count'] or 0) > 1)
+    # A merged situation holds no detections any more, so counting it would
+    # understate exactly the thing this metric exists to state.
+    live = [row for row in rows if row['status'] != STATUS_MERGED]
+    total = len(live)
+    multi_source = sum(1 for row in live if (row['source_count'] or 0) > 1)
+    correlated = sum(1 for row in live if (row['detection_count'] or 0) > 1)
     return {
         'situations': total,
         'detections': total_detections,
         'detections_per_situation': round(total_detections / total, 2) if total else 0.0,
         'correlated_situations': correlated,
         'multi_source_situations': multi_source,
-        'open': sum(1 for row in rows if row['status'] == STATUS_OPEN),
+        'open': sum(1 for row in live if row['status'] == STATUS_OPEN),
+        # C3: situations that turned out to be part of another one. Counted
+        # because a rising number means correlation is arriving late — the
+        # window may be too short for the campaigns this site actually sees.
+        'merged_situations': len(rows) - total,
         'by_severity': {
-            level: sum(1 for row in rows if row['severity'] == level)
+            level: sum(1 for row in live if row['severity'] == level)
             for level in ('CRITICAL', 'HIGH', 'MEDIUM', 'LOW')
         },
     }

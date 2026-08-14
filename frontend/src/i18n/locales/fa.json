@@ -90,7 +90,8 @@
       "MONITORING": "تحت نظارت",
       "CONTAINED": "مهار شده",
       "CLOSED": "بسته",
-      "PENDING": "در انتظار"
+      "PENDING": "در انتظار",
+      "SUPERSEDED": "جایگزین‌شده"
     },
     "pipeline": {
       "ONLINE": "آنلاین",
@@ -325,5 +326,30 @@
     "openIncident": "مشاهده جزئیات رخداد",
     "clearedNotice": "بسته شد و به بایگانی منتقل شد: {{title}}",
     "viewArchive": "مشاهده بایگانی"
+  },
+  "situation": {
+    "title": "وضعیت امنیتی",
+    "subtitle": "تشخیص‌هایی که این تصمیم بر آن‌ها استوار است",
+    "builtFrom": "{{count}} تشخیص، همبسته‌شده از {{tools}} ابزار",
+    "none": "وضعیت همبسته‌ای وجود ندارد — این هشدار پیش از همبستگی میان‌ابزاری دریافت شده است.",
+    "corroborated": "تأیید مستقل از چند ابزار",
+    "mergedInto": "این وضعیت در {{id}} ادغام شد — تصمیم جاری آنجاست.",
+    "riskScore": "امتیاز ریسک همبستگی",
+    "correlatedOn": "همبسته بر اساس",
+    "detections": "تشخیص‌های عضو",
+    "rule": "قاعده",
+    "adapter": "آداپتور",
+    "vendorSeverity": "شدت اعلام‌شدهٔ ابزار",
+    "openUpstream": "گشودن در {{tool}}",
+    "noUpstreamLink": "برای {{tool}} پیوندی پیکربندی نشده است — با قاعده و زمان در همان ابزار جست‌وجو کنید.",
+    "factors": {
+      "highest_member_severity": "بیشترین شدت میان {{count}} تشخیص برابر {{severity}} است",
+      "cross_tool_corroboration": "به‌طور مستقل توسط {{count}} ابزار تشخیص داده شد: {{list}}",
+      "detection_volume": "{{count}} تشخیص درون پنجرهٔ همبستگی",
+      "multiple_hosts": "{{count}} میزبان درگیر — هم‌خوان با حرکت جانبی",
+      "multiple_accounts": "{{count}} حساب کاربری درگیر",
+      "multiple_techniques": "{{count}} تکنیک متمایز که خودِ ابزارهای تشخیص اعلام کرده‌اند: {{list}}",
+      "source_trust_weight": "میانگین اعتماد به {{list}} برابر {{trust}} است"
+    }
   }
 }

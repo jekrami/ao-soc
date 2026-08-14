@@ -5,10 +5,12 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 import adapters  # noqa: F401 — importing registers the built-in adapters (Rule 9)
+import analysis_queue
+import decision_store
 import situation as situations
 import source_registry
 from auth import (
@@ -91,10 +93,26 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+class AnalysisError(RuntimeError):
+    """The model half of the pipeline failed. Recorded on the job, then retried.
+
+    Deliberately not an ``HTTPException``: this is raised inside a background
+    worker as often as inside a request, and a failure that only knows how to
+    describe itself as a status code is a failure that cannot be retried.
+    """
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     await init_db()
-    yield
+    # C2: workers drain the analysis queue behind the intake. Started here, so
+    # a process driving the ASGI app directly (the seeder, the tests) runs
+    # everything inline and stays deterministic.
+    await analysis_queue.start_workers(run_analysis)
+    try:
+        yield
+    finally:
+        await analysis_queue.stop_workers()
 
 
 app = FastAPI(
@@ -434,6 +452,8 @@ async def health(request: Request) -> dict:
         'correlation': situations.correlation_config(),
         'detection_sources': source_registry.registry_config(),
         'adapters': [adapter.describe() for adapter in list_adapters()],
+        'analysis_queue': await analysis_queue.queue_stats(),
+        'retention': decision_store.retention_config(),
     }
 
 
@@ -462,7 +482,7 @@ async def analyze_situation(situation: situations.Situation) -> dict:
         parsed = parse_json_response(raw_output)
         analysis = normalize_threat_analysis(parsed, fields, alert_id, situation=situation)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f'LLM inference failed: {exc}')
+        raise AnalysisError(f'LLM inference failed: {exc}') from exc
 
     event = None
     if existing_alert_id:
@@ -516,13 +536,38 @@ async def analyze_situation(situation: situations.Situation) -> dict:
     return event
 
 
-async def ingest_detection(payload: Dict[str, Any], adapter: Optional[str] = None) -> dict:
+async def run_analysis(situation_id: str) -> dict:
+    """Queue handler: load a situation by id and analyse it (C2).
+
+    The worker holds an id, not an object, on purpose. Between the job being
+    written and the job being run, the situation may have gained detections —
+    re-reading it means the analysis is of the situation as it *is*, not as it
+    was when somebody first noticed it needed one.
+    """
+    situation = await situations.get_situation(situation_id)
+    if situation is None:
+        raise AnalysisError(f'Situation {situation_id} no longer exists')
+    return await analyze_situation(situation)
+
+
+async def ingest_detection(
+    payload: Dict[str, Any],
+    adapter: Optional[str] = None,
+    response: Optional[Response] = None,
+) -> dict:
     """The one intake path: adapter → detection → situation → decision.
 
     Everything vendor-specific happened before the first line of this function,
     inside the adapter. What arrives here is the Detection Intake contract, and
     a second detection tool changes nothing below this point — which is B6's
     test of B1 (plan §8).
+
+    The split down the middle is C2's: **parse, store and correlate are
+    synchronous, analysis is a job.** Everything above the queue is fast and
+    must not be lost; the model call is slow and may fail, and is the only part
+    that needs retrying. A caller still gets its decision in the response
+    whenever the backlog allows (the default), and gets a 202 with a job to
+    follow when it does not.
     """
     try:
         detection = parse_detection(payload, adapter)
@@ -536,17 +581,53 @@ async def ingest_detection(payload: Dict[str, Any], adapter: Optional[str] = Non
         detection.source_tool, detection.adapter, detection.adapter_version
     )
     outcome = await situations.correlate(detection)
-    event = await analyze_situation(outcome.situation)
+    situation_id = outcome.situation.situation_id
 
-    refreshed = await situations.get_situation(outcome.situation.situation_id)
-    event['situation'] = (refreshed or outcome.situation).as_dict()
-    event['correlation'] = outcome.as_dict()
-    return event
+    try:
+        submission = await analysis_queue.submit(situation_id, run_analysis)
+    except AnalysisError as exc:
+        # The detection and the situation are already stored, and the job row
+        # carries the error with a retry scheduled. The caller is told its
+        # answer is not ready — not that its detection was refused.
+        raise HTTPException(
+            status_code=502,
+            detail=f'{exc} — detection {detection.detection_id} is stored and the '
+                   f'analysis of {situation_id} will be retried',
+        )
+
+    refreshed = await situations.get_situation(situation_id)
+    body: Dict[str, Any] = dict(submission['result'] or {})
+    body['situation'] = (refreshed or outcome.situation).as_dict()
+    body['correlation'] = outcome.as_dict()
+    body['analysis'] = {
+        'mode': submission['mode'],
+        'reason': submission.get('reason'),
+        'job_id': (submission.get('job') or {}).get('id'),
+    }
+
+    if submission['mode'] != 'inline':
+        # Accepted, not created: there is no decision yet to describe.
+        body.setdefault('id', None)
+        body['detection_id'] = detection.detection_id
+        if response is not None:
+            response.status_code = 202
+    return body
+
+
+async def _json_body(request: Request) -> Dict[str, Any]:
+    try:
+        body = await request.json()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f'Invalid JSON body: {exc}')
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail='Expected JSON object')
+    return body
 
 
 @app.post('/detections', status_code=201)
 async def post_detection(
     request: Request,
+    response: Response,
     adapter: Optional[str] = Query(
         default=None,
         description='Adapter name. Omit to auto-detect from the payload shape.',
@@ -557,20 +638,18 @@ async def post_detection(
 
     R1: this is the path that, with autopilot on, ends in a dispatched action.
     It requires a detections:write key — the ingest role holds nothing else.
-    """
-    try:
-        body = await request.json()
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f'Invalid JSON body: {exc}')
-    if not isinstance(body, dict):
-        raise HTTPException(status_code=400, detail='Expected JSON object')
 
-    return await ingest_detection(body, adapter)
+    **201** carries the decision. **202** means the detection is stored and
+    correlated and the decision is queued — the caller polls the situation or
+    the job. Which one it gets depends on the backlog, not on the payload.
+    """
+    return await ingest_detection(await _json_body(request), adapter, response)
 
 
 @app.post('/splunk-alert', status_code=201)
 async def splunk_alert(
     request: Request,
+    response: Response,
     _principal: Principal = Depends(require(DETECTIONS_WRITE)),
 ) -> dict:
     """Compatibility alias for ``POST /detections?adapter=splunk``.
@@ -580,14 +659,7 @@ async def splunk_alert(
     a thin alias now: the vendor's field names live in ``adapters/splunk.py``
     and nothing behind this line knows which tool sent the payload.
     """
-    try:
-        body = await request.json()
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f'Invalid JSON body: {exc}')
-    if not isinstance(body, dict):
-        raise HTTPException(status_code=400, detail='Expected JSON object')
-
-    return await ingest_detection(body, LEGACY_SPLUNK_ADAPTER)
+    return await ingest_detection(await _json_body(request), LEGACY_SPLUNK_ADAPTER, response)
 
 
 # --- Phase B read surface: situations, detections, sources, adapters ------
@@ -602,6 +674,19 @@ async def api_list_situations(
     return {'count': len(items), 'metrics': await situations.situation_metrics(), 'items': items}
 
 
+def _with_evidence_pointers(payload: dict) -> dict:
+    """Attach 'where to find this upstream' to every member detection (C4).
+
+    Derived at read time from fields the frozen intake contract already carries,
+    so the pointer costs no storage and no contract change.
+    """
+    payload['detections'] = [
+        {**item, 'evidence': decision_store.evidence_pointer(item)}
+        for item in payload.get('detections') or []
+    ]
+    return payload
+
+
 @app.get('/api/situations/{situation_id}')
 async def api_get_situation(
     situation_id: str,
@@ -610,7 +695,7 @@ async def api_get_situation(
     found = await situations.get_situation(situation_id)
     if found is None:
         raise HTTPException(status_code=404, detail='Situation not found')
-    return found.as_dict()
+    return _with_evidence_pointers(found.as_dict())
 
 
 @app.get('/api/alerts/{alert_id}/situation')
@@ -626,7 +711,7 @@ async def api_get_alert_situation(
     found = await situations.get_situation_for_alert(alert_id)
     if found is None:
         raise HTTPException(status_code=404, detail='No situation is linked to this alert')
-    return found.as_dict()
+    return _with_evidence_pointers(found.as_dict())
 
 
 @app.get('/api/correlation/metrics')
@@ -660,6 +745,98 @@ async def api_set_trust_weight(
     if updated is None:
         raise HTTPException(status_code=404, detail='Unknown detection source')
     return updated
+
+
+@app.get('/api/search/situations')
+async def api_search_situations(
+    entity: Optional[str] = Query(default=None, description='User, host, address or hash — any entity kind'),
+    source: Optional[str] = None,
+    severity: Optional[str] = None,
+    status: Optional[str] = Query(default=None, description='OPEN · CLOSED · MERGED'),
+    min_risk: Optional[int] = None,
+    multi_source: Optional[bool] = Query(default=None, description='Only situations several tools saw'),
+    since: Optional[str] = None,
+    until: Optional[str] = None,
+    q: Optional[str] = Query(default=None, description='Substring of the title or an id'),
+    limit: int = 50,
+    offset: int = 0,
+    _principal: Principal = Depends(require(DECISIONS_READ)),
+) -> dict:
+    """Search the decision store by situation (C4, M04)."""
+    return await decision_store.search_situations(
+        entity=entity, source=source, severity=severity, status=status,
+        min_risk=min_risk, multi_source=multi_source, since=since, until=until,
+        q=q, limit=limit, offset=offset,
+    )
+
+
+@app.get('/api/search/decisions')
+async def api_search_decisions(
+    verdict: Optional[str] = None,
+    status: Optional[str] = None,
+    decision_source: Optional[str] = Query(default=None, description='llm · rules · human'),
+    detection_source: Optional[str] = None,
+    outcome: Optional[str] = Query(default=None, description='TRUE_POSITIVE · FALSE_POSITIVE · REOPENED'),
+    corrected: Optional[bool] = Query(default=None, description='Only decisions a human changed'),
+    since: Optional[str] = None,
+    until: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+    _principal: Principal = Depends(require(DECISIONS_READ)),
+) -> dict:
+    """Search the decision store by decision, correction and outcome (C4)."""
+    return await decision_store.search_decisions(
+        verdict=verdict, status=status, decision_source=decision_source,
+        detection_source=detection_source, outcome=outcome, corrected=corrected,
+        since=since, until=until, limit=limit, offset=offset,
+    )
+
+
+@app.post('/api/maintenance/prune-payloads')
+async def api_prune_payloads(
+    older_than_days: Optional[int] = Query(default=None),
+    dry_run: bool = True,
+    _principal: Principal = Depends(require(DECISIONS_ACT)),
+) -> dict:
+    """Drop stored copies of vendor payloads past the retention window (C4).
+
+    ``dry_run`` defaults to **true**: this is the only route in the system that
+    deletes anything, and it should have to be asked twice. Decisions,
+    corrections, outcomes and receipts are never touched by it — there is no
+    parameter that makes it touch them.
+    """
+    return await decision_store.prune_raw_payloads(older_than_days, dry_run=dry_run)
+
+
+@app.get('/api/queue')
+async def api_queue(
+    status: Optional[str] = Query(default=None, description='PENDING · RUNNING · DONE · FAILED'),
+    limit: int = 200,
+    _principal: Principal = Depends(require(DECISIONS_READ)),
+) -> dict:
+    """The analysis backlog, and every dead letter on it (C2).
+
+    ``status=FAILED`` is the dead-letter view: situations whose analysis
+    exhausted its retries, with the error that killed each one.
+    """
+    items = await analysis_queue.list_jobs(status=status, limit=max(1, min(limit, 1000)))
+    return {'count': len(items), 'stats': await analysis_queue.queue_stats(), 'items': items}
+
+
+@app.post('/api/queue/{job_id}/retry', status_code=202)
+async def api_retry_job(
+    job_id: int,
+    _principal: Principal = Depends(require(DECISIONS_ACT)),
+) -> dict:
+    """Put a dead letter back on the queue once its cause is addressed.
+
+    Behind ``decisions:act`` rather than read: re-running an analysis produces
+    a verdict and, with autopilot on, can end in a dispatched action.
+    """
+    job = await analysis_queue.retry_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail='Unknown analysis job')
+    return job
 
 
 @app.get('/api/adapters')

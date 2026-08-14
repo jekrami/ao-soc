@@ -18,7 +18,9 @@ import {
   approveBrokerDecision,
   editBrokerDecision,
   getBrokerDecision,
+  getBrokerCorrelationMetrics,
   getBrokerFeedback,
+  getBrokerSituation,
   getBrokerOutcomeSummary,
   listBrokerActions,
   listBrokerCorrections,
@@ -207,6 +209,24 @@ app.get('/api/incidents/:id/decision/feedback', async (req, res) => {
   } catch (err) {
     res.status(err.status === 404 ? 404 : 502).json({ error: err.message, code: 'BROKER_FEEDBACK_FAILED' });
   }
+});
+
+app.get('/api/incidents/:id/situation', async (req, res) => {
+  if (!(await isBrokerIncident(req.params.id))) {
+    return res.status(404).json({ error: 'broker incident not found', code: 'NOT_BROKER' });
+  }
+  try {
+    res.json(await getBrokerSituation(req.params.id));
+  } catch (err) {
+    // 404 here is not an error condition: incidents ingested before correlation
+    // existed were never correlated, and saying so is the honest answer.
+    const status = err.status === 404 ? 404 : 502;
+    res.status(status).json({ error: err.message, code: 'BROKER_SITUATION_FAILED' });
+  }
+});
+
+app.get('/api/correlation/metrics', async (_req, res) => {
+  res.json(await getBrokerCorrelationMetrics() ?? { available: false });
 });
 
 app.get('/api/decisions/outcomes', async (_req, res) => {

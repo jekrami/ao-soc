@@ -37,7 +37,13 @@ function inferTarget(description, sourceIp, destIp) {
 }
 
 function mapStatus(mitigationStatus) {
-  return mitigationStatus === 'CONTAINED' ? 'CONTAINED' : 'ACTIVE';
+  if (mitigationStatus === 'CONTAINED') return 'CONTAINED';
+  // C3: this incident's situation was merged into another one, so its decision
+  // was superseded. It must leave the active queue — otherwise the analyst is
+  // shown two incidents for one intrusion, which is the exact thing merging
+  // exists to prevent — but it is kept as history, never deleted (Rule 4).
+  if (mitigationStatus === 'SUPERSEDED') return 'SUPERSEDED';
+  return 'ACTIVE';
 }
 
 function mapStepsToActions(steps, alert) {
@@ -51,20 +57,25 @@ function mapStepsToActions(steps, alert) {
   }));
 }
 
+// R4: no technique is asserted here. These used to stamp T1071.001 and T1562 on
+// any incident whose timeline the model omitted — fabricated ATT&CK mappings
+// that rendered in the heatmap as fact. An empty string says "nobody claimed a
+// technique", which is what actually happened. (The same fix was made on the
+// broker side in orchestrator/enrichment.py.)
 function fallbackTimeline(alert, steps) {
   const ts = formatTime(alert.timestamp);
   return [
     {
       time: ts,
-      label: 'IDS Alert',
+      label: 'Detection',
       detail: `${alert.signature} · ${alert.source_ip} → ${alert.dest_ip}`,
-      mitre: 'T1071.001',
+      mitre: '',
     },
     ...steps.map((step, index) => ({
       time: ts,
       label: `Containment ${index + 1}`,
       detail: step.description,
-      mitre: 'T1562',
+      mitre: '',
     })),
   ];
 }
@@ -75,7 +86,9 @@ function fallbackEvidence(alert) {
       id: `EV-${alert.id}-NET-SRC`,
       type: 'network',
       src: alert.source_ip,
-      signal: alert.signature || 'Suricata IDS match',
+      // Rule 9: never name a product here. This read 'Suricata IDS match',
+      // asserting a sensor that may have had nothing to do with the detection.
+      signal: alert.signature || 'Detection with no signature reported',
       weight: 0.88,
     },
     {
@@ -110,9 +123,9 @@ export function mapAlertToIncident(alert) {
   const likelihood = alert.likelihood ?? confidence;
   const timeline = alert.timeline?.length ? alert.timeline : fallbackTimeline(alert, steps);
   const evidence = alert.evidence?.length ? alert.evidence : fallbackEvidence(alert);
-  const mitre = alert.mitre_techniques?.length
-    ? alert.mitre_techniques
-    : [{ id: 'T1071.001', tactic: 'Command and Control', name: 'Application Layer Protocol' }];
+  // An incident nobody mapped to a technique has no techniques. Inventing one
+  // here put a C2 mapping on every unmapped incident in the heatmap (R4).
+  const mitre = alert.mitre_techniques?.length ? alert.mitre_techniques : [];
   const actions = mapSoarActions(alert.recommended_actions, steps, alert);
   const bullets = alert.bullets?.length
     ? alert.bullets
@@ -124,14 +137,34 @@ export function mapAlertToIncident(alert) {
     completed: Boolean(s.completed),
   }));
 
+  // Phase B/C: the decision may stand on several detections from several tools.
+  // The summary rides along on every incident so the queue can say so without a
+  // second round-trip; the full member list is /api/incidents/:id/situation.
+  const situation = alert.enrichment?.situation ?? null;
+
   return {
     id: alert.id,
     source: 'broker',
-    title: alert.signature || `Suricata alert ${alert.source_ip} → ${alert.dest_ip}`,
+    title: alert.signature || `Detection ${alert.source_ip} → ${alert.dest_ip}`,
     severity,
     risk_score: riskScore,
     confidence,
     status: mapStatus(alert.mitigation_status),
+    situation_id: alert.situation_id ?? null,
+    detection_source: alert.detection_source ?? null,
+    situation: situation && {
+      situation_id: situation.situation_id,
+      status: situation.status,
+      merged_into: situation.merged_into ?? null,
+      detection_count: situation.detection_count,
+      sources: situation.sources || [],
+      multi_source: Boolean(situation.multi_source),
+      risk_score: situation.risk_score,
+      risk_factors: situation.risk_factors || [],
+      entities: situation.entities || {},
+      first_seen: situation.first_seen,
+      last_seen: situation.last_seen,
+    },
     affected_assets: [alert.source_ip, alert.dest_ip].filter(ip => ip && ip !== 'unknown'),
     owner: 'aegis-link-broker',
     first_seen: formatTime(alert.created_at || alert.timestamp),

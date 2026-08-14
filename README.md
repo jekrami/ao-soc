@@ -14,17 +14,19 @@ This dashboard is **not** a raw-log SIEM. It answers five questions for the huma
 
 AO-SOC evolves in three autonomy stages. **v2.0** implements **Stage 2**; **v3.0** is reserved for **Stage 3**.
 
-### Current pipeline (v2.4 — Stage 2, correlated)
+### Current pipeline (v2.5 — Stage 2, correlated)
 
 ```
-Detection tools (external)      Splunk · Wazuh · EDR · firewall · anything
+Detection tools (external)      Splunk · Wazuh · Elastic · Sentinel · CrowdStrike · CEF
     ↓                            each behind its own adapter — no vendor name in core
 Detection Intake contract        one vendor-neutral shape: source tool, rule identity,
     ↓                            timestamps, entities, vendor severity + technique, raw
-Cross-tool correlation           entity + time-window join
-    ↓
+Cross-tool correlation           entity + time-window join; two situations that turn
+    ↓                            out to be one are merged
 SECURITY SITUATION               N detections from M tools = one thing to decide about
     ↓
+Analysis queue                   retry · dead letters · back-pressure
+    ↓                            (stored and correlated first, so nothing is lost)
 Local LLM (Qwen via Ollama)      reasons over the situation, not the alert
     ↓
 AI Tier-2 Decision Agent
@@ -100,8 +102,14 @@ ao-soc/
 │   ├── adapters/               The only place a vendor's field names may appear
 │   │   ├── splunk.py           Splunk `| sendalert` (raw or CIM)
 │   │   ├── wazuh.py            Wazuh manager alert document
+│   │   ├── elastic.py          Elastic Security / ECS (nested or dotted)
+│   │   ├── sentinel.py         Microsoft Sentinel incident + typed entity list
+│   │   ├── crowdstrike.py      CrowdStrike Falcon streaming detection
+│   │   ├── cef.py              Generic ArcSight CEF — the long tail
 │   │   └── native.py           A sender that already speaks the contract
-│   ├── situation.py            CONTRACT 2 — Security Situation, correlation, risk score
+│   ├── situation.py            CONTRACT 2 — Security Situation, correlation, merging
+│   ├── analysis_queue.py       Retry, dead letters, back-pressure on the slow half
+│   ├── decision_store.py       Search, evidence pointers, retention
 │   ├── source_registry.py      Detection sources: adapter, health, trust weight
 │   ├── llm.py                  Ollama client + tolerant JSON parsing
 │   ├── llm_provider.py         LLMProvider abstraction (ollama / echo / scripted)
@@ -129,7 +137,7 @@ ao-soc/
     │   │   ├── ui/             ShadCN-style primitives (Card, Button, …)
     │   │   ├── layout/         TopNav
     │   │   └── dashboard/      ExecutiveSummary, IncidentQueue, ClearedBanner,
-    │   │                       AttackStoryboard, RecommendedActions,
+    │   │                       AttackStoryboard, SituationPanel, RecommendedActions,
     │   │                       Tier2DecisionPanel, RiskAnalytics,
     │   │                       MitreHeatmap, AiExplanation, SystemHealthPanel
     │   └── pages/              Dashboard, Alerts, Incidents list,
@@ -143,7 +151,7 @@ ao-soc/
 
 ## Run It
 
-**Version:** 2.4.0 — see `VERSION` at repo root (bump on every release).
+**Version:** 2.5.0 — see `VERSION` at repo root (bump on every release).
 
 One-time setup (each machine):
 
@@ -378,7 +386,9 @@ receipts in `orchestrator/soc_matrix.db`.
 
 - `GET /health` — open for liveness; the deployment config only with a key
 - `POST /detections?adapter=<name>` — **the intake.** Omit `adapter` to auto-detect
-  from the payload shape. Registered adapters: `splunk`, `wazuh`, `native`
+  from the payload shape. Registered adapters: `splunk`, `wazuh`, `elastic`,
+  `sentinel`, `crowdstrike`, `cef`, `native`. **201** carries the decision;
+  **202** means it is stored, correlated and queued
 - `POST /splunk-alert` — compatibility alias for `?adapter=splunk`, unchanged
 - `GET /api/adapters` — which vendor shapes this deployment can read
 - `GET /api/situations` · `GET /api/situations/{id}` — correlated situations
@@ -386,6 +396,10 @@ receipts in `orchestrator/soc_matrix.db`.
 - `GET /api/correlation/metrics` — detections per situation, multi-source count
 - `GET /api/detection-sources` — registry: adapter, health, trust weight
 - `POST /api/detection-sources/{tool}/trust` — set a source's trust weight
+- `GET /api/search/situations` — by entity, source, severity, status, risk, time, paged
+- `GET /api/search/decisions` — by verdict, status, source, outcome, corrected
+- `GET /api/queue` · `POST /api/queue/{id}/retry` — backlog and dead letters
+- `POST /api/maintenance/prune-payloads` — retention (dry run by default)
 - `GET /api/alerts` — alert log + severity/mitigation metrics
 - `POST /api/alerts/{id}/mitigate`
 - `GET /api/alerts/{id}/decision` · `POST .../decision/{approve,reject,edit,outcome}`
@@ -404,7 +418,7 @@ See `orchestrator/README.md` for Splunk field mapping and environment variables.
 
 | Document | Purpose |
 | -------- | ------- |
-| [`docs/AI-SOC-PLAN.md`](docs/AI-SOC-PLAN.md) | Master plan v2.3 — milestone status, roadmap phases, risk register, autonomy ramp |
+| [`docs/AI-SOC-PLAN.md`](docs/AI-SOC-PLAN.md) | Master plan v2.4 — milestone status, roadmap phases, risk register, autonomy ramp |
 | [`docs/MODEL-BENCHMARK.md`](docs/MODEL-BENCHMARK.md) | Local LLM benchmark for the Tier-2 decision — 14 models, selection, and why confidence must not gate automation |
 | [`orchestrator/README.md`](orchestrator/README.md) | Broker API, environment variables, autopilot and SOAR policy |
 | [`backend/README.md`](backend/README.md) | UI API endpoints |
@@ -444,6 +458,8 @@ See `orchestrator/README.md` for Splunk field mapping and environment variables.
 | GET    | `/api/incidents/:id/actions`                        | Action plan with execution status    |
 | POST   | `/api/incidents/:id/mitigate`                       | Mark a broker incident CONTAINED     |
 | POST   | `/api/incidents/:id/actions/:actionId/execute`      | Mock incidents only — broker incidents return 409 `USE_DECISION_APPROVE` |
+| GET    | `/api/incidents/:id/situation`                      | The correlated situation behind a decision — every member detection, the entity graph, the risk factors. 404 for incidents ingested before correlation existed |
+| GET    | `/api/correlation/metrics`                          | Detections per situation, multi-source and merged counts |
 | GET    | `/api/incidents/:id/explanations`                  | Retrieve persisted AI explanation     |
 
 ## Design Notes
@@ -473,6 +489,13 @@ matches the types in `frontend/src/types.ts`.
 
 ## New Features
 
+- **v2.5.0 — Phase C: integration breadth, a reliable decision path, and the decision store.** Phase B proved the contracts work; Phase C makes them survive a real shift. Three things were still true after B: a second vendor was cheap but unproven at breadth, an analysis that failed was **lost** (502 to the caller and the situation left unanalysed forever), and two situations that turned out to be one stayed two.
+  - **C1 — Four more adapters, no core change.** `elastic` (ECS, nested *and* the flattened dotted form, 7.x `signal.*` and 8.x `kibana.alert.*`), `sentinel` (incidents, whose entities are a typed list rather than named fields), `crowdstrike` (Falcon streaming) and `cef` (generic ArcSight — the long tail of firewall, WAF and proxy appliances a site already owns). Seven adapters now, and the intake, correlation, prompt and store were not touched for any of them. Two scale traps handled where the scale is actually known: Falcon's 1-5 (`4` means High, which the generic normaliser would call Medium) and CEF's 0-10 (`8` means High, which it would call Low). CEF's escaped pipes and space-containing extension values are parsed properly rather than split naively.
+  - **C2 — The reliable decision path.** Parse, store and correlate stay synchronous — they must never lose anything. The **model call is now a job**: `analysis_jobs` with exponential backoff, a bounded attempt budget, and a terminal `FAILED` state that *is* the dead-letter queue, on the same table `GET /api/queue` already reads. A caller still gets its decision in the response by default; when the backlog is deep it gets a **202** with a job to follow, because back-pressure should shed latency and never data. `POST /api/queue/{id}/retry` puts a dead letter back once its cause is fixed. Concurrency defaults to **1**: the benchmarked path is a single local GPU, where a second concurrent generate makes both slower rather than either faster. A `RUNNING` job at start-up is recovered as interrupted — with its attempt already counted, so a job that reliably crashes the process cannot retry forever.
+  - **C3 — Situation merging.** Two situations that share an entity *are* one situation; the only reason there were two is that the detection tying them together had not arrived yet. When it does, they merge: detections move to the oldest, and the absorbed situation keeps its row, its analysed record and its decision, marked `MERGED` with a pointer, its decision `SUPERSEDED`. **Not `REJECTED`** — nobody rejected it, and writing a human verdict nobody gave would poison the label corpus §7's autonomy ramp reads. A situation already dispatched or corrected by a human is never merged; it is reported as `related_settled`, which is itself worth knowing — either the intrusion resumed or the containment did not hold. **This surfaced a real bug**: the approval gate listed the states that *block* approval, so `SUPERSEDED` was approvable by omission and a merged-away plan could still have been dispatched. It is a whitelist now.
+  - **C4 — The decision store.** `GET /api/search/situations` filters by **entity** (one parameter, any entity kind — the caller does not need to know whether they are holding a username or an address), source, severity, status, minimum risk, multi-source, time range and free text, with paging. `GET /api/search/decisions` joins the correction and outcome tables in, because the reviewable question is never "which decisions were CONTAIN" but "which CONTAINs did a human change" and "which verdicts turned out wrong, and did they come from one source". **Evidence pointers** are derived at read time from fields the frozen contract already carries — no storage, no contract change — and a template whose field a detection never supplied yields *no* link rather than a broken one. **Retention** drops `detections.raw_payload` — a copy of data the upstream tool still owns — past a configurable window, leaving a marker so "we dropped this" stays distinguishable from "we never had it". Decisions, corrections, outcomes and receipts are **never** deleted by it, and there is no parameter that makes it delete them.
+  - **C5 — The situation, in the dashboard.** The panel shows what a Tier-2 verdict on a correlated situation immediately raises: *what am I approving containment for?* Every member detection with the tool that raised it, expandable to its entities, techniques, adapter version and a link back upstream; the entity graph they were joined on; and **each term of the risk score with its points**, because an analyst asked to trust a number is owed the arithmetic. EN/FA with full RTL — the risk factors carry structured parameters alongside the English sentence so the Persian UI is actually Persian rather than half-translated.
+  - **Two more fabrications removed.** `backend/alertStore.js` still stamped `T1071.001` on any incident with no techniques and `T1562` on every containment step, and labelled unsigned evidence a `Suricata IDS match` — the same two fabrications fixed on the broker side in v2.4.0, surviving in the UI API's own fallbacks.
 - **v2.4.0 — Phase B: freeze both contracts, build cross-tool correlation.** Everything above the intake was written against **one alert from one vendor**: the route named Splunk, the field extractor read Suricata's schema, and a second detection source meant a second code path (risk R7, and the Rule 9 violation in the audit). Phase B freezes the two contracts that fix that, and builds the one function on the ownership matrix with no market tool against it.
   - **B1 — Detection Intake contract + adapter interface.** One vendor-neutral shape every adapter emits: source tool, **adapter identity and version**, rule identity, timestamps, entities (user / host / host IP / process / src / dst / hash / URL / domain), vendor severity, **the technique the tool itself asserted**, and the payload verbatim (Rule 4). It describes *a detection*, not a log event — narrow by design, because the log is the SIEM's problem and never enters AI-SOC. `adapters/` is now the only place in the repository where a vendor's field names may appear, and a test asserts no core module can reach into it. `POST /detections` is the intake, with auto-detection from the payload shape; **`POST /splunk-alert` still works exactly as before** as a thin alias.
   - **B2 — Security Situation contract + risk scoring.** The frozen object between correlation and the AI analyst: member detections, entity graph, time span, contributing sources, and a **deterministic risk score with its factors kept alongside it** — highest member severity, plus points for cross-tool corroboration, volume, multiple hosts or accounts, and multiple tool-asserted techniques, scaled by source trust. Deliberately not the model's own number: benchmarked across 14 models, self-reported confidence is uncalibrated and unstable run to run, so the number an analyst triages by is a countable fact instead.
@@ -507,6 +530,6 @@ matches the types in `frontend/src/types.ts`.
 
 ## Authorship
 
-**Version:** 2.4.0 (see `VERSION` — increment on each release commit)
+**Version:** 2.5.0 (see `VERSION` — increment on each release commit)
 
 Written by J.Ekrami, co-written with GitHub Copilot, Composer (Cursor AI), and Claude (Opus 5).

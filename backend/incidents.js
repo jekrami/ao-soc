@@ -78,9 +78,15 @@ function computeLiveMttrMinutes(containedIncidents) {
   return med != null ? Math.round(med) : null;
 }
 
-/** An incident is cleared once containment has run — it belongs in the archive. */
+/**
+ * An incident is cleared once containment has run — it belongs in the archive.
+ * SUPERSEDED joins them (C3): its situation was merged into another, so the
+ * decision lives on the surviving incident and this one is history.
+ */
 export function isCleared(incident) {
-  return incident.status === 'CONTAINED' || incident.status === 'CLOSED';
+  return incident.status === 'CONTAINED'
+    || incident.status === 'CLOSED'
+    || incident.status === 'SUPERSEDED';
 }
 
 export async function listIncidents(severityFilter = '', { includeDemo = null, status = 'active' } = {}) {
