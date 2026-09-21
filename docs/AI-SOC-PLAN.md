@@ -4,10 +4,10 @@
 |---|---|
 | **Project** | AI-SOC / AO-SOC Command Center |
 | **Document** | Master Project Plan, Milestones & Coding-Agent Roadmap |
-| **Version** | 2.6.2 (replan of v1.0; boundary corrected in v2.1; Phases A-D delivered in v2.2-2.5; **Phase E delivered in v2.6**) |
+| **Version** | 2.7 (replan of v1.0; boundary corrected in v2.1; Phases A-D delivered in v2.2-2.5; Phase E delivered in v2.6; **Phase F scoped in v2.7**) |
 | **Supersedes** | Plan v1.0, Summer 2026 |
-| **Date** | Summer 2026 |
-| **Status** | Re-sequenced against implemented reality, re-scoped against the tool boundary; **Phases A-E complete in `ao-soc` 2.7.0** — what remains is a pilot and a release, both of which are engagements rather than build artifacts |
+| **Date** | Autumn 2026 |
+| **Status** | Re-sequenced against implemented reality, re-scoped against the tool boundary; **Phases A-E complete in `ao-soc` 2.7.0**. **Phase F is scoped, not yet started** — it deepens the pre-action context Phase E's connectors dispatch against (asset criticality, identity role, execution artifacts, reversible actions, a structured decision envelope). M16/M17 (pilot, release) remain engagements rather than build artifacts |
 | **Writer** | J.Ekrami |
 | **Co-writer** | Claude (Opus 5) |
 | **Copyright** | © J.Ekrami-Labs |
@@ -191,6 +191,18 @@ recently confirmed the same verdict on the same shape. Everything remaining is
 **production** (M15-M17) and the two integrations Phase E names — real response
 connectors, and sync with the external system of record.
 
+**v2.7 update.** Phase E shipped the connectors; this version scopes what they dispatch
+against. A review of the decision layer's pre-action inputs against an external Step-3
+data specification found two things: the strategic boundary (§2) and the autonomy ramp
+(§7) already match it, but the target context a Tier-2 decision acts on is coarser than it
+should be — `action_policy.py` refuses against an operator-typed denylist of targets, not
+a *classification* of what a target is. **Phase F** (§8) scopes an asset-criticality
+classifier, identity/privilege enrichment, additive execution-artifact fields, a
+reversible-containment contract and a structured decision envelope with run provenance.
+Nothing here is delivered yet. The same review proposed confidence-threshold and
+time-of-day autopilot gating; that part is **rejected**, reaffirming R6 (§6) rather than
+reopening it.
+
 **What correlation is worth, stated so it can be checked.** `GET /api/correlation/metrics`
 reports `detections_per_situation` and `multi_source_situations`. The first is how many
 alerts a human did *not* triage separately; the second counts the situations no upstream
@@ -312,13 +324,14 @@ validity of what it dispatches is not a detail.
 | ~~**R3**~~ | ~~No LLM abstraction (Rule 5)~~ | **Closed v2.2** | `LLMProvider` + `OllamaProvider` / `EchoProvider`; provider swap is an env var |
 | ~~**R4**~~ | ~~Unverified MITRE / threat claims~~ | **Closed v2.5** | Provenance (B3) said *who* claimed a technique; D1 says whether the claim checks out. Techniques are looked up in a local ATT&CK catalogue and stamped, with the catalogue's name and tactic outranking the model's — a real ID with an invented label now renders correctly. Indicators are looked up in a feed through `intel/`, and the report distinguishes *malicious*, *checked and not found*, *never checked* and *could not check*, so nothing unverified can be presented as verified. *Residual, and permanent:* a catalogue is a snapshot and a feed has coverage limits — which is exactly why `unlisted` is a distinct status from `unknown`, and why a subset catalogue never accuses a model of inventing an ID it simply does not carry |
 | ~~**R5**~~ | ~~Human corrections are not captured~~ | **Closed v2.2** | `decision_corrections` stores verdict before/after, the plan delta and the analyst's note, with `decision_source='human'`. `GET /api/corrections` exposes the corpus |
-| ~~**R6**~~ | ~~Confidence-only autonomy gate~~ | **Closed v2.5** | D4 replaced the threshold as the control with §7's precedent gate: N human-confirmed precedents at a similarity floor, zero reversed, zero contrary, newest inside a staleness window. The confidence number survives as a floor and as display, and decides nothing — which is the correct role for a figure 14 benchmarked models all report between 75 % and 98 % regardless of input, and which moved 45 points between two runs of the same five cases at temperature 0.1. **The gate cannot bootstrap:** an autopilot approval is not precedent, so a machine cannot promote its own decisions into a licence for more of them. *Residual:* the gate's constants (3 precedents, 70 % similarity, 30 days) are settings calibrated on nothing yet, and want re-measuring against a real corpus — the same caveat as every threshold in this system |
+| ~~**R6**~~ | ~~Confidence-only autonomy gate~~ | **Closed v2.5** | D4 replaced the threshold as the control with §7's precedent gate: N human-confirmed precedents at a similarity floor, zero reversed, zero contrary, newest inside a staleness window. The confidence number survives as a floor and as display, and decides nothing — which is the correct role for a figure 14 benchmarked models all report between 75 % and 98 % regardless of input, and which moved 45 points between two runs of the same five cases at temperature 0.1. **The gate cannot bootstrap:** an autopilot approval is not precedent, so a machine cannot promote its own decisions into a licence for more of them. *Residual:* the gate's constants (3 precedents, 70 % similarity, 30 days) are settings calibrated on nothing yet, and want re-measuring against a real corpus — the same caveat as every threshold in this system. *v2.7:* a confidence-threshold + time-of-day autopilot variant was proposed again during the Phase F review and rejected on this same evidence — see §8 Phase F |
 | ~~**R7**~~ | ~~**Vendor coupling at the intake**~~ *(v2.1)* | **Closed v2.3** | The route is `POST /detections`, the field mapping is one file per vendor under `adapters/`, and the columns are the contract's. Demonstrated by writing the Wazuh adapter without editing anything outside that package (B6), and enforced by a test that refuses a core import of it. *Residual:* the adapters themselves still have to be written and kept current per vendor — that is the cost the boundary was chosen to pay |
 | **R8** | **Decision quality is bounded by upstream detection quality** *(v2.1)* | Medium | AI-SOC cannot see what the SIEM did not alert on, and inherits its false-positive rate. Accepted deliberately. **Measurable since v2.2:** `GET /api/decisions/outcomes` reports precision per detection source, so a bad upstream rule no longer reads as bad AI. **Reduced in v2.3:** cross-tool corroboration is exactly the mitigation — a situation two independent tools agree on is less bounded by either one's error rate, which is why it scores higher. A multi-source situation's `detection_source` reads `splunk+wazuh`, so precision is still attributable and never guessed |
 | ~~**R10**~~ | ~~**A failed analysis is a lost decision**~~ *(raised and closed, v2.4)* | **Closed v2.4** | Phase B stored the detection before calling the model, so evidence was never lost — but the *analysis* was: a failure returned 502 and the situation stayed unanalysed unless another detection happened to join it. C2 makes it a job with backoff, a bounded attempt budget and a visible, re-runnable dead-letter state. Recorded here rather than quietly fixed, because it was a real gap in a phase that had already been called done |
 | **R11** | **Precedent inherits the corpus's blind spots** *(new, v2.5)* | Medium | The autonomy gate is only as good as the confirmations behind it. Three analysts who approved a CONTAIN too quickly are indistinguishable, to this system, from three who were right — and a pattern nobody has ever seen has no precedent, which is safe, while a pattern the SOC has *consistently mishandled* has plenty. Mitigated three ways and not eliminated: an outcome of `FALSE_POSITIVE` or `REOPENED` reverses a precedent and closes the gate; a single contrary human verdict closes it; and `GET /api/decisions/outcomes` reports precision per detection source, so a bad seam is visible before it is automated. The real control is that the corpus is *auditable* — every case behind an automatic execution is recorded on the decision |
 | **R12** | **The layer can now act on production infrastructure** *(new, v2.6)* | **High** | Through v2.5 a wrong decision cost a line in a JSON file. With E1 it can reach a firewall, an EDR and an identity provider, and the blast radius of a bad verdict is now a real one. Not a reason to withhold the capability — dispatching to somebody else's executor is the entire product (§2) — but it is the risk that reorders every other one. Mitigated in layers, none of which is sufficient alone: **dry run is the deployment default**, and the rollout order in the runbook does not turn it off until a human has read what would have been sent; routing is by a **closed action-class vocabulary** a model cannot extend by rephrasing; a connector **declares what it performs** and anything else is blocked before a packet leaves; targets are shape-validated (A2) and the protected-target list is enforced; every action carries an **idempotency key**, so a retried containment is the same containment; nothing above `LOW_WRITE` executes without a human unless **precedent** allows it (D4); and DESTRUCTIVE is off unless a site turned it on, which `preflight` reports. *Residual, and permanent:* an executor that silently ignores idempotency keys will double-apply a retried action, and AI-SOC cannot detect that from the outside — which is why the runbook says to start with the least dangerous class of action and read the receipts |
 | **R9** | **A busy entity chains a situation into a shift** *(new, v2.3)* | Low | Correlation joins on entities inside a window, so a heavily-alerting host could absorb unrelated detections indefinitely. Bounded three ways: `SITUATION_MAX_MEMBERS` (default 25), `CORRELATION_WINDOW_MINUTES` (default 30), and joining only on strong namespaces — a shared *process name* or *domain* is not enough, because half a fleet runs `powershell.exe`. All three are settings, not truths, and want re-calibrating on a real corpus |
+| **R13** | **Target context is coarse until Phase F** *(new, v2.7)* | Medium | `action_policy.py`'s `PROTECTED_TARGETS` is an exact-match denylist an operator must type by hand — it has no concept of *what class* a target belongs to. A domain controller, a service account, or a production database not explicitly listed today is indistinguishable, to the risk check, from any other hostname or user. Mitigated today by `ACTION_MAX_AUTOPILOT_RISK` (nothing above it executes without a human) and the precedent gate (nothing autopilots without repeated, reversal-free human confirmation on the same shape) — so the exposure is bounded, not open. Closes when F1 (asset-criticality classifier) and F2 (identity/privilege enrichment) ship |
 
 ---
 
@@ -567,6 +580,51 @@ it. Two of those numbers are already known to be missing: the autonomy gate's co
 (3 precedents / 70 % similarity / 30 days) are calibrated on nothing, and so are
 correlation's window and member ceiling. A pilot is where they stop being guesses.
 
+**v2.7 note.** That statement held until a review of the decision layer's pre-action
+inputs found a real gap code can still close: target *classification*, not just target
+identity. Phase F below scopes it. M16/M17 remain the only milestones a pilot alone can
+close.
+
+### Phase F — Pre-action context & reversible response 🔲 *(scoped in v2.7, not started)*
+
+Rationale: Phase E's connectors dispatch whatever the Situation and the Tier-2 decision
+hand them. Both still carry only the 9-field Detection Intake entity set (§4), and the one
+target check in front of execution — `action_policy.py`'s `PROTECTED_TARGETS` — is an
+operator-typed exact-match denylist, not a classification of what a target *is*. A domain
+controller not on that list, or a service account whose lock would take down a production
+integration, is invisible to the decision layer today. This phase closes that, and adds
+the audit precision a disputed automated action will need.
+
+| Task | Milestone | Addresses | State |
+|---|---|---|---|
+| F1. Asset-criticality classifier — three-layer lookup (static override map, hostname-pattern rules, CIDR/subnet ranges) producing a `criticality` tag on a target entity; a `CRITICAL` target is refused for autopilot execution by the classifier's own rule, independent of precedent depth | M12/M14 | R13 | 🔲 Planned |
+| F2. Identity/privilege enrichment — classify a target account as standard, privileged-admin, or service-account (config map + naming heuristics, e.g. `svc_`/`_svc` prefixes); identity-affecting actions (disable, revoke session, force-reset) are gated the same way F1 gates host actions | M10/M12 | R13 | 🔲 Planned |
+| F3. Execution-artifact fields on the Detection Intake contract — optional `command_line`, `process_guid`, `parent_process` alongside the existing `file_hash`, populated where the source adapter's vendor payload carries them (EDR sources), left empty otherwise. Additive only — the single-detection degenerate case (§4) is unaffected | M03 | — | 🔲 Planned |
+| F4. Reversible-containment contract — an action with a known inverse (`EDR_ISOLATE`/`EDR_UNISOLATE`, firewall block/unblock) is dispatched with its rollback paired and recorded; an action with no known inverse (session revoke) is flagged non-reversible, and that flag — not a human's guess — is what the case timeline and the autopilot risk class both read | M12 | — | 🔲 Planned |
+| F5. Structured decision envelope + run provenance — normalize the exported decision shape to `situation` / `decision` / `execution_payload` / `audit_trail`; stamp the `LLMProvider`'s configured model identifier and a hash of the prompt+response on every LLM-sourced decision | M09/M10 | — | 🔲 Planned |
+
+**Draft DoD, to confirm at delivery:** a target's criticality and identity role are
+resolved before any action reaches `action_policy.py`'s risk check; a `CRITICAL` or
+privileged-identity target cannot be auto-executed regardless of precedent depth; every
+dispatched action with a known inverse has a rollback action on record and invocable from
+the case; every LLM-sourced decision export carries a model identifier and a reasoning
+hash tying it to what actually ran.
+
+**Explicitly not adopted from the same review: confidence-threshold and time-of-day
+(off-hours/weekend) autopilot gating.** R6 (§6) closed the confidence-threshold path in
+v2.5 on measured evidence — 14 local models benchmarked at 75-98 % confidence regardless
+of correctness, with the ranking sometimes inverted between a benign case and an active
+compromise. Reinstating a confidence floor as a control would undo that finding. If
+off-hours behaviour is wanted, the correct shape is a **stricter ceiling layered on the
+existing precedent gate** — e.g. a lower `ACTION_MAX_AUTOPILOT_RISK` outside business
+hours — never a replacement for it. Recorded here so the idea is not silently reproposed
+without the context of why it was rejected.
+
+**Deliberately deferred (unchanged from Phase D):** D3FEND mapping; local RAG over SOPs,
+approved-tooling lists and change-management windows; UEBA historical baselines. All three
+need either a document-store integration or a real corpus this project does not have yet,
+and belong with the external system of record per §2.
+
 ---
 
 ## 9. Model selection for M08 (measured)
@@ -664,6 +722,7 @@ instead of to log parsers.
 |---|---|---|---|
 | 1.0 | Summer 2026 | Initial master plan, milestones M00-M17 | J.Ekrami |
 | 2.0 | Summer 2026 | Replan against implemented reality: corrected status (intelligence layers built, data foundation and governance not), Security Situation contract as next architectural artifact, governance moved from last to first, autonomy ramp with edit-capture, measured model selection | J.Ekrami / Claude (Opus 5) |
+| 2.7 | Autumn 2026 | **Phase F scoped** (planned, not yet delivered). F1 asset-criticality classifier (static map + hostname pattern + CIDR, `CRITICAL` targets refused for autopilot regardless of precedent); F2 identity/privilege enrichment (standard/privileged-admin/service-account) gating identity-affecting actions the same way; F3 execution-artifact fields (`command_line`, `process_guid`, `parent_process`) added to the Detection Intake contract, additive and optional; F4 reversible-containment contract pairing a dispatched action with its inverse where one exists, flagging the rest non-reversible; F5 structured decision envelope (`situation`/`decision`/`execution_payload`/`audit_trail`) with a model identifier and reasoning hash stamped on every LLM-sourced decision. Originated from a review of the project against an external Step-3 pre-action data-input specification. **Explicitly rejected from that same review:** confidence-threshold and time-of-day autopilot gating — reaffirms R6, which closed the confidence-threshold path in v2.5 on measured evidence. §3 (v2.7 note), risk register (**R13 raised**, R6 annotated), §8 Phase F added | J.Ekrami / Claude (Sonnet 5) |
 | 2.6.2 | Summer 2026 | Diagram wording only, no scope change. Layer 4 now states the control it actually runs under — `precedent, not confidence, grants autonomy` / «خودگردانی را سابقه می‌گشاید، نه عددِ اطمینان». D4 and §7.3.1 of the engineering playbook both turn on this, and the drawing showed only the verdict vocabulary and the action plan, so a reader could reasonably assume the confidence number gates execution — the design's single most important negative claim was invisible. Layer 5 already carried where precedent comes from; layer 4 now carries where it is evaluated | J.Ekrami / Claude (Opus 5) |
 | 2.6.1 | Summer 2026 | Diagram wording only, no scope change. Layer 3's second chip renamed to name the technique it implements — `RAG · verification & precedent` / «راستی‌آزمایی و بازیابی سابقه (RAG)» — in both `AI-SOC-architecture-en.svg` and `AI-SOC-architecture-fa.svg`. The drawing labelled components by behaviour, so M09 was invisible on it while §3 records it at 80 % and D3 records it delivered; a reader could only conclude RAG had been dropped. What is deferred remains deferred and unchanged: embeddings over the precedent corpus, and playbooks/procedures as retrievable documents | J.Ekrami / Claude (Opus 5) |
 | 2.6 | Summer 2026 | **Phase E delivered** (`ao-soc` 2.7.0). E1 `response.py` + `connectors/{log,noop,webhook,wazuh}.py` — delivery routed by action class, capability preflight, idempotency keys stable across retries, retry only on transport failure, verified success, and a dry run that reports `SIMULATED` rather than `DONE`. E2 `cases.py` — assignment, escalation, notes and a whitelisted lifecycle over an append-only timeline, with no code path to a decision. E3 `case_sync.py` + `ticketing/{filedrop,thehive}.py` — bidirectional sync with echo suppression, per-field ownership and refusal-not-forcing, structurally unable to cause an action. E4 `metrics.py`, `preflight.py`, `backup.py` and `deploy/` — the latency histograms Rule 8 named, a start-up report of everything configured to silently do less than it claims, verified backups that raise on a hash mismatch, and containers that default to dry run. E5 the `CasePanel` in EN/FA. E6 `docs/PILOT-RUNBOOK.md`. §3 status (M11/M12/M15 to green, M16/M17 to amber), rule audit (Rule 8 residual closed, Rule 9 now four boundaries), risk register (**R12 raised**), §7 step 3, §8 and §10 updated | J.Ekrami / Claude (Opus 5) |
