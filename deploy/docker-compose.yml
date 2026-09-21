@@ -2,6 +2,7 @@
 #
 # Copyright (c) 2026 Ekrami-Labs. All rights reserved.
 #
+#   python deploy/check_env.py
 #   docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d
 #
 # Deliberate properties:
@@ -15,8 +16,23 @@
 #   * **No secret is written here.** Everything sensitive comes from the env
 #     file, which is gitignored.
 #   * **Ollama is not a service.** The model runs where the GPU is, which is
-#     rarely the container host; `LLM_ENDPOINT` points at it, and
+#     rarely the container host; OLLAMA_HOST points at it, and
 #     `LLM_PROVIDER=echo` runs the whole layer with no model at all.
+#   * **The broker receives the whole of deploy/.env**, not a list of variables.
+#     `--env-file` only feeds this file's own variable interpolation; a service
+#     sees nothing it does not name. Connector, threat-intel and case-sync
+#     settings are open-ended (a secret's variable is itself named by another
+#     setting), so any list here would go stale — and did: every CONNECTOR_*,
+#     MISP_* and THEHIVE_* line the example invites you to uncomment used to be
+#     silently dropped. The ui-api deliberately gets only what it names, so the
+#     connector credentials never reach the service the browser talks to.
+#   * **Compose prefers your shell to deploy/.env.** A variable left in a
+#     terminal from a demo (TIER2_AUTOPILOT=1, RESPONSE_DRY_RUN=false) beats the
+#     file and nothing reports it. deploy/check_env.py lists every such
+#     override; run it before `up`.
+#   * **Every name here is a name the code reads.** A test
+#     (`check_deployment_drift`) fails the build if this file, deploy/.env.example
+#     or the runbook offers a setting nothing reads.
 
 name: ao-soc
 
@@ -25,22 +41,39 @@ services:
     build:
       context: ..
       dockerfile: deploy/orchestrator.Dockerfile
-    image: ao-soc/broker:2.7.0
+    image: ao-soc/broker:2.8.6
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
       # --- identity and access (A1) ---
       BROKER_API_KEYS: ${BROKER_API_KEYS:?set BROKER_API_KEYS in deploy/.env}
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8080}
-      # --- the model (Rule 5) ---
+      # --- the model (Rule 5). OLLAMA_HOST here is the host AI-SOC dials; a
+      #     bind address such as 0.0.0.0 is mapped to localhost, which inside a
+      #     container is the container itself, so name the GPU host.
+      #     The deploy-level names are AOSOC_MODEL_HOST / AOSOC_MODEL_PORT, not
+      #     Ollama's own: compose resolves a variable from the calling shell
+      #     before --env-file, and OLLAMA_HOST is routinely exported in that
+      #     shell as a bind address (0.0.0.0:11434), which then silently
+      #     replaced the GPU host. Run deploy/check_env.py before `up` for the
+      #     general case. ---
       LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
-      LLM_ENDPOINT: ${LLM_ENDPOINT:-http://host.docker.internal:11434}
-      LLM_MODEL: ${LLM_MODEL:-qwen2.5:7b}
+      OLLAMA_HOST: ${AOSOC_MODEL_HOST:-host.docker.internal}
+      OLLAMA_PORT: ${AOSOC_MODEL_PORT:-11434}
+      MODEL_NAME: ${MODEL_NAME:-qwen2.5:7b}
       # --- verification (D1) ---
       TI_PROVIDER: ${TI_PROVIDER:-none}
       TI_LOCAL_FILE: ${TI_LOCAL_FILE:-reference/intel-indicators.json}
       # --- autonomy (D4) — off unless a site turns it on, and gated on
       #     precedent rather than confidence even then ---
       TIER2_AUTOPILOT: ${TIER2_AUTOPILOT:-false}
+      TIER2_AUTOPILOT_REQUIRE_PRECEDENT: ${TIER2_AUTOPILOT_REQUIRE_PRECEDENT:-true}
+      # --- what autopilot may never touch (F1, F2). Paths are inside the
+      #     container, under /config, which is mounted read-only below ---
+      ASSET_CRITICALITY_FILE: ${ASSET_CRITICALITY_FILE:-}
+      IDENTITY_ROLES_FILE: ${IDENTITY_ROLES_FILE:-}
+      # --- what produced a decision (F5) ---
+      MODEL_RUN_RETAIN_TEXT: ${MODEL_RUN_RETAIN_TEXT:-true}
       # --- response (E1) — dry run by default. A first deployment must not be
       #     able to touch a network before anybody has read what it would send.
       RESPONSE_DRY_RUN: ${RESPONSE_DRY_RUN:-true}
@@ -50,8 +83,12 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     volumes:
       - decision-store:/data
+      # The site's own asset and identity maps. Read-only: the broker reads
+      # them and never writes them, and a container that can rewrite what it is
+      # forbidden to touch has been given a way to forbid itself less.
+      - ${AOSOC_CONFIG_DIR:-./config}:/config:ro
     extra_hosts:
-      # So LLM_ENDPOINT can name the GPU host on a Linux daemon too.
+      # So OLLAMA_HOST can name the GPU host on a Linux daemon too.
       - "host.docker.internal:host-gateway"
     networks: [ao-soc]
 
@@ -59,7 +96,7 @@ services:
     build:
       context: ..
       dockerfile: deploy/ui-api.Dockerfile
-    image: ao-soc/ui-api:2.7.0
+    image: ao-soc/ui-api:2.8.6
     restart: unless-stopped
     depends_on:
       broker:
@@ -68,14 +105,18 @@ services:
       PORT: 4000
       BROKER_URL: http://broker:8500
       BROKER_API_KEY: ${UI_API_BROKER_KEY:?set UI_API_BROKER_KEY in deploy/.env}
-      DASHBOARD_API_KEYS: ${DASHBOARD_API_KEYS:-}
+      # One named key per analyst. Approvals, edits and rollbacks are recorded
+      # under the authenticated name, so a shared key is an audit trail that
+      # names nobody. Required: with none set the service mints a random key
+      # into its log on every start, which is not something to log in with.
+      AOSOC_API_KEYS: ${AOSOC_API_KEYS:?set AOSOC_API_KEYS in deploy/.env (name:role:secret, one per analyst)}
     networks: [ao-soc]
 
   dashboard:
     build:
       context: ..
       dockerfile: deploy/frontend.Dockerfile
-    image: ao-soc/dashboard:2.7.0
+    image: ao-soc/dashboard:2.8.6
     restart: unless-stopped
     depends_on:
       - ui-api
@@ -85,8 +126,8 @@ services:
 
 volumes:
   decision-store:
-    # Every decision, correction, outcome and receipt. Nothing upstream can
-    # reproduce these — back it up (orchestrator/backup.py).
+    # Every decision, correction, outcome, receipt and model run. Nothing
+    # upstream can reproduce these — back it up (orchestrator/backup.py).
     name: ao-soc-decision-store
 
 networks:

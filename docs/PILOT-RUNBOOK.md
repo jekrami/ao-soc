@@ -6,7 +6,7 @@
 | **Co-writer** | Claude (Opus 5, Sonnet 5) |
 | **Copyright** | © J.Ekrami-Labs |
 | **Date** | Summer 2026 |
-| **Applies to** | `ao-soc` 2.8.5 (plan v2.8.1) — Phases E and F |
+| **Applies to** | `ao-soc` 2.8.6 (plan v2.8.2) — Phases E and F |
 
 ---
 
@@ -46,6 +46,17 @@ Generate keys and fill in `deploy/.env`:
 cp deploy/.env.example deploy/.env
 ```
 
+**Then, before every `docker compose up`:**
+
+```bash
+python deploy/check_env.py
+```
+
+Compose resolves `${VAR}` from your **shell first** and `deploy/.env` second. A variable
+left over from a demo — `TIER2_AUTOPILOT=1`, `RESPONSE_DRY_RUN=false` — silently beats the
+file, which will read "dry run" while the container is not. The script lists every such
+override and exits 1; it reads only names the deployment files mention.
+
 ```bash
 python -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
@@ -54,12 +65,33 @@ Roles are `ingest` (may POST detections and nothing else), `viewer` (read), `ana
 (read and act), `service` (a confidential client that may name the operator it acts for),
 `admin`. Give the SIEM an `ingest` key. Give nobody an `admin` key by default.
 
+There are **two** key sets, and they are not the same thing:
+
+| Setting | Who holds it | Purpose |
+|---|---|---|
+| `BROKER_API_KEYS` | the SIEM, the UI API, scripts | machine access to the broker. The UI API's entry is the `service` key |
+| `AOSOC_API_KEYS` | **each analyst, personally** | signing in to the dashboard. Required — with none set the UI API mints a random key into its log on every start |
+
+**One named key per analyst.** Approvals, edits and rollbacks are recorded under the
+authenticated name; a shared key is an audit trail that names nobody, and R11's only
+control is that the corpus is auditable.
+
+**Run the test suite inside the image before Stage 0.** The suite passed on Python 3.14;
+the image is Python 3.13. They are expected to agree and nothing has checked:
+
+```bash
+docker compose --env-file deploy/.env -f deploy/docker-compose.yml run --rm --no-deps broker python test_broker.py
+```
+
+It must end in `PASS`. (One check, `check_deployment_drift`, reports `SKIP` there — it
+reads the deployment files, which are not in the image.)
+
 ---
 
 ## 2. Stage 0 — bring it up with nothing attached
 
 ```bash
-docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d
+python deploy/check_env.py && docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d
 ```
 
 Settings for this stage:
@@ -95,13 +127,26 @@ Change one thing:
 
 ```
 LLM_PROVIDER=ollama
-LLM_ENDPOINT=http://<the GPU host>:11434
-LLM_MODEL=qwen2.5:7b
+AOSOC_MODEL_HOST=<the GPU host>
+AOSOC_MODEL_PORT=11434
+MODEL_NAME=qwen2.5:7b
 TI_PROVIDER=local        # or misp, if there is one
 ```
 
-> `OLLAMA_HOST` is Ollama's **bind** address and is frequently already `0.0.0.0` in the
-> environment. It is not a client target. `LLM_ENDPOINT` is what AI-SOC dials.
+These go in `deploy/.env`; then `docker compose --env-file deploy/.env -f
+deploy/docker-compose.yml up -d` recreates the broker with them.
+
+> `AOSOC_MODEL_HOST` becomes `OLLAMA_HOST` inside the container: the host AI-SOC
+> **dials**. It is deliberately not spelt `OLLAMA_HOST` in `deploy/.env`, because Ollama's
+> installer exports that name in your shell as a *bind* address (`0.0.0.0:11434`), compose
+> prefers your shell to `--env-file`, and a bind address is mapped to `localhost` — inside
+> a container, the container itself. This was found by rendering the compose file on a
+> machine that runs Ollama. Name the GPU host. (`OLLAMA_ENDPOINT` overrides host and port
+> with a full URL, `.../api/generate` included.) The names `LLM_ENDPOINT` and `LLM_MODEL`
+> appeared in earlier versions of these files and were read by nothing.
+>
+> Confirm it took: `GET /health` names the model and the endpoint the broker is actually
+> using, and `preflight` reports a setting that nothing reads.
 
 Model choice is measured, not preference — see the plan §9. `qwen2.5:7b` scored 5/5 on
 judgment at half the latency of anything else that did. **`llama3.1:8b` and `llama3.2:3b`
@@ -234,7 +279,18 @@ Before turning it on, check five things:
 
 4. `ASSET_CRITICALITY_FILE` and `IDENTITY_ROLES_FILE` are set, and someone who knows the estate has read them. Autopilot will
    never touch what they name, and will happily touch what they do not (R13's residual). `preflight` reports
-   autopilot enabled with neither file.
+   autopilot enabled with neither file. They are site files and are gitignored:
+
+   ```bash
+   cp orchestrator/config/assets.example.json     deploy/config/assets.json
+   cp orchestrator/config/identities.example.json deploy/config/identities.json
+   ```
+
+   then, in `deploy/.env`, `ASSET_CRITICALITY_FILE=/config/assets.json` and
+   `IDENTITY_ROLES_FILE=/config/identities.json` (the directory is mounted read-only at
+   `/config`). Edits are picked up without a restart. Give it an hour with the two people
+   who know the estate best: domain controllers, the database tier, clinical or
+   production servers, core subnets, every privileged and every service account.
 5. You know what autopilot **cannot** do by construction: it never runs an action that cannot be taken back (kill
    process, password reset, restart host, any verb nobody modelled). Those wait for a person at any confidence. What it
    did run can be taken back by a person with `POST /api/alerts/{id}/actions/{action_id}/rollback`; a connector with no
@@ -332,7 +388,12 @@ Nothing here is a code change; it is what must be true before a site depends on 
       credentials for an EDR and a firewall
 - [ ] Keys are per-consumer and per-role; the SIEM's key is `ingest` and can do nothing
       else. No `admin` key is in routine use
-- [ ] `ALLOWED_ORIGINS` names the dashboard's real origin. `'*'` is refused outright
+- [ ] Browser traffic is same-origin: the dashboard is served by nginx, which proxies `/api/`
+      to the UI API, so CORS never applies. If anything else is ever exposed, set
+      `AOSOC_CORS_ORIGINS` (UI API) and `BROKER_CORS_ORIGINS` (broker) to its real origin —
+      `'*'` is refused outright by the broker. (`ALLOWED_ORIGINS`, which earlier versions of
+      these files set, was read by nothing.)
+- [ ] `AOSOC_API_KEYS` holds one named key per analyst, and nobody signs in with a shared one
 - [ ] `deploy/.env` is not in version control, and its secrets have been rotated since
       the pilot
 - [ ] Known residual, stated rather than hidden: **pre-shared keys are not an IdP.** SSO,

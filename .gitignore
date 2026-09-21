@@ -15,3 +15,9 @@ bench_results.json
 # Deployment secrets (E4). The example is checked in; the real one never is —
 # it holds the key that can approve a containment.
 deploy/.env
+
+# Site-specific asset and identity maps (F1, F2): they name a site's domain
+# controllers, subnets and privileged accounts. The examples live in
+# orchestrator/config/ and are checked in; a site's own never are.
+deploy/config/*
+!deploy/config/.gitkeep

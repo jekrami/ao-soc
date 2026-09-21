@@ -910,6 +910,19 @@ admitted a state added later. None of them raised. It never refuses to start: a
 decision layer that will not boot because a firewall connector is misconfigured has
 turned a degraded response path into a total detection outage.
 
+**It also reports a setting that is set and read by nothing.** That is the quietest
+misconfiguration there is: no error, no warning, and the default behaves exactly as
+if the setting had never been made. Two kinds are reported, each with what was
+probably meant: names this project has been known to misname (`LLM_ENDPOINT` →
+`OLLAMA_HOST`, `LLM_MODEL` → `MODEL_NAME`, `ALLOWED_ORIGINS` → `BROKER_CORS_ORIGINS`,
+`DASHBOARD_API_KEYS` → `AOSOC_API_KEYS`), and any variable carrying one of our prefixes
+(`TIER2_`, `RESPONSE_`, `TI_`, `ACTION_`, `CASE_SYNC_`, ...) that the code does not
+recognise — a misspelling. The set of names the code reads is derived from its own
+source, so it cannot fall behind it. Ollama's own variables (`OLLAMA_MODELS`, ...) and
+`CONNECTOR_<NAME>_*` are deliberately left alone: a warning that is usually wrong is one
+nobody reads. `deploy/check_env.py` is the companion for the part preflight cannot see:
+a variable in the *shell* that compose would prefer to `deploy/.env`.
+
 ```bash
 python backup.py create
 ```

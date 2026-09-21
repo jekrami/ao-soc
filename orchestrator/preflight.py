@@ -27,16 +27,102 @@ Two deliberate choices:
 """
 from __future__ import annotations
 
+import difflib
+import functools
 import logging
 import os
-from typing import Any, Dict, List
+import re
+from pathlib import Path
+from typing import Any, Dict, FrozenSet, List
 
 logger = logging.getLogger(__name__)
+
+
+#: Names an operator is plausibly told, or plausibly guesses, and that nothing
+#: reads. Each was shipped in this project's own deployment files and read by
+#: nothing, which is why this table exists rather than only the prefix check
+#: below: `ALLOWED_ORIGINS` and `DASHBOARD_API_KEYS` carry no prefix of ours.
+_NEAR_MISSES: Dict[str, str] = {
+    'LLM_ENDPOINT': 'OLLAMA_HOST (and OLLAMA_PORT), or OLLAMA_ENDPOINT for a full URL',
+    'LLM_MODEL': 'MODEL_NAME',
+    'ALLOWED_ORIGINS': 'BROKER_CORS_ORIGINS on the broker (AOSOC_CORS_ORIGINS on the UI API)',
+    'DASHBOARD_API_KEYS': 'AOSOC_API_KEYS (read by the UI API, not the broker)',
+}
+
+#: A setting that carries one of these prefixes is ours, so an unread one is a
+#: typo rather than somebody else's variable. Deliberately not `OLLAMA_`: Ollama's
+#: own server settings (OLLAMA_MODELS, OLLAMA_KEEP_ALIVE...) live in the same
+#: environment on a GPU host, and a warning that is usually wrong is one nobody
+#: reads.
+_OWNED_PREFIXES = (
+    'TIER2_', 'RESPONSE_', 'TI_', 'ACTION_', 'ANALYSIS_', 'CASE_SYNC_', 'DETECTION_',
+    'BROKER_', 'ASSET_', 'IDENTITY_', 'MISP_', 'THEHIVE_', 'CORRELATION_', 'SITUATION_',
+    'SOAR_', 'LLM_',
+)
+
+#: Prefixed names that are legitimate but read elsewhere (the UI API, the demo
+#: scripts), so their presence in the broker's environment is not a mistake.
+_READ_ELSEWHERE = frozenset({'BROKER_URL'})
+
+
+@functools.lru_cache(maxsize=1)
+def _known_settings() -> FrozenSet[str]:
+    """Every upper-case name this package quotes in its source, and so may read.
+
+    Derived from the source itself rather than kept as a list, so it cannot
+    fall behind the code it describes. Slightly generous by design (a name
+    quoted only in a docstring counts): a check that cries wolf is switched off.
+    """
+    found = set()
+    token = re.compile(r"""['"]([A-Z][A-Z0-9_]{2,})['"]""")
+    for path in Path(__file__).parent.rglob('*.py'):
+        # This file quotes the wrong names in order to reject them; counting
+        # those quotes as "read" would make the check unable to see them.
+        if path.name.startswith('test_') or path.resolve() == Path(__file__).resolve():
+            continue
+        try:
+            found |= set(token.findall(path.read_text(encoding='utf-8')))
+        except OSError:
+            continue
+    return frozenset(found)
+
+
+def unread_settings() -> List[str]:
+    """Settings present in the environment that nothing reads.
+
+    A setting the operator believes is in force and that nothing reads is the
+    quietest failure there is: no error, no warning, and the default behaves
+    exactly as if it had never been set. Two kinds are reported - names this
+    project has been known to misname, and names carrying one of our prefixes
+    that the code does not recognise (a misspelling).
+    """
+    known = _known_settings()
+    reported: List[str] = []
+    for name in sorted(os.environ):
+        if name in known or name in _READ_ELSEWHERE or name.startswith('CONNECTOR_'):
+            continue
+        if name in _NEAR_MISSES:
+            reported.append(
+                f'{name} is set but nothing reads it — did you mean {_NEAR_MISSES[name]}?'
+            )
+        elif name.startswith(_OWNED_PREFIXES):
+            close = difflib.get_close_matches(name, [k for k in known if k.startswith(name[:4])], n=1, cutoff=0.6)
+            hint = f' — did you mean {close[0]}?' if close else ''
+            reported.append(
+                f'{name} is set but nothing reads it, so it does nothing{hint}'
+            )
+    return reported
 
 
 def startup_problems() -> List[str]:
     """Every reason something configured will not do what it says. Never raises."""
     problems: List[str] = []
+
+    # --- settings that are set and read by nothing ---
+    try:
+        problems.extend(unread_settings())
+    except Exception as exc:  # noqa: BLE001
+        problems.append(f'settings could not be inspected: {exc}')
 
     # --- response connectors (E1) ---
     try:

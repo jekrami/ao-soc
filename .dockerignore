@@ -1,0 +1,26 @@
+# The build context is the repository root (deploy/docker-compose.yml, context: ..),
+# so without this file every image build sends node_modules, git history and
+# whatever databases happen to be on the developer's machine.
+#
+# The databases matter most: `COPY orchestrator/ /app/` used to carry aidemo.db,
+# unify.db and any other *.db in that directory into the image - demo data at
+# best, a developer's real corpus at worst. The decision store belongs on the
+# /data volume and nowhere else (playbook §9).
+.git
+.claude
+.cursor
+**/node_modules
+**/__pycache__
+**/*.pyc
+**/*.db
+**/*.db-shm
+**/*.db-wal
+**/*.jsonl
+**/*.log
+**/data
+frontend/dist
+docs/*.png
+docs/*.docx
+deploy/.env
+deploy/config/*
+*.md

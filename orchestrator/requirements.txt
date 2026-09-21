@@ -1,6 +1,13 @@
-fastapi
-uvicorn
-sqlalchemy
-aiosqlite
-pydantic
-httpx
+# Pinned to the versions the test suite (test_broker.py) last passed against.
+# Unpinned, an image built next month is not the software that was tested, and
+# a pilot's first surprise should not be a dependency's release note.
+# Transitive dependencies are left to the resolver on purpose: pinning every one
+# ties the file to a single Python version, and the image (3.13) is not the
+# interpreter the suite ran on (3.14) - run the suite inside the image before a
+# pilot (docs/PILOT-RUNBOOK.md, section 1) rather than trusting that they agree.
+fastapi==0.141.1
+uvicorn==0.52.1
+sqlalchemy==2.0.52
+aiosqlite==0.22.1
+pydantic==2.13.4
+httpx==0.28.1
