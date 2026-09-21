@@ -37,6 +37,8 @@ import re
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+import asset_criticality
+
 # --- Risk classes, least to most dangerous --------------------------------
 
 READ = 'READ'
@@ -127,6 +129,12 @@ PROTECTED_TARGETS = frozenset(
 )
 
 MAX_TARGET_LENGTH = 128
+
+# F1: from this class up, an action that changes the state of a CRITICAL asset
+# never runs without a human. Not a setting: a rule a config line could relax is
+# a rule a model's phrasing or a typo could relax, and "never" is the point.
+CRITICAL_ASSET_GUARD_FROM = HIGH_WRITE
+_ENDPOINT_KINDS = frozenset({KIND_IP, KIND_HOST, KIND_ENDPOINT})
 
 # --- Target shape validation ----------------------------------------------
 
@@ -222,6 +230,10 @@ class ActionAssessment:
     rule: str
     allowed: bool
     reason: Optional[str] = None
+    # F1: what the target is, judged by asset_criticality. Informational for a
+    # human (who may still approve); binding for autopilot.
+    criticality: str = asset_criticality.STANDARD
+    criticality_reason: Optional[str] = None
 
     def as_dict(self) -> Dict[str, Any]:
         return {
@@ -232,6 +244,8 @@ class ActionAssessment:
             'rule': self.rule,
             'allowed': self.allowed,
             'reason': self.reason,
+            'criticality': self.criticality,
+            'criticality_reason': self.criticality_reason,
         }
 
 
@@ -262,6 +276,16 @@ def assess_action(action_type: str, target: str) -> ActionAssessment:
     if not valid:
         return verdict(False, f'{why} (expected {kind} for a {risk} action)')
 
+    if kind in _ENDPOINT_KINDS:
+        found = asset_criticality.classify_asset(value)
+        if found.is_critical:
+            return ActionAssessment(
+                action_type=(action_type or '').strip(), target=value, risk_class=risk,
+                target_kind=kind, rule=rule, allowed=True,
+                criticality=found.level,
+                criticality_reason=f'{found.reason} ({found.source}: {found.matched})',
+            )
+
     return verdict(True)
 
 
@@ -286,6 +310,14 @@ def autopilot_allows(assessments: Iterable[ActionAssessment]) -> Tuple[bool, Opt
     for item in items:
         if not item.allowed:
             return False, f'{item.action_type}: {item.reason}'
+        if (
+            item.criticality == asset_criticality.CRITICAL
+            and RISK_ORDER[item.risk_class] >= RISK_ORDER[CRITICAL_ASSET_GUARD_FROM]
+        ):
+            return False, (
+                f'{item.action_type} targets a CRITICAL asset ({item.criticality_reason}) — '
+                f'a {item.risk_class} action on a crown-jewel asset always needs a human'
+            )
         if RISK_ORDER[item.risk_class] > ceiling:
             return False, (
                 f'{item.action_type} is {item.risk_class}, above the '
@@ -310,4 +342,5 @@ def action_policy_config() -> Dict[str, Any]:
         'allow_destructive': ALLOW_DESTRUCTIVE,
         'protected_targets': sorted(PROTECTED_TARGETS),
         'overrides': ACTION_RISK_OVERRIDES,
+        'asset_criticality': asset_criticality.criticality_config(),
     }

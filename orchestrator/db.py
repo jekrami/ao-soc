@@ -99,6 +99,11 @@ alert_soar_actions = Table(
     # executor performs it, and it is stamped at plan time so an approval can be
     # read as "this will go to the firewall" rather than discovered afterwards.
     Column('policy_rule', String(32), nullable=False, default='unclassified'),
+    # F1: what the target is. Stamped at plan time beside risk_class so an analyst
+    # reads "CRITICAL asset — needs a human" before approving, and so the answer
+    # to "why did the machine not act here?" is a column, not a log line.
+    Column('asset_criticality', String(16), nullable=False, default='STANDARD'),
+    Column('criticality_reason', String, nullable=True),
     Column('status', String(32), nullable=False, default='PENDING'),
     Column('result_json', String, nullable=True),
     # E1: which executor carried it, its own identifier for the action, and how
@@ -503,6 +508,14 @@ def _migrate_alert_soar_actions(conn) -> None:
             ))
     if 'attempts' not in cols:
         conn.execute(text('ALTER TABLE alert_soar_actions ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0'))
+    # Pre-2.8 rows were never run through the criticality lookup. STANDARD is
+    # the column default, not a finding: those plans were already decided.
+    if 'asset_criticality' not in cols:
+        conn.execute(text(
+            "ALTER TABLE alert_soar_actions ADD COLUMN asset_criticality TEXT NOT NULL DEFAULT 'STANDARD'"
+        ))
+    if 'criticality_reason' not in cols:
+        conn.execute(text('ALTER TABLE alert_soar_actions ADD COLUMN criticality_reason TEXT'))
 
 
 def _normalize_steps(steps: List) -> List[dict]:

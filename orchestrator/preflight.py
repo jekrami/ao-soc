@@ -91,6 +91,26 @@ def startup_problems() -> List[str]:
     except Exception as exc:  # noqa: BLE001
         problems.append(f'ATT&CK catalogue could not be inspected: {exc}')
 
+    # --- asset criticality (F1) ---
+    try:
+        import asset_criticality
+
+        problems.extend(f'asset criticality: {error}' for error in asset_criticality.config_errors())
+        settings = asset_criticality.criticality_config()
+        import tier2 as _tier2
+
+        # Only worth saying where a machine can act: with autopilot off, every
+        # containment already has a human in front of it.
+        if getattr(_tier2, 'AUTOPILOT_ENABLED', False) and not settings['file']:
+            problems.append(
+                'TIER2_AUTOPILOT is on and ASSET_CRITICALITY_FILE is not set — only the '
+                'built-in hostname patterns keep critical assets away from autopilot; no '
+                'subnet or named server is known to be critical '
+                '(see orchestrator/config/assets.example.json)'
+            )
+    except Exception as exc:  # noqa: BLE001
+        problems.append(f'asset criticality could not be inspected: {exc}')
+
     # --- the two settings that widen what can happen without a human ---
     try:
         import action_policy

@@ -37,7 +37,7 @@
   <!-- ================= Title ================= -->
   <text class="t1" x="1000" y="54" text-anchor="middle">AI-SOC DATA FLOW</text>
   <text class="t2" x="1000" y="84" text-anchor="middle">One alert, end to end — from an external detection tool to a closed case</text>
-  <text class="t3" x="1000" y="108" text-anchor="middle">Version 2.7.1 — Summer 2026</text>
+  <text class="t3" x="1000" y="108" text-anchor="middle">Version 2.8.0 — Summer 2026</text>
 
   <!-- ================= PHASE A ================= -->
   <rect x="384" y="134" width="1080" height="28" rx="14" fill="#e2e8f0"/>
@@ -140,7 +140,7 @@
   <!-- b16 autopilot -->
   <rect x="384" y="1780" width="1080" height="80" rx="9" fill="#b45309"/>
   <text class="box-title" x="924" y="1808" text-anchor="middle">15 · Autopilot gate — off by default; Stage 2 means a human confirms</text>
-  <text class="box-sub" x="924" y="1830" text-anchor="middle">All four gates must hold and the plan is all-or-nothing. Any refusal leaves the decision PENDING for a person.</text>
+  <text class="box-sub" x="924" y="1830" text-anchor="middle">All five gates must hold and the plan is all-or-nothing. Any refusal leaves the decision PENDING for a person.</text>
   <text class="box-sub" x="924" y="1848" text-anchor="middle">The machine's own approvals are marked as such, so autopilot can never become its own precedent.</text>
 
   <!-- ================= PHASE C ================= -->
@@ -339,13 +339,13 @@
   <text class="br-note" x="1508" y="1634">decision_source = rules, so a later review can find every</text>
   <text class="br-note" x="1508" y="1652">decision a degraded or absent model produced.</text>
 
-  <!-- R9 four gates -->
+  <!-- R9 five gates -->
   <rect x="1486" y="1780" width="484" height="96" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
   <rect x="1486" y="1780" width="6" height="96" rx="3" fill="#b45309"/>
-  <text class="br-title" x="1508" y="1803">The four gates</text>
+  <text class="br-title" x="1508" y="1803">The five gates</text>
   <text class="br-note" x="1508" y="1822">1 · the verdict is auto-executable   2 · confidence clears a floor</text>
-  <text class="br-note" x="1508" y="1840">3 · every action passes the risk policy   4 · precedent supports it</text>
-  <text class="br-note" x="1508" y="1858">Gates 3 and 4 are the ones that protect the network.</text>
+  <text class="br-note" x="1508" y="1840">3 · every action passes the risk policy   4 · no CRITICAL target</text>
+  <text class="br-note" x="1508" y="1858">5 · precedent supports it — gates 3, 4 and 5 protect the network.</text>
 
   <!-- R10 edit refusals -->
   <rect x="1486" y="1928" width="484" height="96" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
@@ -398,5 +398,5 @@
   <text class="legend" x="1230" y="2638">dashed = an external dependency or a store access</text>
 
   <!-- ================= Footer ================= -->
-  <text class="foot" x="1000" y="2690" text-anchor="middle">Written by J.Ekrami · Co-written with Claude (Opus 5) · © J.Ekrami-Labs · Summer 2026 · matches AO-SOC v2.7.1</text>
+  <text class="foot" x="1000" y="2690" text-anchor="middle">Written by J.Ekrami · Co-written with Claude (Opus 5, Sonnet 5) · © J.Ekrami-Labs · Summer 2026 · matches AO-SOC v2.8.0</text>
 </svg>

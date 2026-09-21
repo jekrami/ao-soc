@@ -1,0 +1,16 @@
+{
+  "defaults": true,
+  "static": {
+    "FIN-DB-01": "CRITICAL",
+    "10.10.0.5": "CRITICAL",
+    "LAB-DC-02": "STANDARD"
+  },
+  "patterns": [
+    { "pattern": "^(DC|AD|KDC)-.*", "level": "CRITICAL", "note": "domain controllers" },
+    { "pattern": "^(HIS|PACS|LIS)-.*", "level": "CRITICAL", "note": "clinical production" }
+  ],
+  "cidrs": [
+    { "cidr": "10.10.0.0/24", "level": "CRITICAL", "note": "core server subnet" },
+    { "cidr": "10.20.0.0/22", "level": "CRITICAL", "note": "database tier" }
+  ]
+}

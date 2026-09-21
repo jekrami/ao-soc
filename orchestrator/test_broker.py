@@ -17,6 +17,8 @@ os.environ['TIER2_AUTOPILOT'] = '1'
 os.environ['TIER2_AUTOPILOT_MIN_CONFIDENCE'] = '90'
 os.environ['SOAR_LOG_FILE'] = 'test_soar_actions.jsonl'
 os.environ['SOAR_STEP_DELAY'] = '0'
+# F1: autopilot is on, so preflight (rightly) wants an asset map. Use the shipped example.
+os.environ['ASSET_CRITICALITY_FILE'] = os.path.join('config', 'assets.example.json')
 # C2: a short retry budget and no real backoff, so the dead-letter path
 # is reachable in a test rather than only after fifteen minutes.
 os.environ['ANALYSIS_MAX_ATTEMPTS'] = '2'
@@ -1492,6 +1494,94 @@ def check_action_policy() -> None:
     assert not autopilot_allows([])[0]
 
 
+def check_asset_criticality() -> None:
+    """F1: a target's class, not just its name, decides whether a machine may act on it."""
+    import asset_criticality as assets
+    import preflight
+
+    path = 'test_assets.json'
+    original = os.environ.get('ASSET_CRITICALITY_FILE')
+    try:
+        # No file at all: the built-in patterns still protect a domain controller.
+        os.environ.pop('ASSET_CRITICALITY_FILE', None)
+        assets.reload()
+        assert assets.classify_asset('DC-01').is_critical
+        assert assets.classify_asset('dc-01.corp.local').is_critical, 'FQDN matches on its short name'
+        assert assets.classify_asset('erp-db-2').is_critical
+        assert not assets.classify_asset('WS-114').is_critical
+        assert not assets.classify_asset('').is_critical and not assets.classify_asset('unknown').is_critical
+
+        with open(path, 'w', encoding='utf-8') as handle:
+            json.dump({
+                'static': {'FIN-APP-01': 'CRITICAL', 'LAB-DC-02': 'STANDARD', '10.9.9.9': 'CRITICAL'},
+                'patterns': [{'pattern': '^HIS-.*', 'level': 'CRITICAL', 'note': 'clinical'}],
+                'cidrs': [{'cidr': '10.10.0.0/24', 'level': 'CRITICAL', 'note': 'core servers'}],
+            }, handle)
+        os.environ['ASSET_CRITICALITY_FILE'] = path
+        assets.reload()
+
+        by_source = {
+            'FIN-APP-01': 'static', 'HIS-APP-2': 'pattern', '10.10.0.77': 'cidr',
+            '10.0.0.0/8': 'cidr', '10.9.9.9': 'static',
+        }
+        for target, source in by_source.items():
+            found = assets.classify_asset(target)
+            assert found.is_critical and found.source == source, (target, found)
+        assert not assets.classify_asset('10.11.0.5').is_critical, 'outside every critical range'
+        # The static map is authoritative in both directions: it can exempt.
+        assert not assets.classify_asset('LAB-DC-02').is_critical, 'explicit exemption beats the DC pattern'
+
+        # CRITICAL is still *allowed* — a human may approve it — but never autopilot.
+        dc = assess_action('Isolate host', 'DC-01')
+        assert dc.allowed and dc.criticality == 'CRITICAL' and 'pattern' in dc.criticality_reason
+        refused, why = autopilot_allows([dc])
+        assert not refused and 'CRITICAL asset' in why, why
+        assert not autopilot_allows([assess_action('Block IP', '10.10.0.77')])[0], 'critical by subnet'
+        # It gates state changes, not observation: watching a domain controller is fine.
+        assert autopilot_allows([assess_action('Add to watchlist', 'DC-01')])[0]
+        # An ordinary workstation and an external attacker address are untouched.
+        assert autopilot_allows([assess_action('Isolate host', 'WS-114')])[0]
+        assert autopilot_allows([assess_action('Block IP', '185.220.101.7')])[0]
+        # One critical action sends the whole plan to a human (all-or-nothing).
+        assert not autopilot_allows(
+            [assess_action('Block IP', '185.220.101.7'), assess_action('Isolate host', 'DC-01')]
+        )[0]
+
+        # Hot reload: an edit takes effect without a restart.
+        with open(path, 'w', encoding='utf-8') as handle:
+            json.dump({'static': {'WS-114': 'CRITICAL'}}, handle)
+        os.utime(path, (1, 1_000_000_000))
+        assert assets.classify_asset('WS-114').is_critical, 'edited file must be re-read'
+
+        # A broken file never raises and never widens what is allowed: defaults
+        # still hold, and the fault is reported rather than swallowed.
+        with open(path, 'w', encoding='utf-8') as handle:
+            handle.write('{ not json')
+        os.utime(path, (2, 2_000_000_000))
+        assert assets.classify_asset('DC-01').is_critical
+        assert any('cannot be read as JSON' in e for e in assets.config_errors())
+        assert any('asset criticality' in p for p in preflight.startup_problems())
+
+        with open(path, 'w', encoding='utf-8') as handle:
+            json.dump({
+                'defaults': False,
+                'static': {'X': 'MAYBE'},
+                'patterns': [{'pattern': '([', 'level': 'CRITICAL'}, {'pattern': '^A', 'level': 'STANDARD'}],
+                'cidrs': [{'cidr': 'not-a-network', 'level': 'CRITICAL'}],
+            }, handle)
+        os.utime(path, (3, 3_000_000_000))
+        assert not assets.classify_asset('DC-01').is_critical, '"defaults": false is honoured'
+        assert len(assets.config_errors()) == 4, assets.config_errors()
+    finally:
+        if original is None:
+            os.environ.pop('ASSET_CRITICALITY_FILE', None)
+        else:
+            os.environ['ASSET_CRITICALITY_FILE'] = original
+        assets.reload()
+        if os.path.exists(path):
+            os.remove(path)
+
+
 def check_endpoint_resolution() -> None:
     """OLLAMA_HOST is Ollama's *bind* variable; users routinely set 0.0.0.0."""
     assert llm._build_ollama_endpoint.__module__ == 'llm'
@@ -1556,6 +1646,7 @@ async def run_test() -> None:
 
     check_endpoint_resolution()
     check_action_policy()
+    check_asset_criticality()
     check_detection_contract()
     check_phase_c_adapters()
     check_risk_scoring()
@@ -1684,6 +1775,43 @@ async def run_test() -> None:
     assert delivered[0]['decision'] == 'CONTAIN'
     assert delivered[0]['decision_source'] == 'llm'
     assert delivered[0]['execution_id'].startswith('exec_')
+
+    # --- F1: a CRITICAL target is refused for autopilot in the loosest mode ---
+    # Confidence-only autopilot (no precedent gate) at 99% is the weakest
+    # configuration this system can run in, and the same shape of alert that
+    # executed above. The only difference is that the target is a domain
+    # controller, and that alone must keep a machine from touching it.
+    crown = await db.create_security_event(
+        source_ip='10.4.21.99',
+        dest_ip='185.220.101.7',
+        signature='ET MALWARE Cobalt Strike Beacon',
+        timestamp=fields['timestamp'],
+        threat_severity='CRITICAL',
+        incident_analysis='Beaconing from a domain controller.',
+        containment_steps=['Isolate the host'],
+        alert_id='ALT-TESTF1',
+        enrichment={
+            **analysis['enrichment'],
+            'recommended_actions': [
+                {'id': 'A1', 'action': 'Isolate host', 'target': 'DC-01',
+                 'reason': 'Beaconing', 'confidence': 99, 'impact': 'Isolates the domain controller'},
+            ],
+            'tier2_proposal': {'decision': 'CONTAIN', 'confidence': 99, 'rationale': 'Confirmed C2.'},
+        },
+    )
+    crown_decision = await create_tier2_decision_for_alert(crown)
+    assert crown_decision['decision'] == 'CONTAIN' and crown_decision['confidence'] == 99
+    crown_action = crown_decision['required_actions'][0]
+    assert crown_action['asset_criticality'] == 'CRITICAL', crown_action
+    assert 'domain controller' in crown_action['criticality_reason']
+    tier2.AUTOPILOT_REQUIRE_PRECEDENT = False
+    held = await autopilot_if_eligible(crown_decision, wait=True)
+    tier2.AUTOPILOT_REQUIRE_PRECEDENT = True
+    assert held['approval_status'] == 'PENDING', 'a 99% CONTAIN on a domain controller must wait for a human'
+    assert (await db.get_alert('ALT-TESTF1'))['mitigation_status'] == 'PENDING'
+    # The human path is intact: the same plan can still be approved by a person.
+    approved = await tier2.approve_tier2_decision('ALT-TESTF1', approved_by='jek', wait=True)
+    assert approved['approval_status'] == 'DONE' and approved['approved_by'] == 'jek'
 
     # --- A4: a human edit is captured as a label, not just an approval ---
     editable = await db.create_security_event(
@@ -1839,7 +1967,7 @@ async def run_test() -> None:
         'into one situation, situation-driven Tier-2 decision, retry/dead-letter/back-pressure '
         'on the analysis queue, decision search and retention, verified threat intelligence '
         'and ATT&CK catalogue checks, precedent retrieval with a grounding gate, '
-        'precedent-gated autopilot, routed response delivery with idempotent retry '
+        'precedent-gated autopilot, a CRITICAL-asset guard autopilot cannot be configured past, routed response delivery with idempotent retry '
         'and dry run, case management, bidirectional sync that cannot touch a decision, '
         'metrics and verified backups all verified.'
     )

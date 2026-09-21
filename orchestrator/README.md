@@ -49,6 +49,7 @@ python soc_orchestrator.py
 | `ACTION_ALLOW_DESTRUCTIVE` | *(off)* | Allow `DESTRUCTIVE` actions to dispatch at all, even with human approval |
 | `ACTION_RISK_OVERRIDES` | *(none)* | Site verbs, e.g. `reboot switch=DESTRUCTIVE` |
 | `PROTECTED_TARGETS` | loopback | Extra targets no action may ever touch |
+| `ASSET_CRITICALITY_FILE` | *(none)* | JSON asset map (static names, hostname patterns, CIDR ranges) marking `CRITICAL` assets. Re-read when the file changes. See `config/assets.example.json` and *Asset criticality* below |
 | `DECISION_FEEDBACK_WINDOW_HOURS` | `72` | How long after a decision settles an outcome may be recorded |
 | `OLLAMA_HOST` | `localhost` | Ollama host (`<ollama-host>`); set to your LAN IP/hostname. `WORKSTATION_IP` still honored as a fallback. Bind addresses (`0.0.0.0`, `::`) resolve to `localhost` — they are where Ollama *listens*, not somewhere you can dial. |
 | `OLLAMA_PORT` | `11434` | Ollama port |
@@ -377,16 +378,18 @@ find decisions a degraded model or an offline Ollama produced.
 ## Autopilot (Stage 3 preview)
 
 Off by default — Stage 2 means a human confirms. When `TIER2_AUTOPILOT=1`, a
-verdict is auto-approved and executed at ingest only if **all four** hold:
+verdict is auto-approved and executed at ingest only if **all five** hold:
 
 1. the decision is in `TIER2_AUTOPILOT_DECISIONS` (default `CONTAIN`/`ESCALATE`),
 2. confidence ≥ `TIER2_AUTOPILOT_MIN_CONFIDENCE`,
 3. **every action in the plan passes `action_policy`** — classified at or below
    `ACTION_MAX_AUTOPILOT_RISK`, with a target that parses as the thing the action
-   needs it to be, and
-4. **precedent supports it** (D4, §7) — see below.
+   needs it to be,
+4. **no containment-class action targets a `CRITICAL` asset** (F1) — see *Asset
+   criticality* below; and
+5. **precedent supports it** (D4, §7) — see below.
 
-Gates 3 and 4 are the ones that protect the network. Confidence is a self-report, is
+Gates 3, 4 and 5 are the ones that protect the network. Confidence is a self-report, is
 not calibrated, and is unstable run to run — benchmarked across 14 models, one returned
 91% for a C2 beacon and 87% for an active credential compromise. The risk class of
 what would be dispatched is a *fact about the plan*, not an opinion about it, and
@@ -544,6 +547,36 @@ non-addresses:
 Nothing is deleted: a refused action keeps its row, its position in the plan and its
 reason, in `alert_soar_actions.risk_class` / `target_kind` / `policy_reason`, and is
 shown to the analyst before they approve.
+
+### Asset criticality (F1 — `asset_criticality.py`)
+
+`PROTECTED_TARGETS` is an exact-match list an operator types by hand; it cannot say
+"any domain controller". Asset criticality is the *class* lookup, in three layers that
+depend on no CMDB and no tag the upstream SIEM may not carry:
+
+| Layer | Matches | Example |
+|-------|---------|---------|
+| **Static map** | a name or IP, exactly. Authoritative both ways — it can also *exempt* | `"FIN-DB-01": "CRITICAL"`, `"LAB-DC-02": "STANDARD"` |
+| **Hostname patterns** | a regex against the full name and the short name (`dc-01.corp.local` → `dc-01`) | `^(DC\|AD\|KDC)-.*` |
+| **CIDR ranges** | an address, or a range that *overlaps* one — blocking `10.0.0.0/8` touches a critical `/24` inside it | `10.10.0.0/24` |
+
+Two levels exist: `STANDARD` and `CRITICAL`. `CRITICAL` is not a score. It is a rule:
+**an action of class `HIGH_WRITE` or above on a `CRITICAL` host or address is never
+executed by autopilot** — not at 99% confidence, not with a full precedent record, not
+in the confidence-only lab mode. It is not configurable, because a rule a config line
+can relax is a rule a typo can relax. A human can still approve the same plan from the
+approval card; `READ` and `LOW_WRITE` (watch, collect, ticket) are unaffected.
+
+Built-in patterns (`^(DC|AD|KDC)-.*`, `.*-DB-.*`) apply with no configuration, and
+`"defaults": false` in the file removes them. The file is re-read when its modification
+time changes. A missing or unparseable file never raises and never widens anything —
+the defaults still hold — but the fault is reported on `/health` under `preflight`, and
+so is *autopilot on with no asset file at all*.
+
+The verdict is stamped on each action at plan time, beside its risk class:
+`alert_soar_actions.asset_criticality` / `criticality_reason`, and on the action in the
+decision API. Rows written before 2.8 carry the column default `STANDARD`, which is not
+a finding — nothing classified them.
 
 ## Corrections and outcomes
 
@@ -756,6 +789,11 @@ rejected outright — plus the Phase A governance:
   discloses nothing until authenticated, and `actor:assert` is not implied by acting;
 - **action policy**: unknown verbs classify HIGH_WRITE, the three measured malformed
   targets are rejected, DESTRUCTIVE is off, and one bad action fails the whole plan;
+- **asset criticality (F1)**: each of the three layers, an exemption beating a pattern,
+  a CRITICAL target refused for autopilot but still approvable by a human, watching a
+  domain controller still allowed, a hot-reloaded edit, a broken file that never widens
+  anything and is reported, and a 99%-confidence `CONTAIN` on `DC-01` held `PENDING`
+  even with the precedent gate off;
 - **provider**: `echo` runs the pipeline with no model and returns no verdict, and an
   unknown provider name raises rather than silently defaulting;
 - **corrections and outcomes**: an edited verdict is stored as a label with its delta,
