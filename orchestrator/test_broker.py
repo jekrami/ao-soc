@@ -2398,15 +2398,17 @@ def check_unread_settings() -> None:
 
 def check_deploy_env_checker() -> None:
     """deploy/check_env.py: a shell variable that compose would prefer to deploy/.env is reported."""
-    import importlib.util
+    import types
 
     path = os.path.join('..', 'deploy', 'check_env.py')
     if not os.path.exists(path):
         print('SKIP: check_deploy_env_checker - deploy/check_env.py is not present')
         return
-    spec = importlib.util.spec_from_file_location('check_env', path)
-    checker = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(checker)
+    # exec rather than import: importing would leave a __pycache__ in deploy/.
+    checker = types.ModuleType('check_env')
+    checker.__file__ = os.path.abspath(path)
+    with open(path, encoding='utf-8') as handle:
+        exec(compile(handle.read(), path, 'exec'), checker.__dict__)
 
     env_file = checker.parse_env_file(
         '# comment\nRESPONSE_DRY_RUN=true\nTIER2_AUTOPILOT="false"\nexport LOG_LEVEL=INFO\n# COMMENTED=1\n\nnot a setting\n'
