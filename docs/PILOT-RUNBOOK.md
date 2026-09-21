@@ -3,10 +3,10 @@
 | | |
 |---|---|
 | **Writer** | J.Ekrami |
-| **Co-writer** | Claude (Opus 5) |
+| **Co-writer** | Claude (Opus 5, Sonnet 5) |
 | **Copyright** | © J.Ekrami-Labs |
 | **Date** | Summer 2026 |
-| **Applies to** | `ao-soc` 2.7.0 (plan v2.6) — Phase E |
+| **Applies to** | `ao-soc` 2.8.4 (plan v2.8) — Phases E and F |
 
 ---
 
@@ -37,6 +37,7 @@ for long enough to be dull.
 | Somewhere to run a model, **or** the decision to run without one | `LLM_PROVIDER=echo` runs correlation, cases, connectors, precedent and the dashboard end to end with no model. Start there |
 | An analyst who will actually work the queue | The precedent gate (D4) is fed by human confirmations. A pilot nobody works produces no corpus, and therefore no autonomy — by design |
 | A backup destination that is not the container host | `orchestrator/backup.py` writes them; where they go is a site decision |
+| A short list of what must **never** be automated | Phase F (F1, F2) closes autopilot to any `CRITICAL` host and any `PRIVILEGED` or `SERVICE` account, but only knows what it is told: write `ASSET_CRITICALITY_FILE` (domain controllers, core subnets, clinical or production servers) and `IDENTITY_ROLES_FILE` (privileged and service accounts) from `orchestrator/config/*.example.json` *before* Stage 4. Built-in name conventions catch the obvious ones and nothing else, and `preflight` says so |
 | Somebody who can say *"that containment was wrong"* out loud | R11: the corpus inherits the SOC's blind spots, and the only control is that it is auditable |
 
 Generate keys and fill in `deploy/.env`:
@@ -221,7 +222,7 @@ without a human only where **three similar past situations were human-confirmed 
 same verdict, none reversed, none contrary, and the newest inside 30 days**. On a fresh
 deployment that is nothing at all, which is correct: a quiet week automates nothing.
 
-Before turning it on, check three things:
+Before turning it on, check five things:
 
 1. `GET /api/decisions/outcomes` — precision per detection source. A source below the
    SOC's tolerance should be excluded upstream, not automated.
@@ -230,6 +231,15 @@ Before turning it on, check three things:
 3. The gate's constants. `3 / 70% / 30 days` are settings calibrated on nothing yet
    (R11). Re-measure them against the pilot's own corpus before trusting them; that
    measurement is one of the things the pilot exists to produce.
+
+4. `ASSET_CRITICALITY_FILE` and `IDENTITY_ROLES_FILE` are set, and someone who knows the estate has read them. Autopilot will
+   never touch what they name, and will happily touch what they do not (R13's residual). `preflight` reports
+   autopilot enabled with neither file.
+5. You know what autopilot **cannot** do by construction: it never runs an action that cannot be taken back (kill
+   process, password reset, restart host, any verb nobody modelled). Those wait for a person at any confidence. What it
+   did run can be taken back by a person with `POST /api/alerts/{id}/actions/{action_id}/rollback`; a connector with no
+   inverse command (Wazuh, by default) refuses rather than pretend. Declare `CONNECTOR_<NAME>_ROLLBACK_COMMANDS` only for
+   scripts that genuinely have an inverse.
 
 **Never** set `TIER2_AUTOPILOT_REQUIRE_PRECEDENT=false` outside a lab. It reduces the gate
 to a confidence threshold, and 14 benchmarked models all report 75–98 % confidence
@@ -330,6 +340,11 @@ Nothing here is a code change; it is what must be true before a site depends on 
 
 **Data**
 
+- [ ] `MODEL_RUN_RETAIN_TEXT` is a decision, not a default: with it on, every prompt (which carries the raw situation) is
+      held beside its decision so hashes can be re-verified; with it off, only fingerprints remain. Either way `model_runs`
+      is in the backup manifest, because a model's output cannot be regenerated
+- [ ] If "which model decided this" must survive a re-pull, model tags are pinned to digests: the run records the tag it
+      was *configured* with, not the weights
 - [ ] Backups run on a schedule, land off the container host, and one has been restored
 - [ ] Retention is configured, and it is understood that it drops vendor payload copies
       only

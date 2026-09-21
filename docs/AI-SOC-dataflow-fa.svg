@@ -38,7 +38,7 @@
   <!-- ================= Title ================= -->
   <text class="t1" x="1000" y="54" text-anchor="middle">جریان داده در AI-SOC</text>
   <text class="t2" x="1000" y="84" text-anchor="middle">یک هشدار، از آغاز تا پایان — از ابزار تشخیصِ بیرونی تا بسته‌شدن پرونده</text>
-  <text class="t3" x="1000" y="108" text-anchor="middle">نسخهٔ ۲.۸.۳ — تابستان ۱۴۰۵</text>
+  <text class="t3" x="1000" y="108" text-anchor="middle">نسخهٔ ۲.۸.۴ — تابستان ۱۴۰۵</text>
 
   <!-- ================= PHASE A ================= -->
   <rect x="536" y="134" width="1080" height="28" rx="14" fill="#e2e8f0"/>
@@ -235,6 +235,11 @@
   <text class="side-note" x="1950" y="1132" text-anchor="start">هر یک درست از آب درآمد یا نه</text>
   <text class="loop" x="1950" y="1154" text-anchor="start">— حلقه اینجا بسته می‌شود</text>
 
+  <text class="side-row ltr" x="1950" y="1290" text-anchor="end">model_runs</text>
+  <text class="side-note" x="1950" y="1308" text-anchor="start">یک سطر برای هر فراخوانی، پیش از تجزیهٔ پاسخ</text>
+  <text class="side-note" x="1950" y="1324" text-anchor="start">نوشته می‌شود: شناسهٔ مدل، درهمِ پرسش و پاسخ،</text>
+  <text class="side-note" x="1950" y="1340" text-anchor="start">و خودِ متن که بازبینی را ممکن می‌کند</text>
+
   <text class="side-row ltr" x="1950" y="1513" text-anchor="end">security_events</text>
   <text class="side-note" x="1950" y="1531" text-anchor="start">رکوردِ تحلیل‌شده + گام‌های مهار</text>
 
@@ -270,6 +275,7 @@
   <path d="M1620 432 L1662 432" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arwd)"/>
   <path d="M1620 638 L1662 638" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arwd)"/>
   <path d="M1620 760 L1662 760" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arwd)"/>
+  <path d="M1620 1296 L1662 1296" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arwd)"/>
   <path d="M1620 1519 L1662 1519" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arwd)"/>
   <path d="M1620 1622 L1662 1622" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arwd)"/>
   <path d="M1620 1725 L1662 1725" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arwd)"/>
@@ -319,10 +325,11 @@
   <text class="br-note" x="492" y="1138" text-anchor="start">دوباره قربانی شده است.</text>
 
   <!-- R6 inference -->
-  <rect x="30" y="1262" width="484" height="80" rx="8" fill="#ffffff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="7 5"/>
+  <rect x="30" y="1262" width="484" height="98" rx="8" fill="#ffffff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="7 5"/>
   <text class="ext-title" x="492" y="1287" text-anchor="start">استنتاجِ درون‌سازمانی</text>
   <text class="ext-item" x="492" y="1308" text-anchor="start">کارسازِ مدلِ محلی. هرگز استنتاجِ ابری.</text>
   <text class="ext-note" x="492" y="1328" text-anchor="start">اطمینانی که گزارش می‌کند کالیبره نیست — تنها برای نمایش و ترتیب.</text>
+  <text class="ext-note" x="492" y="1346" text-anchor="start">هر فراخوانی پیش از تجزیه ثبت می‌شود: شناسهٔ مدل و درهمِ پرسش و پاسخ.</text>
 
   <!-- R7 silent failures -->
   <rect x="30" y="1368" width="484" height="96" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
@@ -407,5 +414,5 @@
   <text class="legend" x="800" y="2638" text-anchor="start">خط‌چین = وابستگی بیرونی یا دسترسی به انباره</text>
 
   <!-- ================= Footer ================= -->
-  <text class="foot" x="1000" y="2690" text-anchor="middle">نویسنده: J.Ekrami · هم‌نویسنده: Claude (Opus 5، Sonnet 5) · © J.Ekrami-Labs · تابستان ۱۴۰۵ · برابر با AO-SOC نسخهٔ ۲.۸.۳</text>
+  <text class="foot" x="1000" y="2690" text-anchor="middle">نویسنده: J.Ekrami · هم‌نویسنده: Claude (Opus 5، Sonnet 5) · © J.Ekrami-Labs · تابستان ۱۴۰۵ · برابر با AO-SOC نسخهٔ ۲.۸.۴</text>
 </svg>

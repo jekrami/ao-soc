@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy import select, update
 
 import precedent
+import provenance
 import situation as situations
 from action_policy import (
     action_policy_config,
@@ -165,6 +166,12 @@ def _build_risk_of_action(decision_type: str) -> str:
         'IGNORE': 'False negative risk if alert is a true positive.',
     }
     return risks.get(decision_type, 'Operational impact depends on selected actions.')
+
+
+def _model_run_id(alert: dict) -> Optional[str]:
+    """The model run recorded by the analysis job (F5), if this alert has one."""
+    found = ((alert.get('enrichment') or {}).get('provenance') or {}).get('run_id')
+    return str(found) if found else None
 
 
 def _actions_from_alert(alert: dict) -> List[dict]:
@@ -342,6 +349,7 @@ def _format_decision(row, actions: List[dict]) -> dict:
         'approval_status': row['approval_status'],
         'human_approval_required': True,
         'approved_by': row['approved_by'],
+        'model_run_id': row.get('model_run_id'),
         # D4: present only on a machine approval, and it is the justification —
         # which past cases, confirmed by whom, how recently.
         'autopilot_basis': json.loads(row['autopilot_basis_json'])
@@ -424,6 +432,7 @@ async def create_tier2_decision_for_alert(alert: dict) -> dict:
                 rationale=rationale,
                 risk_of_action=risk,
                 approval_status='PENDING',
+                model_run_id=_model_run_id(alert),
                 created_at=now,
             )
         )
@@ -505,6 +514,8 @@ async def rebuild_tier2_decision_for_alert(alert: dict) -> Optional[dict]:
                 confidence=confidence,
                 rationale=(proposal or {}).get('rationale') or _build_rationale(alert, decision_type),
                 risk_of_action=(proposal or {}).get('risk_of_action') or _build_risk_of_action(decision_type),
+                # A re-derivation follows a re-analysis, which was a new run.
+                model_run_id=_model_run_id(alert),
             )
         )
         await session.execute(
@@ -1024,6 +1035,8 @@ async def _execute_soar_plan(alert_id: str, decision_id: int) -> dict:
             )
         ).mappings().all()
 
+    reasoning_hash = await provenance.reasoning_hash_for(decision_row.get('model_run_id'))
+
     for action_row in action_rows:
         allowed, block_reason = policy_allows_action(action_row['action_type'], action_row['target'])
         step_now = _utcnow()
@@ -1071,6 +1084,7 @@ async def _execute_soar_plan(alert_id: str, decision_id: int) -> dict:
             confidence=decision_row['confidence'],
             decision_source=decision_row.get('decision_source') or 'rules',
             approved_by=decision_row['approved_by'],
+            reasoning_hash=reasoning_hash,
         )
         status = receipt.get('status', 'FAILED')
         if status == 'SIMULATED':
@@ -1262,6 +1276,7 @@ async def rollback_tier2_action(
         approved_by=requested_by,
         rollback=True,
         rollback_action=row.get('rollback_action') or '',
+        reasoning_hash=await provenance.reasoning_hash_for(decision_row.get('model_run_id')),
     )
     status = receipt.get('status', 'FAILED')
 

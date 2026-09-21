@@ -49,6 +49,7 @@ python soc_orchestrator.py
 | `ACTION_ALLOW_DESTRUCTIVE` | *(off)* | Allow `DESTRUCTIVE` actions to dispatch at all, even with human approval |
 | `ACTION_RISK_OVERRIDES` | *(none)* | Site verbs, e.g. `reboot switch=DESTRUCTIVE` |
 | `PROTECTED_TARGETS` | loopback | Extra targets no action may ever touch |
+| `MODEL_RUN_RETAIN_TEXT` | `true` | Keep each model call's prompt and reply text, so its hashes can be re-verified. `false` keeps only the hashes; the export then reports `text_not_retained` |
 | `IDENTITY_ROLES_FILE` | *(none)* | JSON identity map (static accounts, name patterns) marking `PRIVILEGED` and `SERVICE` accounts. Re-read when the file changes. See `config/identities.example.json` and *Identity roles* below |
 | `ASSET_CRITICALITY_FILE` | *(none)* | JSON asset map (static names, hostname patterns, CIDR ranges) marking `CRITICAL` assets. Re-read when the file changes. See `config/assets.example.json` and *Asset criticality* below |
 | `DECISION_FEEDBACK_WINDOW_HOURS` | `72` | How long after a decision settles an outcome may be recorded |
@@ -386,6 +387,8 @@ find decisions a degraded model or an offline Ollama produced.
 | GET | `/api/alerts/{id}/decision` | Tier-2 decision + bundled action plan |
 | POST | `/api/alerts/{id}/decision/approve` | Approve → policy-gated SOAR auto-execution |
 | POST | `/api/alerts/{id}/decision/reject` | Reject the plan |
+| GET | `/api/alerts/{id}/decision/envelope` | One decision as `situation` / `decision` / `execution_payload` / `audit_trail` (F5). Viewer scope. Read-only |
+| GET | `/api/model-runs/{run_id}` | A model run with its prompt and reply text and a fresh integrity check (F5). Analyst scope — the prompt carries the raw situation |
 | POST | `/api/alerts/{id}/actions/{action_id}/rollback` | Take back one executed action (F4). Analyst scope. 422 no inverse · 409 not run, already rolled back, or in progress |
 | POST | `/api/alerts/{id}/decision/edit` | Correct the verdict and/or the plan; the delta is stored as a label |
 | POST | `/api/alerts/{id}/decision/outcome` | `TRUE_POSITIVE` / `FALSE_POSITIVE` / `REOPENED` inside the feedback window |
@@ -707,6 +710,61 @@ An inverse verb never classifies as the thing it undoes. `Unblock IP` contains `
 and used to be dispatched as an IP drop; verbs such as *unblock, release, restore,
 re-enable, lift, allow* are now left `unclassified` (a human decides).
 
+### Run provenance and the decision envelope (F5)
+
+`decision_source` says *which path* decided. It cannot say which model, with which prompt,
+or that the text an auditor is looking at is the text that was sent. Every completed model
+call is therefore recorded as a `model_runs` row **before its output is parsed** — a reply
+that fails to parse is exactly the one nobody can reconstruct later — and the decision
+carries `model_run_id`:
+
+| Field | What it is |
+|-------|------------|
+| `provider`, `model_id`, `parameters` | What the provider was configured with: model tag, temperature, `num_predict`, `think`, enforced-JSON. `echo` records `model_id: none` — no inference happened |
+| `prompt_sha256`, `response_sha256` | SHA-256 of each text as UTF-8 |
+| `reasoning_hash` | `sha256(prompt_utf8 + 0x00 + response_utf8)`, computed from the bytes rather than from the two hashes above, so anyone holding both texts can recompute it with no code of ours. The NUL stops `("ab","c")` and `("a","bc")` hashing alike |
+| `prompt_text`, `response_text` | The texts, kept by default so the proof is checkable — a hash of something nobody kept proves only that it once existed. `MODEL_RUN_RETAIN_TEXT=0` drops them and keeps the hashes |
+
+Verification is recomputation. A run whose stored text no longer matches its hashes exports
+`integrity: MISMATCH` (and `verify_model_run(strict=True)` raises), never something plausible.
+A hash-only run exports `text_not_retained`: it is still a fingerprint, but it can no longer
+be re-checked. A decision made before 2.8.4, or one created outside the analysis job, exports
+`model: null` with a note saying why — a blank would read as a model named "".
+
+The reasoning hash is also carried on every payload to an executor (`reasoning_hash`), so the
+firewall's own log can be tied back to what was reasoned.
+
+**What this cannot prove.** `model_id` is the tag the provider was *configured* with.
+`qwen3.5:latest` can be re-pulled to different weights without the name changing, so the
+record proves which tag ran, not which weights. A site that needs the second pins its tags to
+digests. Recording a run is best-effort in one respect only: if the row cannot be written the
+analysis continues, the hashes still travel with the decision, and `persisted` is false —
+losing a decision to an audit-table fault would be the worse failure.
+
+**The envelope.** `GET /api/alerts/{id}/decision/envelope` exports one decision under a
+schema version (`ao-soc.decision-envelope/1`), leaving the dashboard's own decision object
+alone:
+
+```text
+situation          situation_id · risk_score (deterministic) · confidence_score + confidence_basis ·
+                   MITRE tactics and techniques (who asserted each, and whether a catalogue
+                   verified it) · contributing sources · entity graph · correlated_source_alerts
+decision           action_type (CONTAIN … IGNORE) · approval_state · autonomy_level · decision_source ·
+                   rationale · approved_by · autopilot_basis
+execution_payload  actions[]: target_type · target_value · destination_tool (and whether that is
+                   the receipt or the planned route) · risk_class · guards · reversibility ·
+                   the paired rollback · status
+audit_trail        evidence[] (detection id, source, rule, a pointer into the source tool, a
+                   reference to the verbatim payload, execution artifacts) · precedent_ids ·
+                   model · reasoning_hash · integrity
+```
+
+`autonomy_level` is read from the decision's own record: `PROPOSED` (nobody has approved it),
+`SUPERVISED` (a person did) or `AUTONOMOUS` (autopilot did, on stated precedent).
+`confidence_score` is exported with `confidence_basis: model_self_reported_uncalibrated`,
+because fourteen benchmarked models report 75-98 % regardless of input (plan §7.3.1) and a
+consumer that gates on the number should be told so in the payload it is reading.
+
 ## Corrections and outcomes
 
 `POST /api/alerts/{id}/decision/edit` lets an analyst change the verdict and rewrite
@@ -918,6 +976,11 @@ rejected outright — plus the Phase A governance:
   discloses nothing until authenticated, and `actor:assert` is not implied by acting;
 - **action policy**: unknown verbs classify HIGH_WRITE, the three measured malformed
   targets are rejected, DESTRUCTIVE is off, and one bad action fails the whole plan;
+- **run provenance and the envelope (F5)**: the hash formula recomputed independently from
+  the exact prompt sent and the exact reply received, the four-part envelope, the reasoning
+  hash reaching the executor's own record, tamper detection (and `strict` raising), hash-only
+  mode reporting `text_not_retained`, a reply that fails to parse still leaving its run behind,
+  and a pre-provenance decision saying so rather than showing a blank;
 - **reversibility (F4)**: the classification of every verb family, an inverse verb never
   classifying as its opposite, autopilot refusing an irreversible action while still running
   the reversible and self-limiting ones, a rollback riding the original route under its own

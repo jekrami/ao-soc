@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 import uuid
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional, Tuple
@@ -18,7 +19,9 @@ import connectors  # noqa: F401 — importing registers the built-in connectors 
 import decision_store
 import intel  # noqa: F401 — importing registers the built-in intel providers (Rule 9)
 import metrics
+import decision_envelope
 import precedent
+import provenance
 import situation as situations
 import source_registry
 import threat_intel
@@ -818,14 +821,28 @@ async def analyze_situation(situation: situations.Situation) -> dict:
     # inference outage look like an idle period.
     with metrics.timer(metrics.ANALYSIS_SECONDS, 'Time to analyse one situation') as analysis_timer:
         try:
-            raw_output = await get_provider().complete(
-                build_situation_analysis_prompt(situation, intel_report, precedents)
+            prompt = build_situation_analysis_prompt(situation, intel_report, precedents)
+            provider = get_provider()
+            started = time.perf_counter()
+            raw_output = await provider.complete(prompt)
+            # F5: recorded the instant the call returns and *before* the output
+            # is parsed. A response that fails to parse is exactly the one
+            # nobody can reconstruct afterwards.
+            model_run = await provenance.record_model_run(
+                identity=provider.identify(),
+                prompt=prompt,
+                response=raw_output,
+                situation_id=situation.situation_id,
+                alert_id=alert_id,
+                latency_ms=int((time.perf_counter() - started) * 1000),
             )
             parsed = parse_json_response(raw_output)
             analysis = normalize_threat_analysis(
                 parsed, fields, alert_id, situation=situation,
                 intel_report=intel_report, precedents=precedents,
             )
+            if isinstance(analysis.get('enrichment'), dict):
+                analysis['enrichment']['provenance'] = model_run
         except Exception as exc:
             analysis_timer.label(outcome='error')
             metrics.counter(metrics.ANALYSIS_TOTAL, 'Situation analyses', {'outcome': 'error'})
@@ -1452,6 +1469,37 @@ async def api_get_tier2_decision(
     if decision is None:
         raise HTTPException(status_code=404, detail='Alert not found')
     return decision
+
+
+@app.get('/api/alerts/{alert_id}/decision/envelope')
+async def api_decision_envelope(
+    alert_id: str,
+    _principal: Principal = Depends(require(DECISIONS_READ)),
+) -> dict:
+    """One decision as ``situation`` / ``decision`` / ``execution_payload`` / ``audit_trail`` (F5).
+
+    Read-only, and stable: the dashboard's own decision object is untouched.
+    """
+    envelope = await decision_envelope.build_envelope(alert_id)
+    if envelope is None:
+        raise HTTPException(status_code=404, detail='No decision for this alert')
+    return envelope
+
+
+@app.get('/api/model-runs/{run_id}')
+async def api_model_run(
+    run_id: str,
+    _principal: Principal = Depends(require(DECISIONS_ACT)),
+) -> dict:
+    """A model run with its prompt and response text and a fresh integrity check.
+
+    Analyst scope, not viewer: the prompt carries the raw situation.
+    """
+    run = await provenance.get_model_run(run_id, include_text=True)
+    if run is None:
+        raise HTTPException(status_code=404, detail='No such model run')
+    run['integrity'] = await provenance.verify_model_run(run_id)
+    return run
 
 
 @app.post('/api/alerts/{alert_id}/decision/approve', status_code=202)

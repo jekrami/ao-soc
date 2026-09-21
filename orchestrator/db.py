@@ -71,6 +71,10 @@ tier2_decisions = Table(
     # An autonomous action whose justification cannot be read back later is not
     # auditable, and "the model was 94% sure" is not a justification (§7.3.1).
     Column('autopilot_basis_json', String, nullable=True),
+    # F5. The model run this verdict was derived from. Set even where the
+    # verdict came from the rules path, because a model *did* run and its
+    # output is what the rules path overruled.
+    Column('model_run_id', String(64), nullable=True, index=True),
     Column('approved_by', String(128), nullable=True),
     Column('rejected_by', String(128), nullable=True),
     Column('rejection_note', String, nullable=True),
@@ -128,6 +132,34 @@ alert_soar_actions = Table(
     Column('attempts', Integer, nullable=False, default=0),
     Column('created_at', DateTime, nullable=False),
     Column('completed_at', DateTime, nullable=True),
+)
+
+# --- F5: what produced a decision ------------------------------------------
+# One row per completed model call, written before the output is parsed. The
+# hashes are the proof; the text is what makes the proof re-checkable, and can
+# be dropped (MODEL_RUN_RETAIN_TEXT=0) where the alert data must not be held
+# twice. See provenance.py.
+model_runs = Table(
+    'model_runs',
+    metadata,
+    Column('id', Integer, primary_key=True, autoincrement=True),
+    Column('run_id', String(64), nullable=False, unique=True, index=True),
+    Column('situation_id', String(64), nullable=True, index=True),
+    Column('alert_id', String(64), nullable=True, index=True),
+    Column('provider', String(32), nullable=False),
+    Column('model_id', String(128), nullable=False),
+    Column('parameters_json', String, nullable=True),
+    Column('prompt_sha256', String(64), nullable=False),
+    Column('response_sha256', String(64), nullable=False),
+    Column('reasoning_hash', String(64), nullable=False),
+    Column('text_retained', Boolean, nullable=False, default=True),
+    Column('prompt_text', String, nullable=True),
+    Column('response_text', String, nullable=True),
+    Column('prompt_chars', Integer, nullable=False, default=0),
+    Column('response_chars', Integer, nullable=False, default=0),
+    Column('latency_ms', Integer, nullable=True),
+    Column('app_version', String(32), nullable=False, default='unknown'),
+    Column('created_at', DateTime, nullable=False),
 )
 
 # --- Phase A: the label corpus -------------------------------------------
@@ -496,6 +528,11 @@ def _migrate_tier2_decisions(conn) -> None:
         # recorded no basis. NULL says that: there is no precedent to read back,
         # and back-filling one would manufacture a justification after the fact.
         conn.execute(text('ALTER TABLE tier2_decisions ADD COLUMN autopilot_basis_json TEXT'))
+    if cols and 'model_run_id' not in cols:
+        # Pre-2.8.4 decisions recorded no run. NULL says so, and the envelope
+        # says so too; nothing is back-filled, because a run that was never
+        # recorded cannot be reconstructed.
+        conn.execute(text('ALTER TABLE tier2_decisions ADD COLUMN model_run_id TEXT'))
 
 
 def _migrate_alert_soar_actions(conn) -> None:

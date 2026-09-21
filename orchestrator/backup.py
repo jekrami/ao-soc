@@ -58,6 +58,8 @@ IRREPLACEABLE_TABLES = (
     'situations',
     'detections',
     'security_events',
+    # F5: what produced each decision. A model's output cannot be regenerated.
+    'model_runs',
 )
 
 
@@ -81,6 +83,10 @@ def _app_version() -> str:
         except OSError:
             continue
     return 'unknown'
+
+
+#: Public name for callers outside this module (run provenance stamps it too).
+app_version = _app_version
 
 
 def _counts(path: Path) -> Dict[str, int]:

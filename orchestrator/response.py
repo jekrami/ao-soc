@@ -160,6 +160,9 @@ class ActionRequest:
     #: rollback is one rollback and never collides with the action it undoes.
     rollback: bool = False
     rollback_action: str = ''
+    #: F5. The hash of the prompt and response that produced this decision, so
+    #: the executor's own record can be tied back to what was reasoned.
+    reasoning_hash: str = ''
 
     @property
     def forward_idempotency_key(self) -> str:
@@ -194,6 +197,7 @@ class ActionRequest:
                 {'rollback_of': {'action': self.action_type, 'idempotency_key': self.forward_idempotency_key}}
                 if self.rollback else {}
             ),
+            **({'reasoning_hash': self.reasoning_hash} if self.reasoning_hash else {}),
         }
 
 
@@ -481,6 +485,7 @@ async def deliver(
     approved_by: Optional[str] = None,
     rollback: bool = False,
     rollback_action: str = '',
+    reasoning_hash: str = '',
 ) -> Dict[str, Any]:
     """Keyword facade kept for the executor's call site."""
     return await deliver_action(ActionRequest(
@@ -499,6 +504,7 @@ async def deliver(
         approved_by=approved_by,
         rollback=rollback,
         rollback_action=rollback_action,
+        reasoning_hash=reasoning_hash,
     ))
 
 

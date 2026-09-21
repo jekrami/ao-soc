@@ -44,6 +44,16 @@ class LLMProvider(ABC):
         """Reported on /health so an operator can see which brain is wired in."""
         return {'provider': self.name}
 
+    def identify(self) -> Dict[str, Any]:
+        """What is stamped on every run this provider makes (F5).
+
+        ``model_id`` is the identifier the provider was *configured* with - a
+        tag, not a content digest - and ``parameters`` are the generation
+        settings that shape the output. Together with the prompt hash they are
+        what make "which brain decided this?" answerable after a model swap.
+        """
+        return {'provider': self.name, 'model_id': 'unknown', 'parameters': {}}
+
 
 class OllamaProvider(LLMProvider):
     """Local Ollama. Generation parameters live in llm.py, read from env."""
@@ -63,6 +73,18 @@ class OllamaProvider(LLMProvider):
             'think': llm.OLLAMA_THINK,
         }
 
+    def identify(self) -> Dict[str, Any]:
+        return {
+            'provider': self.name,
+            'model_id': llm.MODEL_NAME,
+            'parameters': {
+                'temperature': llm.OLLAMA_TEMPERATURE,
+                'num_predict': llm.OLLAMA_NUM_PREDICT,
+                'think': llm.OLLAMA_THINK,
+                'format_json': llm.OLLAMA_FORMAT_JSON,
+            },
+        }
+
 
 class EchoProvider(LLMProvider):
     """Model-free mode — deterministic, offline, and honest about it.
@@ -74,6 +96,9 @@ class EchoProvider(LLMProvider):
     """
 
     name = 'echo'
+
+    def identify(self) -> Dict[str, Any]:
+        return {'provider': self.name, 'model_id': 'none', 'parameters': {}}
 
     async def complete(self, _prompt: str) -> str:
         return json.dumps({
@@ -97,6 +122,9 @@ class ScriptedProvider(LLMProvider):
     """
 
     name = 'scripted'
+
+    def identify(self) -> Dict[str, Any]:
+        return {'provider': self.name, 'model_id': 'scripted', 'parameters': {}}
 
     def __init__(self, responder):
         self._responder = responder
