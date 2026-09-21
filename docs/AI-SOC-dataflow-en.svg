@@ -37,7 +37,7 @@
   <!-- ================= Title ================= -->
   <text class="t1" x="1000" y="54" text-anchor="middle">AI-SOC DATA FLOW</text>
   <text class="t2" x="1000" y="84" text-anchor="middle">One alert, end to end — from an external detection tool to a closed case</text>
-  <text class="t3" x="1000" y="108" text-anchor="middle">Version 2.8.6 — Summer 2026</text>
+  <text class="t3" x="1000" y="108" text-anchor="middle">Version 2.8.7 — Summer 2026</text>
 
   <!-- ================= PHASE A ================= -->
   <rect x="384" y="134" width="1080" height="28" rx="14" fill="#e2e8f0"/>
@@ -413,5 +413,5 @@
   <text class="legend" x="1230" y="2638">dashed = an external dependency or a store access</text>
 
   <!-- ================= Footer ================= -->
-  <text class="foot" x="1000" y="2690" text-anchor="middle">Written by J.Ekrami · Co-written with Claude (Opus 5, Sonnet 5) · © J.Ekrami-Labs · Summer 2026 · matches AO-SOC v2.8.6</text>
+  <text class="foot" x="1000" y="2690" text-anchor="middle">Written by J.Ekrami · Co-written with Claude (Opus 5, Sonnet 5) · © J.Ekrami-Labs · Summer 2026 · matches AO-SOC v2.8.7</text>
 </svg>

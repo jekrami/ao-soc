@@ -938,6 +938,12 @@ database that will not open), records a manifest with a SHA-256 and the row coun
 everything unrecoverable, **raises rather than returning something plausible** when
 the hash does not match, and never overwrites in place.
 
+```bash
+python pilot_report.py --db soc_matrix.db --since-days 30
+```
+
+`pilot_report.py` answers the seven questions that close the pilot (runbook §8) from the decision store, opened read-only and importing nothing from the broker, so it runs against a restored backup on any machine with Python. It reports *insufficient data* instead of a number when a corpus is too small (`--min-decisions`, `--min-judged`), says what it approximates (the gate replay uses detection source and verdict as precedent because similarity is not stored, so it is an upper bound), and opens with the things that decide whether the rest can be believed: the model-versus-fallback share, corrections recorded, model-run hash checks and dead letters. `--json` for machines.
+
 Containers are in `deploy/`. The compose file publishes only the dashboard, keeps the
 decision store on a named volume, and defaults to `RESPONSE_DRY_RUN=true`. The
 rollout order is in [`docs/PILOT-RUNBOOK.md`](../docs/PILOT-RUNBOOK.md).

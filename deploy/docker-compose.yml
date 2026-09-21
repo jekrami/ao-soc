@@ -41,7 +41,7 @@ services:
     build:
       context: ..
       dockerfile: deploy/orchestrator.Dockerfile
-    image: ao-soc/broker:2.8.6
+    image: ao-soc/broker:2.8.7
     restart: unless-stopped
     env_file:
       - .env
@@ -96,7 +96,7 @@ services:
     build:
       context: ..
       dockerfile: deploy/ui-api.Dockerfile
-    image: ao-soc/ui-api:2.8.6
+    image: ao-soc/ui-api:2.8.7
     restart: unless-stopped
     depends_on:
       broker:
@@ -116,7 +116,7 @@ services:
     build:
       context: ..
       dockerfile: deploy/frontend.Dockerfile
-    image: ao-soc/dashboard:2.8.6
+    image: ao-soc/dashboard:2.8.7
     restart: unless-stopped
     depends_on:
       - ui-api

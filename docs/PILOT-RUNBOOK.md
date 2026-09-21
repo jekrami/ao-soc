@@ -6,7 +6,7 @@
 | **Co-writer** | Claude (Opus 5, Sonnet 5) |
 | **Copyright** | © J.Ekrami-Labs |
 | **Date** | Summer 2026 |
-| **Applies to** | `ao-soc` 2.8.6 (plan v2.8.2) — Phases E and F |
+| **Applies to** | `ao-soc` 2.8.7 (plan v2.8.3) — Phases E and F |
 
 ---
 
@@ -356,7 +356,26 @@ retention deletes vendor payload copies and never a judgement.
 
 ## 8. What closes M16
 
-A pilot is complete when the SOC can answer these, with numbers from its own corpus:
+A pilot is complete when the SOC can answer these, with numbers from its own corpus.
+`orchestrator/pilot_report.py` computes them from the decision store, read-only, and
+answers *insufficient data* rather than a number where the corpus is too small to carry
+one (`--min-decisions`, `--min-judged`). Run it against a **copy** of the store, or a
+restored backup, whenever a report is wanted:
+
+```bash
+python pilot_report.py --db /path/to/soc_matrix.db --since-days 30
+```
+
+Its answers, in the order of the list below: `1` correlation · `2` verdict agreement ·
+`3` precision per source · `4` the gate's constants · `5` actions and receipts · `6`
+latency · `7` backups. It also says whether the rest can be believed: the share of
+decisions the model made against the rules fallback, corrections recorded, model-run
+hash checks, dead letters. Two things it cannot know and says so: that a backup was
+*restored* (it looks for the `.replaced-` file a restore leaves, otherwise a person
+attests), and what similarity the runtime gate computed, so question 4 replays precedent
+by (detection source, verdict) and is an **upper bound** on how often the gate would
+have opened.
+
 
 - [ ] How many detections collapsed into how many situations, and how many situations no
       single upstream tool could have assembled (`GET /api/correlation/metrics`)
