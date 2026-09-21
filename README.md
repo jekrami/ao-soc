@@ -155,7 +155,7 @@ ao-soc/
 
 ## Run It
 
-**Version:** 2.8.9 — see `VERSION` at repo root (bump on every release).
+**Version:** 2.8.10 — see `VERSION` at repo root (bump on every release).
 
 One-time setup (each machine):
 
@@ -423,7 +423,8 @@ See `orchestrator/README.md` for Splunk field mapping and environment variables.
 | Document | Purpose |
 | -------- | ------- |
 | [`docs/user-manual/USER-MANUAL_v1.0.md`](docs/user-manual/USER-MANUAL_v1.0.md) | **User manual v1.0** — installation, sign-in, every menu and page, the approve / edit / reject / rollback workflow, daily routine, glossary. With screenshots |
-| [`docs/user-manual/USER-MANUAL-fa_v1.0.md`](docs/user-manual/USER-MANUAL-fa_v1.0.md) | Persian edition of the user manual (v1.0), with screenshots of the Persian UI |
+| [`docs/user-manual/USER-MANUAL-fa_v1.1.md`](docs/user-manual/USER-MANUAL-fa_v1.1.md) | Persian edition of the user manual (v1.1), with screenshots of the Persian UI |
+| `docs/user-manual/*.pdf`, `*.docx` | The same manuals as single-file PDF and Word documents, images embedded, for handing to users. Generated from the Markdown with `node scripts/manual/build-manual.js`; never edited by hand |
 | [`docs/AI-SOC-PLAN.md`](docs/AI-SOC-PLAN.md) | Master plan v2.4 — milestone status, roadmap phases, risk register, autonomy ramp |
 | [`docs/MODEL-BENCHMARK.md`](docs/MODEL-BENCHMARK.md) | Local LLM benchmark for the Tier-2 decision — 14 models, selection, and why confidence must not gate automation |
 | [`orchestrator/README.md`](orchestrator/README.md) | Broker API, environment variables, autopilot and SOAR policy |
@@ -497,6 +498,7 @@ matches the types in `frontend/src/types.ts`.
 
 ## New Features
 
+- **v2.8.10 — The user manuals as PDF and Word.** `scripts/manual/build-manual.js` turns each Markdown manual into a self-contained PDF (printed by the locally installed Edge or Chrome) and a Word `.docx` (built with the `docx` library), both with every screenshot embedded, carrying the same version-tagged name as their source (`USER-MANUAL_v1.0.pdf`, `USER-MANUAL-fa_v1.1.docx`). The Persian edition is laid out right to left in both, with commands and code kept left to right. Only the newest version of each edition is exported; older ones stay on disk as published. Run `npm install` then `node build-manual.js` in `scripts/manual/`. Also: the Persian manual is now v1.1, because v1.0 showed the overall posture card where the Security Situation panel belonged (both are titled «وضعیت امنیتی» in the Persian UI); the corrected screenshot is in `images_fa_v1.1/` and v1.0 is kept unchanged.
 - **v2.8.9 — The Persian user manual.** `docs/user-manual/USER-MANUAL-fa_v1.0.md` (document version 1.0), the Persian edition of the user manual, written in Persian with Solar Hijri dating and Persian digits, with 30 screenshots of the Persian (RTL) interface in `docs/user-manual/images_fa_v1.0/`. Same scope as the English edition. Documentation only; no code change.
 - **v2.8.8 — The user manual.** `docs/user-manual/USER-MANUAL_v1.0.md` (document version 1.0) with 30 screenshots in `docs/user-manual/images_v1.0/`, captured from the demo stack: demo and Docker installation, sign-in, the top bar and every menu, each Command Center panel, the Tier-2 workflow (approve, edit, reject, audit trail, outcome, autopilot), the Live Alerts playbook, the incident details page, the archive and rollback, Entity Risk, System Health, the Persian UI, a daily shift routine, a glossary of badges and statuses, and troubleshooting. Documentation only; no code change.
 - **v2.8.7 — Pilot preparation, part 2: the report that closes M16.** `orchestrator/pilot_report.py` answers the runbook's seven questions from the decision store: detections collapsed into situations (and how many no single tool could have assembled); verdict agreement, approved unchanged versus edited versus rejected, per detection source; precision per source and which sources should stay with a human; whether the autopilot gate's constants (3 / 70 % / 30 days) held, replayed over history with a sweep of the precedent count; every action and what reached an executor, with rollbacks, autopilot and irreversible dispatches flagged from the receipts; latency at p50 and p95; backups and evidence of a restore. It opens the store read-only, imports nothing from the broker, and answers *insufficient data* rather than a number where the corpus is too small to carry one. It leads with what decides whether the rest can be believed: how much of the pilot was the model and how much the rules fallback, corrections recorded (a pilot with none has not been run), model-run hash checks, dead letters.

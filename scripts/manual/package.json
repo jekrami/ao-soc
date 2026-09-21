@@ -1,0 +1,15 @@
+{
+  "name": "ao-soc-manual-builder",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Builds the PDF and Word editions of the AO-SOC user manuals from their Markdown source.",
+  "license": "UNLICENSED",
+  "scripts": {
+    "build": "node build-manual.js"
+  },
+  "dependencies": {
+    "docx": "^9.5.0",
+    "marked": "^12.0.2",
+    "playwright-core": "^1.55.0"
+  }
+}
