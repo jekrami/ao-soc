@@ -306,12 +306,70 @@
       "REJECTED": "Rejected",
       "EXECUTING": "Executing",
       "DONE": "Complete",
-      "FAILED": "Failed"
+      "FAILED": "Failed",
+      "SIMULATED": "Dry run",
+      "SUPERSEDED": "Superseded"
     },
     "delivery": {
       "simulated": "Dry run — nothing was sent to any executor",
       "via": "via {{connector}}",
       "attempts": "{{count}} attempts"
+    },
+    "guard": {
+      "CRITICAL": "Critical asset",
+      "PRIVILEGED": "Privileged account",
+      "SERVICE": "Service account",
+      "hint": "Autopilot never runs a containment action on this target — a person has to approve it"
+    },
+    "reversibility": {
+      "REVERSIBLE": "Can be undone",
+      "undoWith": "Undo with: {{action}}",
+      "IRREVERSIBLE": "Cannot be undone",
+      "IRREVERSIBLEHint": "No inverse exists, so autopilot never runs this — a person has to approve it",
+      "SELF_LIMITING": "Nothing to undo",
+      "SELF_LIMITINGHint": "Nothing persistent changes — the user simply signs in again"
+    },
+    "rollback": {
+      "button": "Roll back",
+      "title": "Undo this action?",
+      "note": "Why (optional)",
+      "notePlaceholder": "e.g. change window CHG-2211 approved this traffic",
+      "confirm": "Roll back",
+      "notYet": "Rollback becomes available once the action has run",
+      "status": {
+        "EXECUTING": "Rolling back…",
+        "DONE": "Rolled back by {{by}}",
+        "FAILED": "Rollback failed — you can try again",
+        "BLOCKED": "The executor refused the rollback — it may have no inverse command configured",
+        "SIMULATED": "Rollback dry run — nothing was sent"
+      },
+      "openToRollBack": "open the incident to roll it back"
+    },
+    "audit": {
+      "title": "Audit trail",
+      "loadFailed": "Could not load the audit trail",
+      "autonomy": "Autonomy",
+      "autonomyLevel": {
+        "PROPOSED": "Proposed — nobody has approved it",
+        "SUPERVISED": "Supervised — a person approved it",
+        "AUTONOMOUS": "Autonomous — autopilot approved it on precedent"
+      },
+      "model": "Model",
+      "noModel": "No model run is recorded for this decision",
+      "modelFree": "Model-free mode — no inference was performed",
+      "runId": "Run",
+      "reasoningHash": "Reasoning hash",
+      "copyHash": "Copy hash",
+      "copied": "Copied",
+      "integrity": "Integrity",
+      "integrityState": {
+        "verified": "Verified",
+        "MISMATCH": "Mismatch — the stored record was altered",
+        "text_not_retained": "Text not retained — cannot be re-checked",
+        "not_found": "Run record missing"
+      },
+      "confidenceNote": "Confidence is the model's own report and is not calibrated — it is shown, never used to decide.",
+      "download": "Download JSON"
     }
   },
   "archive": {
@@ -412,7 +470,17 @@
       "escalated": "Escalated to tier {{tier}} · {{to}}",
       "syncOut": "Pushed to the system of record as {{ref}}",
       "syncIn": "Inbound change: {{changes}}",
-      "syncInRefused": "Inbound change refused: {{refused}}"
+      "syncInRefused": "Inbound change refused: {{refused}}",
+      "action": "{{action}} on {{target}}: {{status}}",
+      "actionUndoable": "{{action}} on {{target}}: {{status}}. Can be undone with: {{rollback}}",
+      "actionIrreversible": "{{action}} on {{target}}: {{status}}. Cannot be undone",
+      "rollback": "Rolled back {{action}} on {{target}}: {{status}}",
+      "actionStatus": {
+        "DONE": "done",
+        "FAILED": "failed",
+        "BLOCKED": "blocked",
+        "SIMULATED": "dry run"
+      }
     }
   }
 }

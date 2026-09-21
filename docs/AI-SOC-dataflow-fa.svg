@@ -38,7 +38,7 @@
   <!-- ================= Title ================= -->
   <text class="t1" x="1000" y="54" text-anchor="middle">جریان داده در AI-SOC</text>
   <text class="t2" x="1000" y="84" text-anchor="middle">یک هشدار، از آغاز تا پایان — از ابزار تشخیصِ بیرونی تا بسته‌شدن پرونده</text>
-  <text class="t3" x="1000" y="108" text-anchor="middle">نسخهٔ ۲.۸.۴ — تابستان ۱۴۰۵</text>
+  <text class="t3" x="1000" y="108" text-anchor="middle">نسخهٔ ۲.۸.۵ — تابستان ۱۴۰۵</text>
 
   <!-- ================= PHASE A ================= -->
   <rect x="536" y="134" width="1080" height="28" rx="14" fill="#e2e8f0"/>
@@ -414,5 +414,5 @@
   <text class="legend" x="800" y="2638" text-anchor="start">خط‌چین = وابستگی بیرونی یا دسترسی به انباره</text>
 
   <!-- ================= Footer ================= -->
-  <text class="foot" x="1000" y="2690" text-anchor="middle">نویسنده: J.Ekrami · هم‌نویسنده: Claude (Opus 5، Sonnet 5) · © J.Ekrami-Labs · تابستان ۱۴۰۵ · برابر با AO-SOC نسخهٔ ۲.۸.۴</text>
+  <text class="foot" x="1000" y="2690" text-anchor="middle">نویسنده: J.Ekrami · هم‌نویسنده: Claude (Opus 5، Sonnet 5) · © J.Ekrami-Labs · تابستان ۱۴۰۵ · برابر با AO-SOC نسخهٔ ۲.۸.۵</text>
 </svg>

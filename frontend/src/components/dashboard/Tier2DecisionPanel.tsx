@@ -8,6 +8,7 @@ import {
 import { Card, CardHeader, CardTitle, CardSubtitle, CardBody } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useAoSoc } from '@/store/useAoSoc';
+import { ActionGuardBadges, ActionReversibility, AuditTrailSection } from './ActionSafety';
 import type {
   ActionRiskClass, DecisionOutcomeType, Tier2ActionEdit, Tier2ApprovalStatus,
   Tier2DecisionSource, Tier2DecisionType,
@@ -220,6 +221,8 @@ export const Tier2DecisionPanel: React.FC = () => {
                             {t(`tier2.risk.${action.risk_class}`)}
                           </span>
                         )}
+                        {/* F1/F2: why a machine will not run this on its own. */}
+                        <ActionGuardBadges action={action} />
                       </div>
                       <div className="text-[11px] text-muted">
                         {t('common.target')}: <span className="font-mono text-fg">{action.target}</span>
@@ -252,6 +255,8 @@ export const Tier2DecisionPanel: React.FC = () => {
                           {action.result.execution_id}
                         </div>
                       )}
+                      {/* F4: can it be taken back, and the one control that does. */}
+                      <ActionReversibility action={action} incidentId={selectedIncident.id} />
                     </div>
                     <span className="text-[10px] uppercase text-muted">{action.status}</span>
                   </div>
@@ -491,6 +496,9 @@ export const Tier2DecisionPanel: React.FC = () => {
             )}
           </div>
         )}
+
+        {/* F5: what produced this decision, and proof it is the one that ran. */}
+        <AuditTrailSection incidentId={selectedIncident.id} decision={decision} />
       </CardBody>
     </Card>
   );

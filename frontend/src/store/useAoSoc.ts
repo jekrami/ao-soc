@@ -18,6 +18,9 @@ interface AoSocState {
   selectedIncident: Incident | null;
   selectedExplanation: PersistedAiExplanation | null;
   selectedTier2Decision: Tier2Decision | null;
+  /** Bumped whenever a decision changes what the case timeline should say, so
+   *  the case panel re-reads instead of showing a history that has moved on. */
+  caseRevision: number;
   selectedFeedback: DecisionFeedback | null;
   /** The correlated situation behind the selected decision. Null for incidents
    *  ingested before correlation existed, and for mock incidents. */
@@ -58,6 +61,8 @@ interface AoSocState {
   rejectTier2Decision: (id: string, note?: string) => Promise<boolean>;
   editTier2Decision: (id: string, patch: Tier2DecisionPatch) => Promise<boolean>;
   recordDecisionOutcome: (id: string, outcome: DecisionOutcomeType, note?: string) => Promise<boolean>;
+  /** F4: a person takes back one executed action. The machine never does. */
+  rollbackTier2Action: (id: string, actionId: string, note?: string) => Promise<boolean>;
 }
 
 /** A human correction: any subset of the verdict, its wording, and the plan. */
@@ -78,6 +83,7 @@ export const useAoSoc = create<AoSocState>((set, get) => ({
   selectedIncident: null,
   selectedExplanation: null,
   selectedTier2Decision: null,
+  caseRevision: 0,
   selectedFeedback: null,
   selectedSituation: null,
   mitre: null,
@@ -332,7 +338,11 @@ export const useAoSoc = create<AoSocState>((set, get) => ({
     try {
       const previous = get().selectedTier2Decision;
       const tier2 = await api<Tier2Decision>(`/api/incidents/${id}/decision`);
-      set({ selectedTier2Decision: tier2 });
+      set(s => ({
+        selectedTier2Decision: tier2,
+        caseRevision: previous && previous.approval_status !== tier2.approval_status
+          ? s.caseRevision + 1 : s.caseRevision,
+      }));
       // A settled decision can still be judged — pull the window state so the
       // panel can ask "was this right?" while the answer is still knowable.
       const feedback = await api<DecisionFeedback>(`/api/incidents/${id}/decision/feedback`)
@@ -362,6 +372,7 @@ export const useAoSoc = create<AoSocState>((set, get) => ({
         selectedTier2Decision: decision,
         summary,
         mitre,
+        caseRevision: s.caseRevision + 1,
         incidents: s.incidents.map(i => (i.id === id ? updated : i)),
         selectedIncident: s.selectedIncidentId === id ? updated : s.selectedIncident,
       }));
@@ -418,6 +429,37 @@ export const useAoSoc = create<AoSocState>((set, get) => ({
         body: JSON.stringify({ outcome, note: note || undefined }),
       });
       set({ selectedFeedback: feedback });
+      return true;
+    } catch (e) {
+      set({ error: (e as Error).message });
+      return false;
+    } finally {
+      set(s => ({ loading: { ...s.loading, tier2Decision: false } }));
+    }
+  },
+
+  async rollbackTier2Action(id, actionId, note) {
+    set(s => ({ loading: { ...s.loading, tier2Decision: true }, error: null }));
+    try {
+      const decision = await api<Tier2Decision>(
+        `/api/incidents/${encodeURIComponent(id)}/actions/${encodeURIComponent(actionId)}/rollback`,
+        { method: 'POST', body: JSON.stringify({ note: note || undefined }) },
+      );
+      // The broker reopens the alert when a containment is lifted, so the
+      // incident and the summary are re-read: leaving them as they were would
+      // keep showing a lifted containment as a standing one.
+      const [updated, summary] = await Promise.all([
+        api<Incident>(`/api/incidents/${id}`),
+        api<Summary>('/api/summary'),
+      ]);
+      set(s => ({
+        selectedTier2Decision: decision,
+        summary,
+        caseRevision: s.caseRevision + 1,
+        incidents: s.incidents.map(i => (i.id === id ? updated : i)),
+        selectedIncident: s.selectedIncidentId === id ? updated : s.selectedIncident,
+      }));
+      void get().refreshIncidents();
       return true;
     } catch (e) {
       set({ error: (e as Error).message });

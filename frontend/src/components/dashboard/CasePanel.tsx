@@ -99,6 +99,32 @@ const useEventBody = () => {
           ? t('cases.event.syncInRefused', { refused: refused.join('; ') })
           : t('cases.event.syncIn', { changes: applied.join(', ') || '—' });
       }
+      case 'action': {
+        // F4. Rebuilt from structure like every machine-authored entry. An entry
+        // written before these fields existed falls back to the server's prose.
+        if (!data.action) return event.body;
+        const params = {
+          action: String(data.action), target: String(data.target ?? ''),
+          status: t(`cases.event.actionStatus.${String(data.status)}`, String(data.status ?? '')),
+          rollback: String(data.rollback_action ?? ''),
+        };
+        if (data.status === 'DONE' && data.reversibility === 'REVERSIBLE') {
+          return t('cases.event.actionUndoable', params);
+        }
+        if (data.status === 'DONE' && data.reversibility === 'IRREVERSIBLE') {
+          return t('cases.event.actionIrreversible', params);
+        }
+        return t('cases.event.action', params);
+      }
+      case 'rollback': {
+        if (!data.action) return event.body;
+        const line = t('cases.event.rollback', {
+          action: String(data.action), target: String(data.target ?? ''),
+          status: t(`cases.event.actionStatus.${String(data.status)}`, String(data.status ?? '')),
+        });
+        // The analyst's own words about why, in the language they wrote them.
+        return data.note ? `${line} — ${String(data.note)}` : line;
+      }
       default:
         // A note: the analyst's own sentence, in the language they wrote it.
         return event.body;
@@ -109,7 +135,7 @@ const useEventBody = () => {
 export const CasePanel: React.FC = () => {
   const { t } = useTranslation();
   const eventBody = useEventBody();
-  const { selectedIncident } = useAoSoc();
+  const { selectedIncident, caseRevision } = useAoSoc();
   const incidentId = selectedIncident?.source === 'broker' ? selectedIncident.id : null;
 
   const [socCase, setSocCase] = useState<SocCase | null>(null);
@@ -136,6 +162,12 @@ export const CasePanel: React.FC = () => {
     setAssignee('');
     void load();
   }, [load]);
+
+  // A decision changed underneath the case (approved, executed, rolled back):
+  // re-read the timeline so it is not a history that has already moved on.
+  useEffect(() => {
+    if (caseRevision > 0) void load();
+  }, [caseRevision, load]);
 
   const act = async (path: string, body: unknown) => {
     if (!socCase) return;

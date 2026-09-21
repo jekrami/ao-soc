@@ -8,6 +8,7 @@ import { AiExplanation } from '@/components/dashboard/AiExplanation';
 import { SituationPanel } from '@/components/dashboard/SituationPanel';
 import { IntelPrecedentPanel } from '@/components/dashboard/IntelPrecedentPanel';
 import { CasePanel } from '@/components/dashboard/CasePanel';
+import { Tier2DecisionPanel } from '@/components/dashboard/Tier2DecisionPanel';
 import { useAoSoc } from '@/store/useAoSoc';
 import { api } from '@/lib/api';
 import type { Incident } from '@/types';
@@ -16,7 +17,7 @@ import { ArrowLeft, Server, Clock } from 'lucide-react';
 export const IncidentDetailsPage: React.FC = () => {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
-  const { selectIncident } = useAoSoc();
+  const { selectIncident, caseRevision } = useAoSoc();
   const [incident, setIncident] = useState<Incident | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -29,6 +30,19 @@ export const IncidentDetailsPage: React.FC = () => {
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
   }, [id, selectIncident]);
+
+  // A decision moved (approved, executed, rolled back). This page holds its own
+  // copy of the incident, and a copy read once at load would go on showing a
+  // lifted containment as a standing one — so it is re-read, quietly, without
+  // the skeleton that the first load shows.
+  useEffect(() => {
+    if (!id || caseRevision === 0) return undefined;
+    let alive = true;
+    api<Incident>(`/api/incidents/${id}`)
+      .then(data => { if (alive) setIncident(data); })
+      .catch(() => { /* the next poll or navigation will correct it */ });
+    return () => { alive = false; };
+  }, [id, caseRevision]);
 
   if (loading || !incident) {
     return (
@@ -97,6 +111,11 @@ export const IncidentDetailsPage: React.FC = () => {
         </div>
 
         <div className="space-y-3">
+          {/* A contained incident is exactly where a containment gets lifted, so
+              the decision - its plan, what can be undone, and what produced it -
+              is reachable here and not only from the live queue. */}
+          <Tier2DecisionPanel />
+
           <Card>
             <CardHeader>
               <CardTitle>{t('incidents.affectedAssets')}</CardTitle>

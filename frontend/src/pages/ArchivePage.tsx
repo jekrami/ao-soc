@@ -5,6 +5,7 @@ import { Archive, Bot, CheckCircle2, ChevronDown, User, XCircle } from 'lucide-r
 import { Card, CardHeader, CardTitle, CardSubtitle, CardBody } from '@/components/ui/card';
 import { SeverityChip, StatusPill } from '@/components/ui/chip';
 import { useAoSoc } from '@/store/useAoSoc';
+import { ActionGuardBadges, RollbackNote } from '@/components/dashboard/ActionSafety';
 import { cn } from '@/lib/utils';
 import type { ArchivedIncident } from '@/types';
 
@@ -129,11 +130,13 @@ export const ArchivePage: React.FC = () => {
                                   ? <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0 text-low" />
                                   : <XCircle className="h-4 w-4 mt-0.5 shrink-0 text-critical" />}
                                 <div className="min-w-0 flex-1">
-                                  <div className="text-sm text-fg">
+                                  <div className="flex flex-wrap items-center gap-1.5 text-sm text-fg">
                                     {action.action}
                                     <span className="text-muted"> → </span>
                                     <span className="font-mono text-[12px]">{action.target}</span>
+                                    <ActionGuardBadges action={action} />
                                   </div>
+                                  <RollbackNote action={action} />
                                   {action.result?.error && (
                                     <div className="text-[11px] text-critical">{action.result.error}</div>
                                   )}

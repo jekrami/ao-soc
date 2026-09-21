@@ -1118,8 +1118,12 @@ async def _execute_soar_plan(alert_id: str, decision_id: int) -> dict:
         await _record_on_case(
             alert_id, kind='action', actor='ao-soc', origin='system',
             body=_action_timeline_line(action_row, status, receipt),
+            # Structure, not just prose: the dashboard rebuilds this entry in the
+            # analyst's language from these fields (the body is English).
             data={
                 'action_id': action_row['action_id'], 'status': status,
+                'action': action_row['action_type'], 'target': action_row['target'],
+                'connector': receipt.get('connector') or '',
                 'reversibility': action_row.get('reversibility') or 'UNASSESSED',
                 'rollback_action': action_row.get('rollback_action'),
             },
@@ -1301,7 +1305,10 @@ async def rollback_tier2_action(
             f"{row['rollback_action']} for {row['action_type']} on {row['target']}: {status}"
             + (f' — {note}' if note else '')
         ),
-        data={'action_id': row['action_id'], 'status': status, 'rollback_action': row['rollback_action']},
+        data={
+            'action_id': row['action_id'], 'status': status, 'rollback_action': row['rollback_action'],
+            'action': row['action_type'], 'target': row['target'], 'note': note or '',
+        },
     )
     logger.info(
         'Rollback of %s on %s for alert %s requested by %s -> %s',

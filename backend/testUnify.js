@@ -8,7 +8,9 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { brokerFetch } from './brokerClient.js';
-import { getBrokerSituation } from './decisions.js';
+import {
+  getBrokerDecision, getBrokerEnvelope, getBrokerSituation, rollbackBrokerAction,
+} from './decisions.js';
 import { mapAlertToIncident } from './alertStore.js';
 import { buildSummary, getIncident, listArchive, listIncidents } from './incidents.js';
 
@@ -69,6 +71,13 @@ async function main() {
   });
   const situation = correlated ? await getBrokerSituation(correlated.id) : null;
 
+  // Phase F: the proxy carries the pre-action facts and the audit export. Only
+  // reads and a refusal are exercised - a real rollback would mutate the corpus.
+  const decision = await getBrokerDecision(alert.id);
+  const envelope = await getBrokerEnvelope(alert.id);
+  const statusOf = async fn => { try { await fn(); return null; } catch (err) { return err.status ?? -1; } };
+  const unknownActionStatus = await statusOf(() => rollbackBrokerAction(alert.id, 'NO-SUCH-ACTION', 'tester'));
+
   const checks = [
     ['source broker', incident.source === 'broker'],
     // Assert the mapping, not the fixture — the seeder shuffles scenarios.
@@ -105,6 +114,17 @@ async function main() {
     ['no invented MITRE in the timeline', bare.timeline.every(e => e.mitre === '')],
     ['no vendor asserted in fallback evidence',
       bare.evidence.every(e => !/suricata/i.test(e.signal))],
+    // Phase F - every action says what it is, whether a machine may touch it,
+    // and whether it can be taken back; the dashboard draws these.
+    ['actions carry the pre-action facts',
+      (decision.required_actions ?? []).length > 0 &&
+      decision.required_actions.every(a => 'asset_criticality' in a && 'identity_role' in a && 'reversibility' in a)],
+    ['envelope has its schema', envelope.schema === 'ao-soc.decision-envelope/1'],
+    ['envelope has its four parts',
+      ['situation', 'decision', 'execution_payload', 'audit_trail'].every(k => k in envelope)],
+    ['envelope labels confidence uncalibrated',
+      envelope.situation?.confidence_basis === 'model_self_reported_uncalibrated'],
+    ['rollback of an unknown action is refused with 404', unknownActionStatus === 404],
   ];
 
   const failed = checks.filter(([, ok]) => !ok);

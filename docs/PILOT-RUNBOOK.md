@@ -6,7 +6,7 @@
 | **Co-writer** | Claude (Opus 5, Sonnet 5) |
 | **Copyright** | © J.Ekrami-Labs |
 | **Date** | Summer 2026 |
-| **Applies to** | `ao-soc` 2.8.4 (plan v2.8) — Phases E and F |
+| **Applies to** | `ao-soc` 2.8.5 (plan v2.8.1) — Phases E and F |
 
 ---
 

@@ -27,6 +27,7 @@ import {
   editBrokerDecision,
   getBrokerDecision,
   getBrokerCorrelationMetrics,
+  getBrokerEnvelope,
   getBrokerFeedback,
   getBrokerSituation,
   getBrokerOutcomeSummary,
@@ -34,6 +35,7 @@ import {
   listBrokerCorrections,
   recordBrokerOutcome,
   rejectBrokerDecision,
+  rollbackBrokerAction,
 } from './decisions.js';
 import { buildSummary, buildMitre, getIncident, listArchive, listIncidents } from './incidents.js';
 import { buildSystemHealth } from './systemHealth.js';
@@ -153,6 +155,37 @@ app.post('/api/incidents/:id/decision/approve', requireScope(DECISIONS_ACT), asy
   } catch (err) {
     const status = err.status === 404 ? 404 : 502;
     res.status(status).json({ error: err.message, code: 'BROKER_APPROVE_FAILED' });
+  }
+});
+
+// F5: the decision as an auditor or a SOAR bridge would read it. Read-only.
+app.get('/api/incidents/:id/decision/envelope', async (req, res) => {
+  if (!(await isBrokerIncident(req.params.id))) {
+    return res.status(404).json({ error: 'broker incident not found', code: 'NOT_BROKER' });
+  }
+  try {
+    res.json(await getBrokerEnvelope(req.params.id));
+  } catch (err) {
+    const status = err.status === 404 ? 404 : 502;
+    res.status(status).json({ error: err.message, code: 'BROKER_ENVELOPE_FAILED' });
+  }
+});
+
+// F4: take back one executed action. The broker refuses what has no inverse
+// (422) and what has not run, is already undone, or is in flight (409); both
+// messages are written for the analyst, so they are passed through.
+app.post('/api/incidents/:id/actions/:actionId/rollback', requireScope(DECISIONS_ACT), async (req, res) => {
+  if (!(await isBrokerIncident(req.params.id))) {
+    return res.status(404).json({ error: 'broker incident not found', code: 'NOT_BROKER' });
+  }
+  try {
+    const decision = await rollbackBrokerAction(
+      req.params.id, req.params.actionId, actorOf(req), req.body?.note || '',
+    );
+    res.json(decision);
+  } catch (err) {
+    const status = [404, 409, 422].includes(err.status) ? err.status : 502;
+    res.status(status).json({ error: err.message, code: 'BROKER_ROLLBACK_FAILED' });
   }
 });
 

@@ -20,6 +20,24 @@ export async function rejectBrokerDecision(alertId, rejectedBy = 'analyst', note
   });
 }
 
+// F4 — take back one executed action. Only a person asks, and the broker takes
+// the requester from X-Actor, never from the body.
+export async function rollbackBrokerAction(alertId, actionId, requestedBy, note = '') {
+  return brokerFetch(
+    `/api/alerts/${encodeURIComponent(alertId)}/actions/${encodeURIComponent(actionId)}/rollback`,
+    {
+      method: 'POST',
+      actor: requestedBy,
+      body: JSON.stringify({ requested_by: requestedBy, note: note || undefined }),
+    },
+  );
+}
+
+// F5 — one decision as situation / decision / execution_payload / audit_trail.
+export async function getBrokerEnvelope(alertId) {
+  return brokerFetch(`/api/alerts/${encodeURIComponent(alertId)}/decision/envelope`);
+}
+
 export async function listBrokerDecisions() {
   if (!(await brokerAvailable())) return [];
   try {

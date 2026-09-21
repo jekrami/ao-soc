@@ -2051,6 +2051,18 @@ async def check_rollback_flow(client, ingest: dict, viewer: dict, analyst: dict)
         undo_events = [e for e in events if e['kind'] == 'rollback']
         assert len(undo_events) == 1 and undo_events[0]['origin'] == 'human'
         assert undo_events[0]['actor'] == 'sara.analyst' and 'CHG-2211' in undo_events[0]['body']
+
+        # The dashboard rebuilds these in the analyst's language from `data`, not
+        # from the English `body`, so the structure has to be there. The note is
+        # the analyst's own words and travels separately, untranslated.
+        ran_by_id = {e['data']['action_id']: e['data'] for e in ran_events}
+        assert ran_by_id['A1']['action'] == 'Block IP' and ran_by_id['A1']['target'] == '185.220.101.7'
+        assert ran_by_id['A1']['connector'] == 'soar' and ran_by_id['A1']['status'] == 'DONE'
+        assert ran_by_id['A1']['reversibility'] == 'REVERSIBLE' and ran_by_id['A1']['rollback_action'] == 'Unblock IP'
+        assert ran_by_id['A2']['reversibility'] == 'IRREVERSIBLE' and ran_by_id['A2']['action'] == 'Kill process'
+        undo_data = undo_events[0]['data']
+        assert undo_data['action'] == 'Block IP' and undo_data['target'] == '185.220.101.7'
+        assert undo_data['status'] == 'DONE' and undo_data['note'].startswith('Change window CHG-2211')
     finally:
         reset_provider()
 

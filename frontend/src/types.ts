@@ -76,12 +76,25 @@ export interface Tier2ActionStatus {
   reason: string;
   /** Assigned at plan time; an unrecognised action is HIGH_WRITE, never READ. */
   risk_class: ActionRiskClass;
-  // F1-F4, returned by the broker; the dashboard does not draw them yet.
+  /**
+   * F1-F4. Optional because a broker older than 2.8 does not send them, and
+   * their absence must render as nothing — never as a default that reads as a
+   * finding ("STANDARD" would claim someone had checked).
+   */
   asset_criticality?: 'STANDARD' | 'CRITICAL';
+  criticality_reason?: string | null;
   identity_role?: 'STANDARD' | 'PRIVILEGED' | 'SERVICE';
+  identity_reason?: string | null;
+  /** Can it be taken back (F4). UNASSESSED = written before the broker asked. */
   reversibility?: 'REVERSIBLE' | 'SELF_LIMITING' | 'IRREVERSIBLE' | 'NOT_APPLICABLE' | 'UNASSESSED';
+  reversibility_reason?: string | null;
+  /** The verb that undoes it, where one exists. */
   rollback_action?: string | null;
-  rollback_status?: string;
+  /** '' until it has run; AVAILABLE from then; the delivery result once a person asks. */
+  rollback_status?: '' | 'AVAILABLE' | 'EXECUTING' | 'DONE' | 'FAILED' | 'BLOCKED' | 'SIMULATED';
+  rollback_by?: string | null;
+  rollback_at?: string | null;
+  rollback_result?: { status?: string; error?: string; operation?: string; idempotency_key?: string } | null;
   /** What the target must parse as for this action (ip, ip_or_host, user…). */
   target_kind: string;
   /** Set when the action fails policy — it will be BLOCKED, not dispatched. */
@@ -169,9 +182,35 @@ export interface Tier2Decision {
   required_actions: Tier2ActionStatus[];
   /** Present only where autopilot approved this, and it is the justification (D4). */
   autopilot_basis?: AutopilotBasis | null;
+  /** F5: the model run this verdict came from. Null before 2.8.4. */
+  model_run_id?: string | null;
   created_at?: string | null;
   approved_at?: string | null;
   completed_at?: string | null;
+}
+
+/**
+ * One decision as an auditor or a SOAR bridge reads it (F5). Only the parts the
+ * dashboard draws are typed; the download carries the rest.
+ */
+export interface DecisionEnvelope {
+  schema: string;
+  app_version: string;
+  generated_at: string;
+  decision: {
+    approval_state: string;
+    /** PROPOSED: nobody approved it · SUPERVISED: a person did · AUTONOMOUS: autopilot did. */
+    autonomy_level: 'PROPOSED' | 'SUPERVISED' | 'AUTONOMOUS';
+  } & Record<string, unknown>;
+  audit_trail: {
+    model: { provider: string; model_id: string; run_id: string; text_retained: boolean } | null;
+    model_note: string | null;
+    reasoning_hash: string | null;
+    integrity: { status: 'verified' | 'MISMATCH' | 'text_not_retained' | 'not_found'; failed?: string[] } | null;
+    precedent_ids: string[];
+  } & Record<string, unknown>;
+  situation: Record<string, unknown>;
+  execution_payload: Record<string, unknown>;
 }
 
 // --- Phase D: verified intelligence and earned autonomy
