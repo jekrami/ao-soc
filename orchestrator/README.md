@@ -191,11 +191,49 @@ Whatever the vendor sent, every adapter emits this and nothing else:
 | `severity`, `vendor_severity` | The verbatim value, plus a class normalised across word / 1-5 / 0-15 / 0-100 scales. Unreadable ⇒ `MEDIUM`, never `LOW` |
 | `vendor_techniques` | ATT&CK the **tool** asserted. Preferred over the model's own claims (R4); anything not shaped like a technique ID is dropped |
 | `entities` | `user`, `host`, `host_ip`, `process`, `src_ip`, `dst_ip`, `file_hash`, `url`, `domain` — all optional, none invented |
+| `artifacts` | `command_line`, `process_guid`, `parent_process` — what *ran*, where the tool reported it (F3). Optional, additive, **never a correlation key** |
 | `raw` | The payload byte-for-byte (Rule 4) |
 
 Placeholder values (`unknown`, `-`, `n/a`, …) are stripped at this boundary rather than
 stored: they are not identities, and correlating on one would join every unrelated
 detection in the window into a single situation.
+
+### Execution artifacts (F3)
+
+An analyst deciding whether `powershell.exe` is an administrator or an intruder needs the
+command line, the process it belongs to and what spawned it. Those travel on the
+detection as `artifacts`, filled only where the vendor's payload carries them:
+
+| Adapter | `command_line` | `process_guid` | `parent_process` |
+|---------|----------------|----------------|------------------|
+| `wazuh` | `data.win.eventdata.commandLine`, else `data.command` | `data.win.eventdata.processGuid` | `data.win.eventdata.parentImage` |
+| `crowdstrike` | `CommandLine` | `TargetProcessId` (Falcon's agent-scoped process id) | `ParentImageFileName` |
+| `elastic` | `process.command_line` | `process.entity_id` | `process.parent.executable` / `.name` |
+| `sentinel` | first process entity's `commandLine` | only a supplied `processGuid` — a PID is **not** a GUID | parent's `imageFile.fileName` |
+| `splunk` | `process_command_line`, `command_line`, `cmdline`, `CommandLine` | `process_guid`, `ProcessGuid` | `parent_process`, `parent_process_name`, `ParentImage` |
+| `native` | `artifacts.*`, any unknown key refused | | |
+| `cef` | *none — CEF has no standard key* | | |
+
+Splunk's bare `process` field is deliberately **not** read as a command line: in CIM it is
+one, in most other sources it is an image name, and guessing would put a name in the field
+an analyst reads as "what ran". An empty field means *the tool did not say*, not that
+nothing ran. A command line over 2,000 characters is cut and marked `...[truncated]`; the
+verbatim value stays in `raw`.
+
+**They are evidence, not identity.** Artifacts are deliberately outside the entity
+vocabulary correlation joins on. A command line is free text — two hosts running the same
+installer would otherwise become one situation — and even a shared process *name* is too
+weak a key (R9). A test asserts identical command lines and GUIDs on two hosts share no
+correlation key.
+
+**They reach the model as untrusted data.** A command line is text an attacker controls,
+about to be read by a model that helps decide whether to contain something. The prompt
+fences it in `<execution_artifacts>`, says it is untrusted and must never be followed as an
+instruction, JSON-encodes each value (a newline cannot break out of its line) and caps it.
+Tools that reported no execution record are named, with the line *their absence is not
+evidence that the activity was benign*. A situation with no artifacts at all produces a
+prompt identical to before F3. None of the gates that protect the network — risk class,
+asset, identity, precedent — depends on the model reading these correctly.
 
 **Adding a vendor** is `adapters/<tool>.py` plus a registry line — nothing else. If a new
 tool requires an edit outside `adapters/`, the contract is wrong. A test

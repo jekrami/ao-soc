@@ -17,6 +17,8 @@ enters AI-SOC:
     rule identity                    which rule fired (id and name)
     timestamps                       when the tool says it happened, when we got it
     entities                         user / host / process / src / dst / hash / url
+    artifacts                        what actually ran: command line, process GUID,
+                                     parent process (F3) - evidence, never a join key
     vendor severity                  verbatim, plus a normalised class
     vendor technique                 MITRE the *tool* asserted — R4 prefers this
                                      over anything the model asserts later
@@ -45,6 +47,21 @@ SEVERITY_ORDER = {name: index for index, name in enumerate(reversed(SEVERITIES))
 ENTITY_FIELDS: Tuple[str, ...] = (
     'user', 'host', 'host_ip', 'process', 'src_ip', 'dst_ip', 'file_hash', 'url', 'domain',
 )
+
+#: F3: the execution artifacts a detection may carry - what actually *ran*, as
+#: opposed to what the detection is about. They are deliberately **not** in
+#: ``ENTITY_FIELDS``: correlation joins on that vocabulary, and a command line
+#: is high-cardinality free text (two hosts running the same installer would
+#: join into one "situation"), while even a shared process *name* is already
+#: too weak to join on (R9). They are evidence for the analyst and the model,
+#: and no part of the correlation key.
+ARTIFACT_FIELDS: Tuple[str, ...] = ('command_line', 'process_guid', 'parent_process')
+
+#: A command line can legitimately be long (an encoded PowerShell payload), so
+#: it gets room; the rest are identifiers. Anything cut is marked as cut - the
+#: verbatim value is always still in ``raw`` (Rule 4).
+_ARTIFACT_LIMITS: Dict[str, int] = {'command_line': 2000, 'process_guid': 128, 'parent_process': 255}
+_TRUNCATION_MARK = ' ...[truncated]'
 
 #: Namespaces detections are correlated in. Two fields collapse into one
 #: namespace where the same real-world thing can appear in either: an EDR alert
@@ -181,7 +198,43 @@ def clean_entity(value: Any) -> str:
     return text[:255]
 
 
+def clean_artifact(value: Any, limit: int) -> str:
+    """An artifact value, or '' if never really populated; cut and marked if over ``limit``."""
+    text = str(value if value is not None else '').strip()
+    if text.lower() in PLACEHOLDER_ENTITIES:
+        return ''
+    if len(text) > limit:
+        return text[: limit - len(_TRUNCATION_MARK)] + _TRUNCATION_MARK
+    return text
+
+
 # --- The contract ----------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Artifacts:
+    """What ran, as the detecting tool reported it. Every field optional, none invented.
+
+    An adapter fills what its vendor's payload actually carries and leaves the
+    rest empty. Empty means *the tool did not say* - it is not a finding that
+    nothing ran, and the prompt says so.
+    """
+
+    command_line: str = ''
+    process_guid: str = ''
+    parent_process: str = ''
+
+    @classmethod
+    def build(cls, **values: Any) -> 'Artifacts':
+        return cls(**{
+            name: clean_artifact(values.get(name), _ARTIFACT_LIMITS[name]) for name in ARTIFACT_FIELDS
+        })
+
+    def as_dict(self) -> Dict[str, str]:
+        return {name: getattr(self, name) for name in ARTIFACT_FIELDS if getattr(self, name)}
+
+    def __bool__(self) -> bool:
+        return any(getattr(self, name) for name in ARTIFACT_FIELDS)
 
 
 @dataclass(frozen=True)
@@ -254,6 +307,8 @@ class Detection:
     #: apart so the heatmap can say which is which.
     vendor_techniques: Tuple[str, ...] = ()
     entities: Entities = field(default_factory=Entities)
+    #: F3. Not part of ``correlation_keys`` - see ``ARTIFACT_FIELDS``.
+    artifacts: Artifacts = field(default_factory=Artifacts)
     message: str = ''
     raw: Dict[str, Any] = field(default_factory=dict)
 
@@ -279,6 +334,7 @@ class Detection:
             'vendor_severity': self.vendor_severity,
             'vendor_techniques': list(self.vendor_techniques),
             'entities': self.entities.as_dict(),
+            'artifacts': self.artifacts.as_dict(),
             'message': self.message,
         }
 
@@ -338,6 +394,7 @@ class DetectionAdapter(ABC):
         severity: Optional[str] = None,
         techniques: Sequence[Any] = (),
         message: Any = '',
+        artifacts: Optional[Dict[str, Any]] = None,
         **entities: Any,
     ) -> Detection:
         """Assemble a Detection with the contract's invariants applied once."""
@@ -355,6 +412,7 @@ class DetectionAdapter(ABC):
             vendor_severity=str(vendor_severity or '').strip()[:64],
             vendor_techniques=normalize_techniques(techniques),
             entities=Entities.build(**entities),
+            artifacts=Artifacts.build(**(artifacts or {})),
             message=str(message or '').strip()[:1000],
             raw=payload,
         )

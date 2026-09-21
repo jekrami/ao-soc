@@ -41,7 +41,7 @@ def _first(source: Dict[str, Any], *names: str) -> str:
 
 class CrowdStrikeAdapter(DetectionAdapter):
     name = 'crowdstrike'
-    version = '1.0'
+    version = '1.1'
     source_tool = 'crowdstrike'
     description = 'CrowdStrike Falcon streaming detection (metadata + event envelope)'
 
@@ -95,4 +95,11 @@ class CrowdStrikeAdapter(DetectionAdapter):
             process=_first(event, 'FileName', 'ImageFileName'),
             file_hash=_first(event, 'SHA256String', 'MD5String', 'SHA1String'),
             domain=_first(event, 'DomainName'),
+            artifacts={
+                'command_line': _first(event, 'CommandLine'),
+                # Falcon's per-process unique id (agent-scoped), the closest
+                # thing it has to a GUID.
+                'process_guid': _first(event, 'TargetProcessId', 'ContextProcessId'),
+                'parent_process': _first(event, 'ParentImageFileName'),
+            },
         )

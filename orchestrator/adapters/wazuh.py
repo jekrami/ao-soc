@@ -26,9 +26,16 @@ def _text(value: Any) -> str:
     return str(value if value is not None else '').strip()
 
 
+def _nested(container: Any, *keys: str) -> Dict[str, Any]:
+    """``container[k1][k2]...`` as a dict, or {} the moment the path breaks."""
+    for key in keys:
+        container = container.get(key) if isinstance(container, dict) else None
+    return container if isinstance(container, dict) else {}
+
+
 class WazuhAdapter(DetectionAdapter):
     name = 'wazuh'
-    version = '1.0'
+    version = '1.1'
     source_tool = 'wazuh'
     description = 'Wazuh manager alert document (rule/agent/data, rule level 0-15)'
 
@@ -45,6 +52,11 @@ class WazuhAdapter(DetectionAdapter):
         agent = payload.get('agent') if isinstance(payload.get('agent'), dict) else {}
         mitre = rule.get('mitre') if isinstance(rule.get('mitre'), dict) else {}
         predecoder = payload.get('predecoder') if isinstance(payload.get('predecoder'), dict) else {}
+
+        # Sysmon-decoded Windows events carry the execution record under
+        # data.win.eventdata. Linux agents carry at most a `command`. Whatever
+        # is absent stays empty rather than being guessed from the log line.
+        eventdata = _nested(data, 'win', 'eventdata')
 
         techniques: List[Any] = []
         raw_ids = mitre.get('id')
@@ -76,4 +88,9 @@ class WazuhAdapter(DetectionAdapter):
             file_hash=_text(data.get('sha256') or data.get('md5')),
             url=_text(data.get('url')),
             domain=_text(data.get('domain') or data.get('hostname')),
+            artifacts={
+                'command_line': _text(eventdata.get('commandLine') or data.get('command')),
+                'process_guid': _text(eventdata.get('processGuid')),
+                'parent_process': _text(eventdata.get('parentImage')),
+            },
         )

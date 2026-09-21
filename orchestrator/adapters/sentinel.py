@@ -34,7 +34,7 @@ def _first(source: Dict[str, Any], *names: str) -> str:
 
 class SentinelAdapter(DetectionAdapter):
     name = 'sentinel'
-    version = '1.0'
+    version = '1.1'
     source_tool = 'sentinel'
     description = 'Microsoft Sentinel incident (object.properties + typed entity list)'
 
@@ -87,6 +87,29 @@ class SentinelAdapter(DetectionAdapter):
                 take('domain', 'domainName', 'name')
         return mapped
 
+    @staticmethod
+    def _artifacts(properties: Dict[str, Any]) -> Dict[str, str]:
+        """The first process entity's execution record, where Sentinel gave one.
+
+        Sentinel's process entity carries a PID, not a GUID, so ``process_guid``
+        is read only if a ``processGuid`` was supplied - a PID is not unique
+        across a reboot and must not be presented as if it were.
+        """
+        for entity in properties.get('relatedEntities') or properties.get('entities') or []:
+            if not isinstance(entity, dict):
+                continue
+            if str(entity.get('kind') or entity.get('type') or '').lower() != 'process':
+                continue
+            props = entity.get('properties') if isinstance(entity.get('properties'), dict) else entity
+            parent = props.get('parentProcess') if isinstance(props.get('parentProcess'), dict) else {}
+            image = parent.get('imageFile') if isinstance(parent.get('imageFile'), dict) else {}
+            return {
+                'command_line': _first(props, 'commandLine'),
+                'process_guid': _first(props, 'processGuid'),
+                'parent_process': _first(image, 'fileName') or _first(parent, 'processName', 'name'),
+            }
+        return {}
+
     def parse(self, payload: Dict[str, Any]) -> Detection:
         properties = self._properties(payload)
         if not properties:
@@ -117,5 +140,6 @@ class SentinelAdapter(DetectionAdapter):
             vendor_severity=_first(properties, 'severity', 'alertSeverity'),
             techniques=techniques,
             message=_first(properties, 'description', 'alertDescription'),
+            artifacts=self._artifacts(properties),
             **self._entities(properties),
         )

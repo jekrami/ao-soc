@@ -44,7 +44,7 @@ def _first(source: Dict[str, Any], *paths: str) -> str:
 
 class ElasticAdapter(DetectionAdapter):
     name = 'elastic'
-    version = '1.0'
+    version = '1.1'
     source_tool = 'elastic'
     description = 'Elastic Security alert (ECS, nested or dotted; 7.x signal.* and 8.x kibana.alert.*)'
 
@@ -105,4 +105,9 @@ class ElasticAdapter(DetectionAdapter):
             file_hash=_first(flat, 'file.hash.sha256', 'process.hash.sha256', 'file.hash.md5'),
             url=_first(flat, 'url.full', 'url.original'),
             domain=_first(flat, 'dns.question.name', 'url.domain', 'destination.domain'),
+            artifacts={
+                'command_line': _first(flat, 'process.command_line'),
+                'process_guid': _first(flat, 'process.entity_id'),
+                'parent_process': _first(flat, 'process.parent.executable', 'process.parent.name'),
+            },
         )

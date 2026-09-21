@@ -17,6 +17,7 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from detection import (
+    ARTIFACT_FIELDS,
     ENTITY_FIELDS,
     Detection,
     DetectionAdapter,
@@ -28,7 +29,7 @@ from detection import (
 
 class NativeIntakeAdapter(DetectionAdapter):
     name = 'native'
-    version = '1.0'
+    version = '1.1'
     source_tool = 'native'
     description = 'A sender that already speaks the Detection Intake contract'
 
@@ -52,6 +53,16 @@ class NativeIntakeAdapter(DetectionAdapter):
                 + ', '.join(ENTITY_FIELDS)
             )
 
+        artifacts = payload.get('artifacts') or {}
+        if not isinstance(artifacts, dict):
+            raise DetectionParseError('`artifacts` must be an object')
+        unknown_artifacts = sorted(set(artifacts) - set(ARTIFACT_FIELDS))
+        if unknown_artifacts:
+            raise DetectionParseError(
+                f'Unknown artifact field(s): {", ".join(unknown_artifacts)} - the contract defines '
+                + ', '.join(ARTIFACT_FIELDS)
+            )
+
         rule = payload.get('rule') if isinstance(payload.get('rule'), dict) else {}
         rule_name = payload.get('rule_name') or rule.get('name') or rule.get('description') or ''
         if not rule_name:
@@ -68,5 +79,6 @@ class NativeIntakeAdapter(DetectionAdapter):
             severity=normalize_severity(severity) if severity is not None else None,
             techniques=payload.get('vendor_techniques') or payload.get('techniques') or (),
             message=payload.get('message') or '',
+            artifacts=artifacts,
             **{name: entities.get(name) for name in ENTITY_FIELDS},
         )

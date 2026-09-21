@@ -195,6 +195,8 @@ detections = Table(
     # R4: techniques the *tool* asserted, kept apart from the model's claims.
     Column('vendor_techniques_json', String, nullable=True),
     Column('entities_json', String, nullable=True),
+    # F3: what ran, as the tool reported it. Beside entities and never joined on.
+    Column('artifacts_json', String, nullable=True),
     Column('message', String, nullable=False, default=''),
     # Rule 4: verbatim, never re-serialised from the parsed fields.
     Column('raw_payload', String, nullable=True),
@@ -434,6 +436,14 @@ async def init_db() -> None:
         await conn.run_sync(_migrate_tier2_decisions)
         await conn.run_sync(_migrate_alert_soar_actions)
         await conn.run_sync(_migrate_situations)
+        await conn.run_sync(_migrate_detections)
+
+
+def _migrate_detections(conn) -> None:
+    """Pre-2.8.2 detections carried no artifacts; NULL says exactly that."""
+    cols = {row[1] for row in conn.execute(text('PRAGMA table_info(detections)')).fetchall()}
+    if cols and 'artifacts_json' not in cols:
+        conn.execute(text('ALTER TABLE detections ADD COLUMN artifacts_json TEXT'))
 
 
 def _migrate_situations(conn) -> None:

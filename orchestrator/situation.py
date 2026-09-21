@@ -417,6 +417,7 @@ def _detection_values(detection: Detection) -> Dict[str, Any]:
         'vendor_severity': detection.vendor_severity,
         'vendor_techniques_json': _dump(list(detection.vendor_techniques)),
         'entities_json': _dump(detection.entities.as_dict()),
+        'artifacts_json': _dump(detection.artifacts.as_dict()),
         'message': detection.message,
         # Rule 4: the payload exactly as the tool sent it.
         'raw_payload': json.dumps(detection.raw, default=str),
@@ -439,6 +440,7 @@ def _format_detection(row) -> Dict[str, Any]:
         'vendor_severity': row['vendor_severity'],
         'vendor_techniques': _load(row['vendor_techniques_json'], []),
         'entities': _load(row['entities_json'], {}),
+        'artifacts': _load(row['artifacts_json'], {}),
         'message': row['message'],
     }
 

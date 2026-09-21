@@ -29,7 +29,7 @@ def _first(source: Dict[str, Any], *names: str) -> str:
 
 class SplunkAdapter(DetectionAdapter):
     name = 'splunk'
-    version = '1.0'
+    version = '1.1'
     source_tool = 'splunk'
     description = 'Splunk `| sendalert` webhook, raw or CIM-normalised search results'
 
@@ -95,6 +95,15 @@ class SplunkAdapter(DetectionAdapter):
             file_hash=_first(merged, 'file_hash', 'sha256', 'md5', 'hash'),
             url=_first(merged, 'url', 'uri'),
             domain=_first(merged, 'domain', 'query', 'dns_query'),
+            # `process` is deliberately not read as a command line: in CIM it
+            # is one, in most other Splunk sources it is an image name, and
+            # guessing would put a name into a field an analyst reads as
+            # "what ran". Only unambiguous field names are taken.
+            artifacts={
+                'command_line': _first(merged, 'process_command_line', 'command_line', 'cmdline', 'CommandLine'),
+                'process_guid': _first(merged, 'process_guid', 'ProcessGuid'),
+                'parent_process': _first(merged, 'parent_process', 'parent_process_name', 'ParentImage'),
+            },
         )
 
         # Nothing to correlate on and nothing that fired: this is a forwarded
