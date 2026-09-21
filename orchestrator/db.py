@@ -107,6 +107,16 @@ alert_soar_actions = Table(
     # F2: what the target account is. Same reasoning as asset_criticality.
     Column('identity_role', String(16), nullable=False, default='STANDARD'),
     Column('identity_reason', String, nullable=True),
+    # F4: can this be taken back, and what is its inverse. Stamped at plan time
+    # beside risk_class. `rollback_status` is '' until the action has actually
+    # run, AVAILABLE from then, and the delivery result once a human asks.
+    Column('reversibility', String(16), nullable=False, default='UNASSESSED'),
+    Column('reversibility_reason', String, nullable=True),
+    Column('rollback_action', String, nullable=True),
+    Column('rollback_status', String(16), nullable=False, default=''),
+    Column('rollback_result_json', String, nullable=True),
+    Column('rollback_by', String(128), nullable=True),
+    Column('rollback_at', DateTime, nullable=True),
     Column('status', String(32), nullable=False, default='PENDING'),
     Column('result_json', String, nullable=True),
     # E1: which executor carried it, its own identifier for the action, and how
@@ -537,6 +547,19 @@ def _migrate_alert_soar_actions(conn) -> None:
         ))
     if 'identity_reason' not in cols:
         conn.execute(text('ALTER TABLE alert_soar_actions ADD COLUMN identity_reason TEXT'))
+    # Pre-2.8.3 rows were never assessed for reversibility. UNASSESSED says so;
+    # NOT_APPLICABLE would claim a finding nobody made.
+    for column, ddl in (
+        ('reversibility', "TEXT NOT NULL DEFAULT 'UNASSESSED'"),
+        ('reversibility_reason', 'TEXT'),
+        ('rollback_action', 'TEXT'),
+        ('rollback_status', "TEXT NOT NULL DEFAULT ''"),
+        ('rollback_result_json', 'TEXT'),
+        ('rollback_by', 'TEXT'),
+        ('rollback_at', 'DATETIME'),
+    ):
+        if column not in cols:
+            conn.execute(text(f'ALTER TABLE alert_soar_actions ADD COLUMN {column} {ddl}'))
 
 
 def _normalize_steps(steps: List) -> List[dict]:
@@ -700,6 +723,22 @@ async def get_alert(alert_id: str) -> Optional[dict]:
             return None
         steps = await _load_containment_steps(session, row['id'])
         return _serialize_event(row, steps)
+
+
+async def reopen_alert(alert_id: str) -> Optional[dict]:
+    """A containment was rolled back (F4): the alert is no longer contained.
+
+    Leaving it CONTAINED after a host was released would render a lifted
+    containment as a standing one - the same lie a simulated run must not tell.
+    """
+    async with async_session() as session:
+        await session.execute(
+            update(security_events)
+            .where(security_events.c.alert_id == alert_id)
+            .values(mitigation_status='PENDING', updated_at=_utcnow())
+        )
+        await session.commit()
+    return await get_alert(alert_id)
 
 
 async def mitigate_alert(alert_id: str) -> Optional[dict]:

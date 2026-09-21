@@ -386,6 +386,7 @@ find decisions a degraded model or an offline Ollama produced.
 | GET | `/api/alerts/{id}/decision` | Tier-2 decision + bundled action plan |
 | POST | `/api/alerts/{id}/decision/approve` | Approve → policy-gated SOAR auto-execution |
 | POST | `/api/alerts/{id}/decision/reject` | Reject the plan |
+| POST | `/api/alerts/{id}/actions/{action_id}/rollback` | Take back one executed action (F4). Analyst scope. 422 no inverse · 409 not run, already rolled back, or in progress |
 | POST | `/api/alerts/{id}/decision/edit` | Correct the verdict and/or the plan; the delta is stored as a label |
 | POST | `/api/alerts/{id}/decision/outcome` | `TRUE_POSITIVE` / `FALSE_POSITIVE` / `REOPENED` inside the feedback window |
 | GET | `/api/alerts/{id}/decision/feedback` | Window state and any outcome recorded |
@@ -423,7 +424,7 @@ verdict is auto-approved and executed at ingest only if **all five** hold:
 2. confidence ≥ `TIER2_AUTOPILOT_MIN_CONFIDENCE`,
 3. **every action in the plan passes `action_policy`** — classified at or below
    `ACTION_MAX_AUTOPILOT_RISK`, with a target that parses as the thing the action
-   needs it to be,
+   needs it to be, **and one that can be taken back** (F4),
 4. **no containment-class action targets a `CRITICAL` asset or a `PRIVILEGED` /
    `SERVICE` account** (F1, F2) — see *Asset criticality* and *Identity roles*
    below; and
@@ -649,6 +650,63 @@ Stamped per action as `alert_soar_actions.identity_role` / `identity_reason`. Th
 is by name convention and a configured map, not by directory group membership: an
 account nobody named or patterned is `STANDARD`.
 
+### Reversibility and rollback (F4)
+
+Every disruptive action (`HIGH_WRITE` and above) is stamped at plan time with whether it
+can be taken back, next to its risk class, so an analyst reads *"Block IP — can be undone
+by Unblock IP"* before approving:
+
+| State | Meaning | Examples |
+|-------|---------|----------|
+| `REVERSIBLE` | an inverse verb exists and is recorded on the action | block IP → `Unblock IP`, isolate → `Release host from isolation`, disable account → `Enable account`, block URL, quarantine file, stop service |
+| `SELF_LIMITING` | nothing persistent changes; the user simply signs in again. No rollback is recorded, and autopilot may take it | revoke session / token, force logoff |
+| `IRREVERSIBLE` | no inverse exists | kill process, **reset password**, restart host, a vague "contain", any verb nobody modelled |
+| `NOT_APPLICABLE` | a read or low-impact write; nothing to undo | lookup, watchlist, ticket |
+
+**A machine only takes actions it can take back.** Autopilot refuses a plan containing an
+`IRREVERSIBLE` action, at any confidence and with any precedent — the same shape of rule as
+the critical-asset and protected-account guards, and equally not a setting. All-or-nothing:
+one irreversible action sends the whole plan to a human. `Reset password` and `Kill
+process` therefore always wait; `Block IP`, `Isolate host` and `Revoke session` still run.
+
+**Rolling back.** Once a reversible action has run its `rollback_status` reads `AVAILABLE`
+(a `SIMULATED` or `FAILED` delivery changed nothing, so it stays empty). A person asks:
+
+```text
+POST /api/alerts/{alert_id}/actions/{action_id}/rollback     {"note": "CHG-2211 approved this traffic"}
+```
+
+The request goes over the **same route as the original** — the executor that isolated a
+host is the one that releases it — as `operation: "rollback"` with the inverse verb and a
+`rollback_of` block, under its **own idempotency key** (`…:rollback`), stable across retries
+and never colliding with the action it undoes. It is claimed with a conditional update, so
+two analysts clicking at once dispatch it once. A failed or blocked rollback can be asked
+for again; a completed one cannot (409). The action's own `status` is never rewritten —
+it stays the record of what the machine did — and the alert reopens (`PENDING`) rather than
+staying displayed as contained.
+
+Connectors declare rollback honestly. The `log`, `noop` and `webhook` drivers pass the
+rollback as an explicit `operation` and the executor decides. The **Wazuh** connector ships
+with *no* inverse commands, because a stock install has none that lifts a firewall-drop on
+request, and re-sending the original command would drop the address twice. Without one it
+refuses (`BLOCKED`) and says why; a site whose scripts do have an inverse declares it:
+
+```text
+CONNECTOR_EDR_ROLLBACK_COMMANDS="block-ip=firewall-undrop0"
+```
+
+The case timeline records each executed action with whether it can be undone
+(`Block IP on 185.220.101.7: DONE via soar. Can be rolled back: Unblock IP.`) and each
+rollback with who asked and why. **A rollback is not a verdict reversal.** Lifting a
+containment after an incident is routine and says nothing about whether the machine was
+right, so it records no outcome; whether the decision was correct stays a separate human
+judgement (`record_decision_outcome`), and it is that outcome, not the rollback, that
+closes the precedent gate.
+
+An inverse verb never classifies as the thing it undoes. `Unblock IP` contains `block ip`
+and used to be dispatched as an IP drop; verbs such as *unblock, release, restore,
+re-enable, lift, allow* are now left `unclassified` (a human decides).
+
 ## Corrections and outcomes
 
 `POST /api/alerts/{id}/decision/edit` lets an analyst change the verdict and rewrite
@@ -860,6 +918,13 @@ rejected outright — plus the Phase A governance:
   discloses nothing until authenticated, and `actor:assert` is not implied by acting;
 - **action policy**: unknown verbs classify HIGH_WRITE, the three measured malformed
   targets are rejected, DESTRUCTIVE is off, and one bad action fails the whole plan;
+- **reversibility (F4)**: the classification of every verb family, an inverse verb never
+  classifying as its opposite, autopilot refusing an irreversible action while still running
+  the reversible and self-limiting ones, a rollback riding the original route under its own
+  stable key, a dry-run rollback that sends nothing, a vendor connector refusing rather than
+  re-sending the original, and the whole API flow — pairing visible before approval, nothing
+  to undo before it ran, viewer refused, irreversible refused (422), once only (409), the
+  alert reopened, and the case trail;
 - **identity roles (F2)**: naming conventions with no file, domain and UPN forms
   reducing to one name, an exemption that cannot leak across domains, privileged beating
   service, watching a service account still allowed, a hot-reloaded edit, a broken file

@@ -76,6 +76,12 @@ export interface Tier2ActionStatus {
   reason: string;
   /** Assigned at plan time; an unrecognised action is HIGH_WRITE, never READ. */
   risk_class: ActionRiskClass;
+  // F1-F4, returned by the broker; the dashboard does not draw them yet.
+  asset_criticality?: 'STANDARD' | 'CRITICAL';
+  identity_role?: 'STANDARD' | 'PRIVILEGED' | 'SERVICE';
+  reversibility?: 'REVERSIBLE' | 'SELF_LIMITING' | 'IRREVERSIBLE' | 'NOT_APPLICABLE' | 'UNASSESSED';
+  rollback_action?: string | null;
+  rollback_status?: string;
   /** What the target must parse as for this action (ip, ip_or_host, user…). */
   target_kind: string;
   /** Set when the action fails policy — it will be BLOCKED, not dispatched. */
@@ -405,7 +411,7 @@ export type CaseState =
 /** One append-only entry in the case file. Never edited, never deleted. */
 export interface CaseEvent {
   seq: number;
-  kind: 'created' | 'assigned' | 'state' | 'note' | 'escalated' | 'sync_out' | 'sync_in';
+  kind: 'created' | 'assigned' | 'state' | 'note' | 'escalated' | 'sync_out' | 'sync_in' | 'action' | 'rollback';
   actor: string;
   /** 'sync' means it arrived from the system of record, not from this SOC. */
   origin: 'human' | 'system' | 'sync';

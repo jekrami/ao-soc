@@ -153,11 +153,22 @@ class ActionRequest:
     #: identifies the delivery, and a connector that keeps its own log needs
     #: both to line its records up with ours.
     execution_id: str = ''
+    #: F4. True when this request *undoes* ``action_type`` rather than performs
+    #: it. It travels the same route as the original - the executor that
+    #: isolated a host is the one that releases it - with ``rollback_action``
+    #: naming the inverse verb, and it has its own idempotency key so a retried
+    #: rollback is one rollback and never collides with the action it undoes.
+    rollback: bool = False
+    rollback_action: str = ''
+
+    @property
+    def forward_idempotency_key(self) -> str:
+        return f'{SITE_ID}:{self.decision_id}:{self.action_id}'
 
     @property
     def idempotency_key(self) -> str:
         """Stable across every retry of this action, and only this action."""
-        return f'{SITE_ID}:{self.decision_id}:{self.action_id}'
+        return f'{self.forward_idempotency_key}:rollback' if self.rollback else self.forward_idempotency_key
 
     def as_payload(self) -> Dict[str, Any]:
         """The neutral body a generic executor receives."""
@@ -168,7 +179,8 @@ class ActionRequest:
             'alert_id': self.alert_id,
             'decision_id': self.decision_id,
             'action_id': self.action_id,
-            'action': self.action_type,
+            'operation': 'rollback' if self.rollback else 'execute',
+            'action': (self.rollback_action or f'Undo: {self.action_type}') if self.rollback else self.action_type,
             'action_class': self.rule,
             'target': self.target,
             'target_kind': self.target_kind,
@@ -178,6 +190,10 @@ class ActionRequest:
             'decision_source': self.decision_source,
             'confidence': self.confidence,
             'approved_by': self.approved_by,
+            **(
+                {'rollback_of': {'action': self.action_type, 'idempotency_key': self.forward_idempotency_key}}
+                if self.rollback else {}
+            ),
         }
 
 
@@ -221,6 +237,18 @@ class Connector:
                 f'connector {self.name!r} performs {sorted(self.verbs)} and was '
                 f'routed a {request.rule!r} action'
             )
+        if request.rollback:
+            return self.rollback_refusal(request)
+        return None
+
+    def rollback_refusal(self, request: ActionRequest) -> Optional[str]:
+        """``None`` when this executor can undo the action, otherwise why not (F4).
+
+        Generic executors (a SOAR platform, a webhook, the log sink) receive the
+        rollback as an explicit ``operation`` and decide for themselves. A
+        vendor connector that has no inverse command must say so here rather
+        than send the original command a second time.
+        """
         return None
 
     # --- delivery --------------------------------------------------------
@@ -309,6 +337,7 @@ def _receipt(request: ActionRequest, connector_name: str, driver: str, status: s
         'status': status,
         'connector': connector_name,
         'driver': driver,
+        'operation': 'rollback' if request.rollback else 'execute',
         'action': request.action_type,
         'target': request.target,
         'risk_class': request.risk_class,
@@ -450,6 +479,8 @@ async def deliver(
     confidence: Optional[int] = None,
     decision_source: str = '',
     approved_by: Optional[str] = None,
+    rollback: bool = False,
+    rollback_action: str = '',
 ) -> Dict[str, Any]:
     """Keyword facade kept for the executor's call site."""
     return await deliver_action(ActionRequest(
@@ -466,6 +497,8 @@ async def deliver(
         decision_source=decision_source,
         confidence=confidence,
         approved_by=approved_by,
+        rollback=rollback,
+        rollback_action=rollback_action,
     ))
 
 

@@ -64,11 +64,13 @@ from models import (
     GenerateExplanationRequest,
     RecordOutcomeRequest,
     RejectDecisionRequest,
+    RollbackActionRequest,
     SetTrustWeightRequest,
 )
 from preflight import preflight_report, startup_problems
 from response import response_config
 from tier2 import (
+    RollbackError,
     Tier2EditError,
     approve_tier2_decision,
     autopilot_config,
@@ -86,6 +88,7 @@ from tier2 import (
     rebuild_tier2_decision_for_alert,
     record_decision_outcome,
     reject_tier2_decision,
+    rollback_tier2_action,
 )
 
 BROKER_PORT = int(os.getenv('BROKER_PORT', '8500'))
@@ -1464,6 +1467,32 @@ async def api_approve_tier2_decision(
     )
     if decision is None:
         raise HTTPException(status_code=404, detail='Alert not found')
+    return decision
+
+
+@app.post('/api/alerts/{alert_id}/actions/{action_id}/rollback')
+async def api_rollback_action(
+    alert_id: str,
+    action_id: str,
+    body: RollbackActionRequest,
+    principal: Principal = Depends(require(DECISIONS_ACT)),
+) -> dict:
+    """Take back one executed action (F4). A person asks; the machine never does.
+
+    422 where the action has no inverse, 409 where it has not run, is already
+    rolled back, or a rollback is in flight. The requester is the authenticated
+    identity, as with approval.
+    """
+    try:
+        decision = await rollback_tier2_action(
+            alert_id, action_id,
+            requested_by=resolve_actor(principal, body.requested_by),
+            note=(body.note or '').strip()[:500],
+        )
+    except RollbackError as exc:
+        raise HTTPException(status_code=409 if exc.conflict else 422, detail=str(exc)) from exc
+    if decision is None:
+        raise HTTPException(status_code=404, detail='No such action for this alert')
     return decision
 
 

@@ -37,7 +37,7 @@
   <!-- ================= Title ================= -->
   <text class="t1" x="1000" y="54" text-anchor="middle">AI-SOC DATA FLOW</text>
   <text class="t2" x="1000" y="84" text-anchor="middle">One alert, end to end — from an external detection tool to a closed case</text>
-  <text class="t3" x="1000" y="108" text-anchor="middle">Version 2.8.2 — Summer 2026</text>
+  <text class="t3" x="1000" y="108" text-anchor="middle">Version 2.8.3 — Summer 2026</text>
 
   <!-- ================= PHASE A ================= -->
   <rect x="384" y="134" width="1080" height="28" rx="14" fill="#e2e8f0"/>
@@ -344,7 +344,7 @@
   <rect x="1486" y="1780" width="6" height="96" rx="3" fill="#b45309"/>
   <text class="br-title" x="1508" y="1803">The five gates</text>
   <text class="br-note" x="1508" y="1822">1 · the verdict is auto-executable   2 · confidence clears a floor</text>
-  <text class="br-note" x="1508" y="1840">3 · every action passes the risk policy   4 · no critical target</text>
+  <text class="br-note" x="1508" y="1840">3 · risk class, and it can be undone   4 · no critical target</text>
   <text class="br-note" x="1508" y="1858">5 · precedent supports it — gates 3, 4 and 5 protect the network.</text>
 
   <!-- R10 edit refusals -->
@@ -368,6 +368,14 @@
   <text class="br-title" x="1508" y="2279">A dry run is SIMULATED, never DONE</text>
   <text class="br-note" x="1508" y="2298">Nothing was sent, the alert is not mitigated and the decision</text>
   <text class="br-note" x="1508" y="2316">never reads DONE. Start every deployment here.</text>
+
+  <!-- R13b rollback -->
+  <rect x="1486" y="2490" width="484" height="96" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+  <rect x="1486" y="2490" width="6" height="96" rx="3" fill="#0f766e"/>
+  <text class="br-title" x="1508" y="2513">A person can take an action back</text>
+  <text class="br-note" x="1508" y="2532">Only a person asks (POST /rollback). The inverse verb goes over</text>
+  <text class="br-note" x="1508" y="2550">the same route under its own idempotency key; the alert reopens</text>
+  <text class="br-note" x="1508" y="2568">and the case records who. Kill-process and reset have no inverse.</text>
 
   <!-- R13 external system of record -->
   <rect x="1486" y="2402" width="484" height="66" rx="8" fill="#ffffff" stroke="#94a3b8" stroke-width="2" stroke-dasharray="7 5"/>
@@ -398,5 +406,5 @@
   <text class="legend" x="1230" y="2638">dashed = an external dependency or a store access</text>
 
   <!-- ================= Footer ================= -->
-  <text class="foot" x="1000" y="2690" text-anchor="middle">Written by J.Ekrami · Co-written with Claude (Opus 5, Sonnet 5) · © J.Ekrami-Labs · Summer 2026 · matches AO-SOC v2.8.2</text>
+  <text class="foot" x="1000" y="2690" text-anchor="middle">Written by J.Ekrami · Co-written with Claude (Opus 5, Sonnet 5) · © J.Ekrami-Labs · Summer 2026 · matches AO-SOC v2.8.3</text>
 </svg>

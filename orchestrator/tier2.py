@@ -27,6 +27,7 @@ from db import (
     decision_outcomes,
     get_alert,
     mitigate_alert,
+    reopen_alert,
     tier2_decisions,
 )
 from response import deliver as response_deliver
@@ -51,6 +52,14 @@ ACTION_STATUSES = frozenset({
 # 'human' is not a third guess at the verdict — it means a person overrode
 # what the machine proposed, and the correction row says what they changed.
 DECISION_SOURCES = frozenset({'llm', 'rules', 'human'})
+
+
+class RollbackError(RuntimeError):
+    """A rollback that must be refused, with a message meant for the analyst."""
+
+    def __init__(self, message: str, *, conflict: bool = False):
+        super().__init__(message)
+        self.conflict = conflict
 
 
 class Tier2EditError(RuntimeError):
@@ -273,6 +282,15 @@ async def _load_actions(session, decision_id: int) -> List[dict]:
     return [_format_action(row) for row in rows]
 
 
+def _json_or_none(raw):
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return {'raw': raw}
+
+
 def _format_action(row) -> dict:
     result = None
     if row.get('result_json'):
@@ -293,6 +311,13 @@ def _format_action(row) -> dict:
         'criticality_reason': row.get('criticality_reason'),
         'identity_role': row.get('identity_role') or 'STANDARD',
         'identity_reason': row.get('identity_reason'),
+        'reversibility': row.get('reversibility') or 'UNASSESSED',
+        'reversibility_reason': row.get('reversibility_reason'),
+        'rollback_action': row.get('rollback_action'),
+        'rollback_status': row.get('rollback_status') or '',
+        'rollback_by': row.get('rollback_by'),
+        'rollback_at': row['rollback_at'].isoformat() if row.get('rollback_at') else None,
+        'rollback_result': _json_or_none(row.get('rollback_result_json')),
         'status': row['status'],
         # E1: where it went, what the executor called it, and how hard it was
         # to get there. Empty on a pre-2.7 row, which is honest — nothing
@@ -358,6 +383,9 @@ def _action_row(alert_id: str, decision_id: int, item: dict, now: datetime) -> d
         'criticality_reason': assessment.criticality_reason,
         'identity_role': assessment.identity_role,
         'identity_reason': assessment.identity_reason,
+        'reversibility': assessment.reversibility,
+        'reversibility_reason': assessment.reversibility_reason,
+        'rollback_action': assessment.rollback_action,
         'status': 'PENDING',
         'created_at': now,
     }
@@ -1062,9 +1090,26 @@ async def _execute_soar_plan(alert_id: str, decision_id: int) -> dict:
                     idempotency_key=str(receipt.get('idempotency_key') or ''),
                     attempts=int(receipt.get('attempts') or 0),
                     completed_at=_utcnow(),
+                    # Something to undo exists only once the action really ran:
+                    # a SIMULATED or FAILED delivery changed nothing.
+                    rollback_status=(
+                        'AVAILABLE'
+                        if status == 'DONE' and action_row.get('reversibility') == 'REVERSIBLE'
+                        else ''
+                    ),
                 )
             )
             await session.commit()
+
+        await _record_on_case(
+            alert_id, kind='action', actor='ao-soc', origin='system',
+            body=_action_timeline_line(action_row, status, receipt),
+            data={
+                'action_id': action_row['action_id'], 'status': status,
+                'reversibility': action_row.get('reversibility') or 'UNASSESSED',
+                'rollback_action': action_row.get('rollback_action'),
+            },
+        )
 
     # A dry run contained nothing, so the alert is not mitigated and the
     # decision does not read DONE. Rendering a simulation as a completed
@@ -1090,6 +1135,167 @@ async def _execute_soar_plan(alert_id: str, decision_id: int) -> dict:
         actions = await _load_actions(session, decision_id)
 
     return _format_decision(row, actions)
+
+
+def _action_timeline_line(action_row, status: str, receipt: dict) -> str:
+    line = f"{action_row['action_type']} on {action_row['target']}: {status}"
+    connector = receipt.get('connector')
+    if connector:
+        line += f' via {connector}'
+    if status == 'DONE':
+        reversibility = action_row.get('reversibility')
+        if reversibility == 'REVERSIBLE':
+            line += f". Can be rolled back: {action_row.get('rollback_action')}."
+        elif reversibility == 'IRREVERSIBLE':
+            line += '. Cannot be rolled back.'
+    return line
+
+
+async def _record_on_case(alert_id: str, *, kind: str, actor: str, origin: str, body: str,
+                          data: Optional[dict] = None) -> None:
+    """Write one row on the case timeline, if this alert has a case.
+
+    Best effort by design: a timeline write that fails must never fail, or
+    mask, the dispatch it describes. ``cases`` has no import path back here.
+    """
+    try:
+        import cases
+
+        case = await cases.get_case_for_alert(alert_id)
+        if not case:
+            return
+        async with async_session() as session:
+            await cases.append_event(
+                session, case['case_id'], kind=kind, actor=actor, origin=origin, body=body, data=data,
+            )
+            await session.commit()
+    except Exception:  # noqa: BLE001
+        logger.warning('Could not record %s on the case timeline for alert %s', kind, alert_id, exc_info=True)
+
+
+_ROLLBACK_CLAIMABLE = ('AVAILABLE', 'FAILED', 'BLOCKED', 'SIMULATED')
+
+
+async def rollback_tier2_action(
+    alert_id: str,
+    action_id: str,
+    *,
+    requested_by: str,
+    note: str = '',
+) -> Optional[dict]:
+    """Take back one executed action (F4). A human asks; the machine never does.
+
+    Returns the refreshed decision, or ``None`` if there is no such action.
+    Refuses, with a reason an analyst can act on, anything that has no inverse,
+    has not run, or is already rolled back or in flight. A rollback that failed
+    or was blocked (no rollback command configured) may be asked for again.
+
+    A rollback is *not* a verdict reversal. Lifting a containment after an
+    incident is resolved is routine and says nothing about whether the machine
+    was right, so this does not record an outcome; whether the decision was
+    correct stays a separate human judgement (``record_decision_outcome``).
+    """
+    async with async_session() as session:
+        row = (
+            await session.execute(
+                select(alert_soar_actions)
+                .where(
+                    (alert_soar_actions.c.alert_id == alert_id)
+                    & (alert_soar_actions.c.action_id == action_id)
+                )
+                .order_by(alert_soar_actions.c.id.desc())
+            )
+        ).mappings().first()
+    if row is None:
+        return None
+
+    if row['reversibility'] != 'REVERSIBLE':
+        raise RollbackError(
+            f"{row['action_type']} is {row['reversibility']} — "
+            f"{row.get('reversibility_reason') or 'there is nothing to roll back'}"
+        )
+    if row['status'] != 'DONE':
+        raise RollbackError(
+            f"only an action that ran can be rolled back; {row['action_type']} is {row['status']}",
+            conflict=True,
+        )
+
+    # Claimed with a conditional update, so two analysts clicking at once
+    # cannot dispatch the same rollback twice.
+    async with async_session() as session:
+        claimed = await session.execute(
+            update(alert_soar_actions)
+            .where(
+                (alert_soar_actions.c.id == row['id'])
+                & (alert_soar_actions.c.rollback_status.in_(_ROLLBACK_CLAIMABLE))
+            )
+            .values(rollback_status='EXECUTING', rollback_by=requested_by, rollback_at=_utcnow())
+        )
+        await session.commit()
+    if claimed.rowcount != 1:
+        raise RollbackError(
+            f"{row['action_type']} is already rolled back or a rollback is in progress "
+            f"(status {row['rollback_status'] or 'none'})",
+            conflict=True,
+        )
+
+    async with async_session() as session:
+        decision_row = (
+            await session.execute(
+                select(tier2_decisions).where(tier2_decisions.c.id == row['decision_id'])
+            )
+        ).mappings().one()
+
+    receipt = await response_deliver(
+        alert_id=alert_id,
+        decision_id=row['decision_id'],
+        action_id=row['action_id'],
+        action_type=row['action_type'],
+        target=row['target'],
+        reason=(note or f"Rollback of {row['action_type']}")[:512],
+        rule=row.get('policy_rule') or classify_action(row['action_type'])[2],
+        risk_class=row.get('risk_class') or 'HIGH_WRITE',
+        target_kind=row.get('target_kind') or 'any',
+        decision_type=decision_row['decision_type'],
+        confidence=decision_row['confidence'],
+        decision_source=decision_row.get('decision_source') or 'rules',
+        approved_by=requested_by,
+        rollback=True,
+        rollback_action=row.get('rollback_action') or '',
+    )
+    status = receipt.get('status', 'FAILED')
+
+    async with async_session() as session:
+        await session.execute(
+            update(alert_soar_actions)
+            .where(alert_soar_actions.c.id == row['id'])
+            .values(
+                rollback_status=status,
+                rollback_result_json=json.dumps(receipt),
+                rollback_by=requested_by,
+                rollback_at=_utcnow(),
+            )
+        )
+        await session.commit()
+
+    if status == 'DONE':
+        await reopen_alert(alert_id)
+    await _record_on_case(
+        alert_id, kind='rollback', actor=requested_by, origin='human',
+        body=(
+            f"{row['rollback_action']} for {row['action_type']} on {row['target']}: {status}"
+            + (f' — {note}' if note else '')
+        ),
+        data={'action_id': row['action_id'], 'status': status, 'rollback_action': row['rollback_action']},
+    )
+    logger.info(
+        'Rollback of %s on %s for alert %s requested by %s -> %s',
+        row['action_type'], row['target'], alert_id, requested_by, status,
+    )
+
+    async with async_session() as session:
+        current = await _load_decision_row(session, alert_id)
+        return _format_decision(current, await _load_actions(session, current['id']))
 
 
 async def approve_tier2_decision(

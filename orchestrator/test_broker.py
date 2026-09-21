@@ -1838,6 +1838,223 @@ async def check_execution_artifacts_flow(client, ingest: dict, viewer: dict) -> 
         reset_provider()
 
 
+def check_reversibility_policy() -> None:
+    """F4: whether an action can be taken back, and a machine only takes back-able actions."""
+    from action_policy import classify_reversibility
+
+    def rev(verb):
+        return classify_reversibility(verb, classify_action(verb)[0])
+
+    # Actions with a genuine inverse name it.
+    assert rev('Block IP')[:2] == ('REVERSIBLE', 'Unblock IP')
+    assert rev('Isolate host')[:2] == ('REVERSIBLE', 'Release host from isolation')
+    assert rev('Disable account')[:2] == ('REVERSIBLE', 'Enable account')
+    assert rev('Sinkhole domain')[:2] == ('REVERSIBLE', 'Unblock URL')
+    # Nothing persistent changes, so nothing to put back - and no rollback is recorded.
+    assert rev('Revoke session') == ('SELF_LIMITING', None, rev('Revoke session')[2])
+    # A password cannot be reset back, a process cannot be un-killed, and a verb
+    # nobody modelled has no inverse because nobody defined one.
+    for verb in ('Reset password', 'Kill process', 'Restart host', 'Contain', 'Frobnicate the widget'):
+        assert rev(verb)[0] == 'IRREVERSIBLE', verb
+    # Reads and low-impact writes have nothing to undo.
+    assert rev('Add to watchlist')[0] == 'NOT_APPLICABLE'
+    assert rev('Check reputation')[0] == 'NOT_APPLICABLE'
+
+    # An inverse verb must never classify as the thing it undoes: "Unblock IP"
+    # contains "block ip" and would otherwise be dispatched as an IP drop.
+    for inverse in ('Unblock IP', 'Release host from isolation', 'Unlock account', 'Restore file from quarantine'):
+        _, _, rule = classify_action(inverse)
+        assert rule == 'unclassified', (inverse, rule)
+        assert assess_action(inverse, '185.220.101.7').rollback_action is None
+
+    # The assessment carries the pairing, so an analyst sees it before approving.
+    block = assess_action('Block IP', '185.220.101.7')
+    assert block.reversibility == 'REVERSIBLE' and block.rollback_action == 'Unblock IP'
+    assert block.as_dict()['rollback_action'] == 'Unblock IP'
+
+    # Autopilot: an action that cannot be taken back needs a human, at any confidence.
+    refused, why = autopilot_allows([assess_action('Kill process', 'evil.exe')])
+    assert not refused and 'cannot be taken back' in why, why
+    assert not autopilot_allows([assess_action('Reset password', 'jsmith')])[0]
+    assert not autopilot_allows([assess_action('Frobnicate the widget', 'anything')])[0]
+    # ...and the back-able ones still run: reversible, self-limiting, and reads.
+    assert autopilot_allows([assess_action('Block IP', '185.220.101.7')])[0]
+    assert autopilot_allows([assess_action('Revoke session', 'jsmith')])[0]
+    assert autopilot_allows([assess_action('Add to watchlist', 'WS-114')])[0]
+    # One irreversible action sends the whole plan to a human.
+    assert not autopilot_allows(
+        [assess_action('Block IP', '185.220.101.7'), assess_action('Kill process', 'evil.exe')]
+    )[0]
+
+
+async def check_rollback_contract() -> None:
+    """F4: a rollback rides the original route, with its own stable key, and never re-sends the original."""
+    import connectors  # noqa: F401 - registers the built-in drivers
+    from connectors.wazuh import WazuhActiveResponseConnector
+
+    original_routes = dict(response.ROUTES)
+    original_dry_run = response.DRY_RUN
+    original_backoff = response.RETRY_BACKOFF
+    response.RETRY_BACKOFF = 0.0
+    firewall = _StubConnector('firewall', {'verbs': 'block-ip'})
+    response.clear_connectors()
+    response.register_connector(firewall)
+    response.ROUTES.clear()
+    response.ROUTES.update({'block-ip': 'firewall', '*': 'firewall'})
+
+    def request(**extra):
+        return response.ActionRequest(
+            alert_id='ALT-F4', decision_id=7, action_id='a1', action_type='Block IP',
+            target='185.220.101.7', rule='block-ip', risk_class='HIGH_WRITE', target_kind='ip', **extra,
+        )
+
+    try:
+        forward, undo = request(), request(rollback=True, rollback_action='Unblock IP')
+        # Distinct keys: a retried rollback is one rollback, and never collides with the action it undoes.
+        assert forward.idempotency_key != undo.idempotency_key
+        assert undo.idempotency_key == forward.idempotency_key + ':rollback'
+        assert undo.forward_idempotency_key == forward.idempotency_key
+        body = undo.as_payload()
+        assert body['operation'] == 'rollback' and body['action'] == 'Unblock IP'
+        assert body['rollback_of'] == {'action': 'Block IP', 'idempotency_key': forward.idempotency_key}
+        assert forward.as_payload()['operation'] == 'execute' and 'rollback_of' not in forward.as_payload()
+
+        # Same route, same executor as the original.
+        receipt = await response.deliver_action(undo)
+        assert receipt['status'] == 'DONE' and receipt['connector'] == 'firewall'
+        assert receipt['operation'] == 'rollback' and receipt['idempotency_key'].endswith(':rollback')
+
+        # A transport failure is retried with the SAME rollback key.
+        firewall.script = [response.TransportError('connection reset'), response.DeliveryResult(status=response.DONE)]
+        receipt = await response.deliver_action(undo)
+        assert receipt['status'] == 'DONE' and receipt['attempts'] == 2
+        assert firewall.seen[-1] == firewall.seen[-2] == undo.idempotency_key
+
+        # A dry run rolls nothing back, and says so.
+        response.DRY_RUN = True
+        before = len(firewall.seen)
+        simulated = await response.deliver_action(undo)
+        assert simulated['status'] == 'SIMULATED' and len(firewall.seen) == before
+        assert simulated['preview']['payload']['operation'] == 'rollback'
+        response.DRY_RUN = False
+    finally:
+        response.ROUTES.clear()
+        response.ROUTES.update(original_routes)
+        response.DRY_RUN = original_dry_run
+        response.RETRY_BACKOFF = original_backoff
+        connectors.register_builtins()
+
+    # A vendor connector with no inverse command must refuse, not send the
+    # original command a second time and call it an undo.
+    bare = WazuhActiveResponseConnector('edr', {'url': 'https://wazuh.test', 'user': 'ao', 'agents': '001'})
+    refusal = bare.accepts(request(rollback=True, rollback_action='Unblock IP'))
+    assert refusal and 'no Wazuh rollback command' in refusal and 're-sending the original' in refusal, refusal
+    assert bare.accepts(request()) is None, 'the forward action is unaffected'
+    declared = WazuhActiveResponseConnector(
+        'edr', {'url': 'https://wazuh.test', 'user': 'ao', 'agents': '001',
+                'rollback_commands': 'block-ip=firewall-undrop0'})
+    assert declared.accepts(request(rollback=True, rollback_action='Unblock IP')) is None
+    assert declared.preview(request(rollback=True))['command'] == '!firewall-undrop0'
+    assert declared.preview(request())['command'] == '!firewall-drop0'
+
+
+async def check_rollback_flow(client, ingest: dict, viewer: dict, analyst: dict) -> None:
+    """F4 end to end: plan-time pairing, run, rollback by a person, case trail, refusals."""
+    plan = json.loads(DOD_LLM_RESPONSE)
+    plan['recommended_actions'] = [
+        {'id': 'A1', 'action': 'Block IP', 'target': '185.220.101.7', 'reason': 'C2', 'confidence': 60, 'impact': 'x'},
+        {'id': 'A2', 'action': 'Kill process', 'target': 'evil.exe', 'reason': 'Beacon', 'confidence': 60, 'impact': 'x'},
+        {'id': 'A3', 'action': 'Revoke session', 'target': 'jsmith', 'reason': 'Stolen token', 'confidence': 60, 'impact': 'x'},
+        {'id': 'A4', 'action': 'Add to watchlist', 'target': 'F4-HOST-01', 'reason': 'Track', 'confidence': 60, 'impact': 'x'},
+    ]
+    plan['tier2_decision'] = {'decision': 'CONTAIN', 'confidence': 60, 'rationale': 'Beaconing.', 'risk_of_action': 'x'}
+    set_provider(ScriptedProvider(lambda _prompt: json.dumps(plan)))
+    try:
+        ingested = await client.post('/detections?adapter=wazuh', headers=ingest, json={
+            'rule': {'id': '92100', 'level': 12, 'description': 'Beaconing process'},
+            'agent': {'name': 'F4-HOST-01', 'ip': '10.44.0.11'},
+            'data': {'dstip': '185.220.101.7'},
+            'timestamp': datetime.now(timezone.utc).isoformat(),
+        })
+        assert ingested.status_code == 201, ingested.text
+        alert_id = ingested.json()['id']
+
+        # --- the pairing is visible before anyone approves ---
+        decision = (await client.get(f'/api/alerts/{alert_id}/decision', headers=viewer)).json()
+        actions = {a['id']: a for a in decision['required_actions']}
+        assert actions['A1']['reversibility'] == 'REVERSIBLE' and actions['A1']['rollback_action'] == 'Unblock IP'
+        assert actions['A2']['reversibility'] == 'IRREVERSIBLE' and actions['A2']['rollback_action'] is None
+        assert actions['A3']['reversibility'] == 'SELF_LIMITING'
+        assert actions['A4']['reversibility'] == 'NOT_APPLICABLE'
+        assert all(a['rollback_status'] == '' for a in actions.values()), 'nothing has run yet'
+
+        # Nothing to take back before it has run.
+        early = await client.post(f'/api/alerts/{alert_id}/actions/A1/rollback', headers=analyst, json={})
+        assert early.status_code == 409 and 'only an action that ran' in early.text, early.text
+
+        # --- a person approves; the machine runs it ---
+        ran = await tier2.approve_tier2_decision(alert_id, approved_by='sara.analyst', wait=True)
+        assert ran['approval_status'] == 'DONE', ran['approval_status']
+        after = {a['id']: a for a in ran['required_actions']}
+        assert after['A1']['rollback_status'] == 'AVAILABLE'
+        assert all(after[k]['rollback_status'] == '' for k in ('A2', 'A3', 'A4')), 'only a reversible action has one'
+
+        # --- who may, and what cannot be undone ---
+        assert (await client.post(f'/api/alerts/{alert_id}/actions/A1/rollback',
+                                  headers=viewer, json={})).status_code == 403
+        for action_id in ('A2', 'A3', 'A4'):
+            refused = await client.post(f'/api/alerts/{alert_id}/actions/{action_id}/rollback',
+                                        headers=analyst, json={})
+            assert refused.status_code == 422, (action_id, refused.text)
+        assert 'IRREVERSIBLE' in (await client.post(
+            f'/api/alerts/{alert_id}/actions/A2/rollback', headers=analyst, json={})).text
+        assert (await client.post(f'/api/alerts/{alert_id}/actions/NOPE/rollback',
+                                  headers=analyst, json={})).status_code == 404
+        assert (await db.get_alert(alert_id))['mitigation_status'] == 'CONTAINED'
+
+        # --- a person takes it back ---
+        undone = await client.post(
+            f'/api/alerts/{alert_id}/actions/A1/rollback', headers=analyst,
+            json={'requested_by': 'sara.analyst', 'note': 'Change window CHG-2211 approved this traffic.'},
+        )
+        assert undone.status_code == 200, undone.text
+        a1 = {a['id']: a for a in undone.json()['required_actions']}['A1']
+        assert a1['rollback_status'] == 'DONE' and a1['rollback_by'] == 'sara.analyst'
+        assert a1['rollback_result']['operation'] == 'rollback'
+        assert a1['rollback_result']['idempotency_key'].endswith(':rollback')
+        assert a1['status'] == 'DONE', 'the record of what the machine did is not rewritten'
+        # A lifted containment is not displayed as a standing one.
+        assert (await db.get_alert(alert_id))['mitigation_status'] == 'PENDING'
+
+        # The executor received an explicit rollback operation with the inverse verb.
+        with open('test_soar_actions.jsonl', encoding='utf-8') as handle:
+            records = [json.loads(line) for line in handle if line.strip()]
+        mine = [r for r in records if r['alert_id'] == alert_id]
+        forward = next(r for r in mine if r['operation'] == 'execute' and r['action'] == 'Block IP')
+        back = next(r for r in mine if r['operation'] == 'rollback')
+        assert back['action'] == 'Unblock IP' and back['rollback_of']['action'] == 'Block IP'
+        assert back['idempotency_key'] == forward['idempotency_key'] + ':rollback'
+
+        # Once only.
+        again = await client.post(f'/api/alerts/{alert_id}/actions/A1/rollback', headers=analyst, json={})
+        assert again.status_code == 409 and 'already rolled back' in again.text, again.text
+
+        # --- the case timeline reads the flag ---
+        case = (await client.get(f'/api/alerts/{alert_id}/case', headers=viewer)).json()
+        events = case['timeline']
+        ran_events = [e for e in events if e['kind'] == 'action']
+        assert len(ran_events) == 4, [e['body'] for e in events]
+        by_body = {e['data']['action_id']: e['body'] for e in ran_events}
+        assert 'Can be rolled back: Unblock IP' in by_body['A1']
+        assert 'Cannot be rolled back' in by_body['A2']
+        assert 'rolled back' not in by_body['A3'] and 'rolled back' not in by_body['A4']
+        undo_events = [e for e in events if e['kind'] == 'rollback']
+        assert len(undo_events) == 1 and undo_events[0]['origin'] == 'human'
+        assert undo_events[0]['actor'] == 'sara.analyst' and 'CHG-2211' in undo_events[0]['body']
+    finally:
+        reset_provider()
+
+
 def check_endpoint_resolution() -> None:
     """OLLAMA_HOST is Ollama's *bind* variable; users routinely set 0.0.0.0."""
     assert llm._build_ollama_endpoint.__module__ == 'llm'
@@ -1905,6 +2122,8 @@ async def run_test() -> None:
     check_asset_criticality()
     check_identity_roles()
     check_execution_artifacts_contract()
+    check_reversibility_policy()
+    await check_rollback_contract()
     check_detection_contract()
     check_phase_c_adapters()
     check_risk_scoring()
@@ -2248,6 +2467,12 @@ async def run_test() -> None:
             ingest={'X-API-Key': 'service-secret'},
             viewer={'X-API-Key': 'viewer-secret'},
         )
+        await check_rollback_flow(
+            client,
+            ingest={'X-API-Key': 'service-secret'},
+            viewer={'X-API-Key': 'viewer-secret'},
+            analyst={'X-API-Key': 'service-secret'},
+        )
 
     # After the corpus exists: a backup is only worth taking if it can be
     # verified, and only worth verifying against real rows.
@@ -2262,7 +2487,7 @@ async def run_test() -> None:
         'into one situation, situation-driven Tier-2 decision, retry/dead-letter/back-pressure '
         'on the analysis queue, decision search and retention, verified threat intelligence '
         'and ATT&CK catalogue checks, precedent retrieval with a grounding gate, '
-        'precedent-gated autopilot, a CRITICAL-asset and protected-account guard autopilot cannot be configured past, execution artifacts carried by six adapters and fenced as untrusted in the prompt, routed response delivery with idempotent retry '
+        'precedent-gated autopilot, a CRITICAL-asset, protected-account and irreversible-action guard autopilot cannot be configured past, rollback of a reversible action by a person with its own idempotency key and a case trail, execution artifacts carried by six adapters and fenced as untrusted in the prompt, routed response delivery with idempotent retry '
         'and dry run, case management, bidirectional sync that cannot touch a decision, '
         'metrics and verified backups all verified.'
     )

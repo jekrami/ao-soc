@@ -34,7 +34,7 @@ from __future__ import annotations
 import ipaddress
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import asset_criticality
@@ -96,6 +96,49 @@ _RULES: Tuple[Tuple[str, Tuple[str, ...], str, str], ...] = (
 # Anything unmatched. Deliberately not READ.
 UNCLASSIFIED_RISK = HIGH_WRITE
 UNCLASSIFIED_KIND = KIND_ANY
+
+# --- Reversibility (F4) ----------------------------------------------------
+# Whether an action can be taken back. Read by the case timeline (so an analyst
+# sees "Unblock IP is available" beside "Block IP") and by autopilot: a machine
+# only takes actions it can take back.
+
+REVERSIBLE = 'REVERSIBLE'
+SELF_LIMITING = 'SELF_LIMITING'
+IRREVERSIBLE = 'IRREVERSIBLE'
+NOT_APPLICABLE = 'NOT_APPLICABLE'
+REVERSIBILITIES: Tuple[str, ...] = (REVERSIBLE, SELF_LIMITING, IRREVERSIBLE, NOT_APPLICABLE)
+
+# Nothing persistent changes, so there is nothing to put back: the user simply
+# signs in again. Distinct from REVERSIBLE because no rollback is recorded, and
+# distinct from IRREVERSIBLE because autopilot may take the action.
+_SELF_LIMITING_KEYWORDS: Tuple[str, ...] = ('revoke session', 'revoke token', 'force logoff')
+
+# (keywords, the verb that undoes it). Only actions with a genuine inverse are
+# here; the inverse is dispatched over the *same route* as the original, so the
+# executor that isolated a host is the one that releases it. Anything not
+# matched - kill process, reset password, restart host, a vague "contain" - has
+# no inverse and is IRREVERSIBLE: a password cannot be reset back, and an
+# unclassified verb has no inverse because nobody defined one.
+_INVERSES: Tuple[Tuple[Tuple[str, ...], str], ...] = (
+    (('disable account', 'disable user', 'lock account'), 'Enable account'),
+    (('isolate', 'quarantine host', 'contain host', 'network containment', 'segment host'),
+     'Release host from isolation'),
+    (('block ip', 'blackhole', 'null route', 'deny ip', 'firewall block', 'block egress', 'block traffic'),
+     'Unblock IP'),
+    (('block url', 'block domain', 'sinkhole', 'dns block'), 'Unblock URL'),
+    (('quarantine file', 'quarantine hash', 'block hash', 'ban hash'), 'Restore file from quarantine'),
+    (('disable service', 'stop service'), 'Start service'),
+)
+
+# A verb that already *undoes* something must never classify as the thing it
+# undoes. "Unblock IP" contains "block ip", so without this a model asking to
+# lift a block would have it dispatched as a block - to the firewall, as an IP
+# drop. Such phrasing is left unclassified (HIGH_WRITE, a human decides).
+_INVERSE_PHRASING = re.compile(
+    r'\b(un-?block|un-?isolate|un-?quarantine|un-?lock|un-?blackhole|re-?enable|re-?activate|'
+    r'release|restore|lift|allow|whitelist)\b',
+    re.IGNORECASE,
+)
 
 
 def _parse_pairs(raw: str) -> Dict[str, str]:
@@ -217,11 +260,31 @@ def classify_action(action_type: str) -> Tuple[str, str, str]:
         return UNCLASSIFIED_RISK, UNCLASSIFIED_KIND, 'empty'
 
     override = ACTION_RISK_OVERRIDES.get(text)
+    if _INVERSE_PHRASING.search(text):
+        return (override or UNCLASSIFIED_RISK), UNCLASSIFIED_KIND, 'unclassified'
     for rule_name, keywords, risk, kind in _RULES:
         if any(keyword in text for keyword in keywords):
             return (override or risk), kind, rule_name
 
     return (override or UNCLASSIFIED_RISK), UNCLASSIFIED_KIND, 'unclassified'
+
+
+def classify_reversibility(action_type: str, risk_class: str) -> Tuple[str, Optional[str], str]:
+    """``(reversibility, inverse verb or None, reason)`` for an action verb.
+
+    Only a disruptive action (HIGH_WRITE and above) has anything to take back.
+    """
+    if RISK_ORDER.get(risk_class, RISK_ORDER[HIGH_WRITE]) < RISK_ORDER[HIGH_WRITE]:
+        return NOT_APPLICABLE, None, 'a read or low-impact write changes nothing that needs undoing'
+    text = (action_type or '').strip().lower()
+    if _INVERSE_PHRASING.search(text):
+        return IRREVERSIBLE, None, 'the verb already reverses something; nothing to roll back'
+    if any(keyword in text for keyword in _SELF_LIMITING_KEYWORDS):
+        return SELF_LIMITING, None, 'nothing persistent changes - the user signs in again'
+    for keywords, inverse in _INVERSES:
+        if any(keyword in text for keyword in keywords):
+            return REVERSIBLE, inverse, f'undone by: {inverse}'
+    return IRREVERSIBLE, None, 'no inverse action is defined for this verb'
 
 
 @dataclass(frozen=True)
@@ -242,6 +305,10 @@ class ActionAssessment:
     # F2: what the target account is, judged by identity_role.
     identity_role: str = identity_role.STANDARD
     identity_reason: Optional[str] = None
+    # F4: can it be taken back, and by what.
+    reversibility: str = NOT_APPLICABLE
+    rollback_action: Optional[str] = None
+    reversibility_reason: Optional[str] = None
 
     def as_dict(self) -> Dict[str, Any]:
         return {
@@ -256,6 +323,9 @@ class ActionAssessment:
             'criticality_reason': self.criticality_reason,
             'identity_role': self.identity_role,
             'identity_reason': self.identity_reason,
+            'reversibility': self.reversibility,
+            'rollback_action': self.rollback_action,
+            'reversibility_reason': self.reversibility_reason,
         }
 
 
@@ -263,6 +333,7 @@ def assess_action(action_type: str, target: str) -> ActionAssessment:
     """Classify one action and validate its target. Never raises."""
     risk, kind, rule = classify_action(action_type)
     value = (target or '').strip()
+    reversibility, rollback_action, reversibility_reason = classify_reversibility(action_type, risk)
 
     def verdict(allowed: bool, reason: Optional[str] = None) -> ActionAssessment:
         return ActionAssessment(
@@ -273,12 +344,15 @@ def assess_action(action_type: str, target: str) -> ActionAssessment:
             rule=rule,
             allowed=allowed,
             reason=reason,
+            reversibility=reversibility,
+            rollback_action=rollback_action,
+            reversibility_reason=reversibility_reason,
         )
 
     if not (action_type or '').strip():
         return verdict(False, 'Unknown action type')
     if value.lower() in PROTECTED_TARGETS:
-        return verdict(False, 'Protected asset — action blocked by policy')
+        return verdict(False, 'Protected asset - action blocked by policy')
     if risk == DESTRUCTIVE and not ALLOW_DESTRUCTIVE:
         return verdict(False, 'DESTRUCTIVE actions are disabled (ACTION_ALLOW_DESTRUCTIVE)')
 
@@ -286,12 +360,12 @@ def assess_action(action_type: str, target: str) -> ActionAssessment:
     if not valid:
         return verdict(False, f'{why} (expected {kind} for a {risk} action)')
 
+    allowed = verdict(True)
     if kind in _ENDPOINT_KINDS:
         found = asset_criticality.classify_asset(value)
         if found.is_critical:
-            return ActionAssessment(
-                action_type=(action_type or '').strip(), target=value, risk_class=risk,
-                target_kind=kind, rule=rule, allowed=True,
+            return replace(
+                allowed,
                 criticality=found.level,
                 criticality_reason=f'{found.reason} ({found.source}: {found.matched})',
             )
@@ -299,14 +373,13 @@ def assess_action(action_type: str, target: str) -> ActionAssessment:
     if kind == KIND_USER:
         found_role = identity_role.classify_identity(value)
         if found_role.is_protected:
-            return ActionAssessment(
-                action_type=(action_type or '').strip(), target=value, risk_class=risk,
-                target_kind=kind, rule=rule, allowed=True,
+            return replace(
+                allowed,
                 identity_role=found_role.role,
                 identity_reason=f'{found_role.reason} ({found_role.source}: {found_role.matched})',
             )
 
-    return verdict(True)
+    return allowed
 
 
 def policy_allows_action(action_type: str, target: str) -> Tuple[bool, Optional[str]]:
@@ -337,6 +410,13 @@ def autopilot_allows(assessments: Iterable[ActionAssessment]) -> Tuple[bool, Opt
             return False, (
                 f'{item.action_type} targets a CRITICAL asset ({item.criticality_reason}) — '
                 f'a {item.risk_class} action on a crown-jewel asset always needs a human'
+            )
+        # F4: a machine only takes actions it can take back. Not a setting,
+        # for the same reason as the two guards around it.
+        if item.reversibility == IRREVERSIBLE:
+            return False, (
+                f'{item.action_type} cannot be taken back ({item.reversibility_reason}) - '
+                f'autopilot only takes actions it can roll back'
             )
         if (
             item.identity_role != identity_role.STANDARD

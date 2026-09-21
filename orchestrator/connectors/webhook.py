@@ -61,7 +61,7 @@ class WebhookConnector(Connector):
     """POST the neutral action payload to an HTTP executor."""
 
     driver = 'webhook'
-    version = '1'
+    version = '2'
 
     def __init__(self, name: str, settings: Optional[Dict[str, str]] = None):
         super().__init__(name, settings)

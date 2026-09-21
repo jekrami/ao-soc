@@ -75,7 +75,11 @@ TRANSITIONS: Dict[str, frozenset] = {
 
 TERMINAL_STATES = frozenset({CLOSED})
 
-EVENT_KINDS = frozenset({'created', 'assigned', 'state', 'note', 'escalated', 'sync_out', 'sync_in'})
+EVENT_KINDS = frozenset({
+    'created', 'assigned', 'state', 'note', 'escalated', 'sync_out', 'sync_in',
+    # F4: an action ran (with what could undo it), and a person undid one.
+    'action', 'rollback',
+})
 ORIGINS = frozenset({'human', 'system', 'sync'})
 
 #: Severity → default priority. A starting point a shift lead overrides, not a

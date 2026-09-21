@@ -71,7 +71,7 @@ class WazuhActiveResponseConnector(Connector):
     """Run a Wazuh active-response command on the agent behind a target."""
 
     driver = 'wazuh'
-    version = '1'
+    version = '2'
 
     def __init__(self, name: str, settings: Optional[Dict[str, str]] = None):
         super().__init__(name, settings)
@@ -86,6 +86,12 @@ class WazuhActiveResponseConnector(Connector):
         except ValueError:
             self.timeout = 15.0
         self.commands = {**DEFAULT_COMMANDS, **_parse_commands(self.settings.get('commands') or '')}
+        #: F4. Deliberately *no defaults*: a stock Wazuh install has no command
+        #: that lifts a firewall-drop or re-enables an account on request, and
+        #: sending the original command a second time to "undo" it would drop
+        #: the address twice. A site whose scripts do have an inverse declares
+        #: it: CONNECTOR_EDR_ROLLBACK_COMMANDS="block-ip=firewall-undrop0"
+        self.rollback_commands = _parse_commands(self.settings.get('rollback_commands') or '')
         #: Agents to act on when the target is not an endpoint (an address to
         #: drop is dropped *by* somebody). No default: sending a firewall rule
         #: to every agent in the estate must be something a site typed out.
@@ -106,6 +112,15 @@ class WazuhActiveResponseConnector(Connector):
             return f'{self.password_env} (named by CONNECTOR_{upper}_PASSWORD_ENV) is empty'
         if not self.agents:
             return f'CONNECTOR_{upper}_AGENTS is not set — refusing to act on every agent by default'
+        return None
+
+    def rollback_refusal(self, request: ActionRequest) -> Optional[str]:
+        if request.rule not in self.rollback_commands:
+            return (
+                f'connector {self.name!r} has no Wazuh rollback command for a {request.rule!r} '
+                f'action (declare one with CONNECTOR_{self.name.upper()}_ROLLBACK_COMMANDS) - '
+                f'refusing rather than re-sending the original command'
+            )
         return None
 
     def accepts(self, request: ActionRequest) -> Optional[str]:
@@ -172,7 +187,7 @@ class WazuhActiveResponseConnector(Connector):
         return {
             'driver': self.driver,
             'url': f'{self.url}/active-response',
-            'command': f'!{self.commands.get(request.rule, "")}',
+            'command': f'!{(self.rollback_commands if request.rollback else self.commands).get(request.rule, "")}',
             'arguments': [request.target],
             'agents': self.agents if request.target_kind not in ('host', 'ip_or_host') else '(resolved at dispatch)',
         }
@@ -182,7 +197,7 @@ class WazuhActiveResponseConnector(Connector):
         if problem:
             raise ConnectorRefused(problem)
 
-        command = self.commands[request.rule]
+        command = (self.rollback_commands if request.rollback else self.commands)[request.rule]
         async with httpx.AsyncClient(timeout=self.timeout, verify=self.verify_tls) as client:
             if not self._token:
                 self._token = await self._authenticate(client)

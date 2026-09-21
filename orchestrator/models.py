@@ -134,6 +134,11 @@ class ApproveDecisionRequest(BaseModel):
     approved_by: str = 'analyst'
 
 
+class RollbackActionRequest(BaseModel):
+    requested_by: Optional[str] = None
+    note: Optional[str] = None
+
+
 class RejectDecisionRequest(BaseModel):
     rejected_by: str = 'analyst'
     note: Optional[str] = None

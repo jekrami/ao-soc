@@ -33,7 +33,7 @@ class LogConnector(Connector):
     """Write the action to a JSONL file."""
 
     driver = 'log'
-    version = '2'
+    version = '3'
 
     def __init__(self, name: str, settings: Optional[Dict[str, str]] = None):
         super().__init__(name, settings)
