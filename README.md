@@ -155,7 +155,7 @@ ao-soc/
 
 ## Run It
 
-**Version:** 2.8.8 — see `VERSION` at repo root (bump on every release).
+**Version:** 2.8.9 — see `VERSION` at repo root (bump on every release).
 
 One-time setup (each machine):
 
@@ -423,6 +423,7 @@ See `orchestrator/README.md` for Splunk field mapping and environment variables.
 | Document | Purpose |
 | -------- | ------- |
 | [`docs/user-manual/USER-MANUAL_v1.0.md`](docs/user-manual/USER-MANUAL_v1.0.md) | **User manual v1.0** — installation, sign-in, every menu and page, the approve / edit / reject / rollback workflow, daily routine, glossary. With screenshots |
+| [`docs/user-manual/USER-MANUAL-fa_v1.0.md`](docs/user-manual/USER-MANUAL-fa_v1.0.md) | Persian edition of the user manual (v1.0), with screenshots of the Persian UI |
 | [`docs/AI-SOC-PLAN.md`](docs/AI-SOC-PLAN.md) | Master plan v2.4 — milestone status, roadmap phases, risk register, autonomy ramp |
 | [`docs/MODEL-BENCHMARK.md`](docs/MODEL-BENCHMARK.md) | Local LLM benchmark for the Tier-2 decision — 14 models, selection, and why confidence must not gate automation |
 | [`orchestrator/README.md`](orchestrator/README.md) | Broker API, environment variables, autopilot and SOAR policy |
@@ -496,6 +497,7 @@ matches the types in `frontend/src/types.ts`.
 
 ## New Features
 
+- **v2.8.9 — The Persian user manual.** `docs/user-manual/USER-MANUAL-fa_v1.0.md` (document version 1.0), the Persian edition of the user manual, written in Persian with Solar Hijri dating and Persian digits, with 30 screenshots of the Persian (RTL) interface in `docs/user-manual/images_fa_v1.0/`. Same scope as the English edition. Documentation only; no code change.
 - **v2.8.8 — The user manual.** `docs/user-manual/USER-MANUAL_v1.0.md` (document version 1.0) with 30 screenshots in `docs/user-manual/images_v1.0/`, captured from the demo stack: demo and Docker installation, sign-in, the top bar and every menu, each Command Center panel, the Tier-2 workflow (approve, edit, reject, audit trail, outcome, autopilot), the Live Alerts playbook, the incident details page, the archive and rollback, Entity Risk, System Health, the Persian UI, a daily shift routine, a glossary of badges and statuses, and troubleshooting. Documentation only; no code change.
 - **v2.8.7 — Pilot preparation, part 2: the report that closes M16.** `orchestrator/pilot_report.py` answers the runbook's seven questions from the decision store: detections collapsed into situations (and how many no single tool could have assembled); verdict agreement, approved unchanged versus edited versus rejected, per detection source; precision per source and which sources should stay with a human; whether the autopilot gate's constants (3 / 70 % / 30 days) held, replayed over history with a sweep of the precedent count; every action and what reached an executor, with rollbacks, autopilot and irreversible dispatches flagged from the receipts; latency at p50 and p95; backups and evidence of a restore. It opens the store read-only, imports nothing from the broker, and answers *insufficient data* rather than a number where the corpus is too small to carry one. It leads with what decides whether the rest can be believed: how much of the pilot was the model and how much the rules fallback, corrections recorded (a pilot with none has not been run), model-run hash checks, dead letters.
 - **v2.8.6 — Pilot preparation, part 1: the deployment audited against the code.** The shipped compose file, `.env.example` and runbook told operators to set four names nothing read (`LLM_ENDPOINT`, `LLM_MODEL`, `ALLOWED_ORIGINS`, `DASHBOARD_API_KEYS`), so the container dialled itself for a model, the measured model was never selected, and the dashboard minted a one-time key into a log. Worse, compose forwards only what it lists, so every `CONNECTOR_*`, `MISP_*`, `THEHIVE_*` and `CASE_SYNC_*` line an operator uncommented never reached the broker: Stages 2-3 of the runbook could not have worked. Fixed, and made unable to recur: a test reads the compose file, `.env.example`, the runbook and the README and fails if any setting or metric they name is not one the code reads or defines; `preflight` now reports any setting present in the environment that nothing reads (the four known misnames, plus a misspelling of any of our own prefixes, with what was probably meant); and `deploy/check_env.py` reports a shell variable that compose would prefer to `deploy/.env` - found by rendering the compose file on a machine that runs Ollama, where its own `OLLAMA_HOST=0.0.0.0:11434` had silently replaced the GPU host. Also: the broker now receives `deploy/.env`, the asset and identity maps mount read-only at `/config`, a `.dockerignore` keeps `*.db` and `node_modules` out of the image, dependencies are pinned, image tags follow `VERSION`, and `.env.example` defaults to Stage 0 instead of contradicting the runbook.
