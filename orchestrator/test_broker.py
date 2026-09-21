@@ -19,6 +19,7 @@ os.environ['SOAR_LOG_FILE'] = 'test_soar_actions.jsonl'
 os.environ['SOAR_STEP_DELAY'] = '0'
 # F1: autopilot is on, so preflight (rightly) wants an asset map. Use the shipped example.
 os.environ['ASSET_CRITICALITY_FILE'] = os.path.join('config', 'assets.example.json')
+os.environ['IDENTITY_ROLES_FILE'] = os.path.join('config', 'identities.example.json')
 # C2: a short retry budget and no real backoff, so the dead-letter path
 # is reachable in a test rather than only after fifteen minutes.
 os.environ['ANALYSIS_MAX_ATTEMPTS'] = '2'
@@ -1582,6 +1583,88 @@ def check_asset_criticality() -> None:
             os.remove(path)
 
 
+def check_identity_roles() -> None:
+    """F2: what an account is decides whether a machine may lock it."""
+    import identity_role as roles
+    import preflight
+
+    path = 'test_identities.json'
+    original = os.environ.get('IDENTITY_ROLES_FILE')
+    try:
+        # No file: the naming conventions still protect the obvious cases.
+        os.environ.pop('IDENTITY_ROLES_FILE', None)
+        roles.reload()
+        assert roles.classify_identity('Administrator').role == 'PRIVILEGED'
+        assert roles.classify_identity('krbtgt').role == 'PRIVILEGED'
+        assert roles.classify_identity('svc_backup').role == 'SERVICE'
+        assert roles.classify_identity('CORP\\svc_backup').role == 'SERVICE', 'domain prefix is where it lives'
+        assert roles.classify_identity('svc_backup@corp.example').role == 'SERVICE', 'UPN suffix likewise'
+        assert roles.classify_identity('jdoe.adm').role == 'PRIVILEGED'
+        # A privileged pattern outranks a service one: both block, the analyst is told the worse.
+        assert roles.classify_identity('svc-admin').role == 'PRIVILEGED'
+        for ordinary in ('jsmith', 'sysadmin', 'CORP\\jsmith', 'unknown', ''):
+            assert not roles.classify_identity(ordinary).is_protected, ordinary
+
+        with open(path, 'w', encoding='utf-8') as handle:
+            json.dump({
+                'static': {'fin-batch': 'SERVICE', 'lab.admin': 'STANDARD', 'CORP\\bob': 'PRIVILEGED'},
+                'patterns': [{'pattern': '^dba[-_.].+', 'role': 'PRIVILEGED', 'note': 'dbas'}],
+            }, handle)
+        os.environ['IDENTITY_ROLES_FILE'] = path
+        roles.reload()
+        assert roles.classify_identity('fin-batch').source == 'static'
+        assert roles.classify_identity('bob').role == 'PRIVILEGED', 'a static key with a domain matches the short form'
+        assert roles.classify_identity('dba_ali').source == 'pattern'
+        assert not roles.classify_identity('lab.admin').is_protected, 'explicit exemption beats the admin pattern'
+
+        # Protected is still *allowed* - a human may approve - but never autopilot.
+        svc = assess_action('Disable account', 'svc_backup')
+        assert svc.allowed and svc.identity_role == 'SERVICE' and 'pattern' in svc.identity_reason
+        refused, why = autopilot_allows([svc])
+        assert not refused and 'SERVICE account' in why, why
+        assert not autopilot_allows([assess_action('Reset password', 'Administrator')])[0]
+        assert not autopilot_allows([assess_action('Disable account', 'CORP\\bob')])[0]
+        # Observation is unaffected, and so is an ordinary user.
+        assert autopilot_allows([assess_action('Add to watchlist', 'svc_backup')])[0]
+        assert autopilot_allows([assess_action('Disable account', 'jsmith')])[0]
+        # A host that merely looks like a service name is not an account.
+        assert autopilot_allows([assess_action('Isolate host', 'svc-web-01')])[0]
+        # One protected account sends the whole plan to a human.
+        assert not autopilot_allows(
+            [assess_action('Disable account', 'jsmith'), assess_action('Disable account', 'svc_backup')]
+        )[0]
+
+        with open(path, 'w', encoding='utf-8') as handle:
+            json.dump({'static': {'jsmith': 'PRIVILEGED'}}, handle)
+        os.utime(path, (1, 1_000_000_000))
+        assert roles.classify_identity('jsmith').role == 'PRIVILEGED', 'edited file must be re-read'
+
+        with open(path, 'w', encoding='utf-8') as handle:
+            handle.write('{ not json')
+        os.utime(path, (2, 2_000_000_000))
+        assert roles.classify_identity('svc_backup').role == 'SERVICE', 'a broken file never widens anything'
+        assert any('cannot be read as JSON' in e for e in roles.config_errors())
+        assert any('identity roles' in p for p in preflight.startup_problems())
+
+        with open(path, 'w', encoding='utf-8') as handle:
+            json.dump({
+                'defaults': False,
+                'static': {'x': 'ROOT'},
+                'patterns': [{'pattern': '([', 'role': 'SERVICE'}, {'pattern': '^a', 'role': 'STANDARD'}],
+            }, handle)
+        os.utime(path, (3, 3_000_000_000))
+        assert not roles.classify_identity('svc_backup').is_protected, '"defaults": false is honoured'
+        assert len(roles.config_errors()) == 3, roles.config_errors()
+    finally:
+        if original is None:
+            os.environ.pop('IDENTITY_ROLES_FILE', None)
+        else:
+            os.environ['IDENTITY_ROLES_FILE'] = original
+        roles.reload()
+        if os.path.exists(path):
+            os.remove(path)
+
+
 def check_endpoint_resolution() -> None:
     """OLLAMA_HOST is Ollama's *bind* variable; users routinely set 0.0.0.0."""
     assert llm._build_ollama_endpoint.__module__ == 'llm'
@@ -1647,6 +1730,7 @@ async def run_test() -> None:
     check_endpoint_resolution()
     check_action_policy()
     check_asset_criticality()
+    check_identity_roles()
     check_detection_contract()
     check_phase_c_adapters()
     check_risk_scoring()
@@ -1813,6 +1897,37 @@ async def run_test() -> None:
     approved = await tier2.approve_tier2_decision('ALT-TESTF1', approved_by='jek', wait=True)
     assert approved['approval_status'] == 'DONE' and approved['approved_by'] == 'jek'
 
+    # --- F2: a service account is refused for autopilot in the loosest mode ---
+    account = await db.create_security_event(
+        source_ip='10.4.21.98',
+        dest_ip='185.220.101.7',
+        signature='ET POLICY Impossible-travel logon',
+        timestamp=fields['timestamp'],
+        threat_severity='CRITICAL',
+        incident_analysis='Backup service account used from two continents.',
+        containment_steps=['Disable the account'],
+        alert_id='ALT-TESTF2',
+        enrichment={
+            **analysis['enrichment'],
+            'recommended_actions': [
+                {'id': 'A1', 'action': 'Disable account', 'target': 'svc_backup',
+                 'reason': 'Impossible travel', 'confidence': 99, 'impact': 'Stops the nightly backup'},
+            ],
+            'tier2_proposal': {'decision': 'CONTAIN', 'confidence': 99, 'rationale': 'Credential misuse.'},
+        },
+    )
+    account_decision = await create_tier2_decision_for_alert(account)
+    account_action = account_decision['required_actions'][0]
+    assert account_action['identity_role'] == 'SERVICE', account_action
+    assert 'static identity map' in account_action['identity_reason'], account_action['identity_reason']
+    assert account_action['asset_criticality'] == 'STANDARD', 'an account is not a host'
+    tier2.AUTOPILOT_REQUIRE_PRECEDENT = False
+    held_account = await autopilot_if_eligible(account_decision, wait=True)
+    tier2.AUTOPILOT_REQUIRE_PRECEDENT = True
+    assert held_account['approval_status'] == 'PENDING', 'a 99% CONTAIN on a service account must wait'
+    approved_account = await tier2.approve_tier2_decision('ALT-TESTF2', approved_by='jek', wait=True)
+    assert approved_account['approval_status'] == 'DONE' and approved_account['approved_by'] == 'jek'
+
     # --- A4: a human edit is captured as a label, not just an approval ---
     editable = await db.create_security_event(
         source_ip='10.4.21.18',
@@ -1967,7 +2082,7 @@ async def run_test() -> None:
         'into one situation, situation-driven Tier-2 decision, retry/dead-letter/back-pressure '
         'on the analysis queue, decision search and retention, verified threat intelligence '
         'and ATT&CK catalogue checks, precedent retrieval with a grounding gate, '
-        'precedent-gated autopilot, a CRITICAL-asset guard autopilot cannot be configured past, routed response delivery with idempotent retry '
+        'precedent-gated autopilot, a CRITICAL-asset and protected-account guard autopilot cannot be configured past, routed response delivery with idempotent retry '
         'and dry run, case management, bidirectional sync that cannot touch a decision, '
         'metrics and verified backups all verified.'
     )

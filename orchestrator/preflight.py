@@ -111,6 +111,22 @@ def startup_problems() -> List[str]:
     except Exception as exc:  # noqa: BLE001
         problems.append(f'asset criticality could not be inspected: {exc}')
 
+    # --- identity roles (F2) ---
+    try:
+        import identity_role
+        import tier2 as _tier2_roles
+
+        problems.extend(f'identity roles: {error}' for error in identity_role.config_errors())
+        if getattr(_tier2_roles, 'AUTOPILOT_ENABLED', False) and not identity_role.identity_config()['file']:
+            problems.append(
+                'TIER2_AUTOPILOT is on and IDENTITY_ROLES_FILE is not set — only the built-in '
+                'account naming conventions keep privileged and service accounts away from '
+                'autopilot; no named account is known to be either '
+                '(see orchestrator/config/identities.example.json)'
+            )
+    except Exception as exc:  # noqa: BLE001
+        problems.append(f'identity roles could not be inspected: {exc}')
+
     # --- the two settings that widen what can happen without a human ---
     try:
         import action_policy

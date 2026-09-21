@@ -1,0 +1,13 @@
+{
+  "defaults": true,
+  "static": {
+    "svc_backup": "SERVICE",
+    "CORP\\svc_erp": "SERVICE",
+    "jdoe.adm": "PRIVILEGED",
+    "lab.admin": "STANDARD"
+  },
+  "patterns": [
+    { "pattern": "^(dba|sec)[-_.].+", "role": "PRIVILEGED", "note": "database and security administrators" },
+    { "pattern": "^app[-_.].+[-_.]rw$", "role": "SERVICE", "note": "application read-write accounts" }
+  ]
+}

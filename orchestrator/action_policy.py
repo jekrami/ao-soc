@@ -38,6 +38,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import asset_criticality
+import identity_role
 
 # --- Risk classes, least to most dangerous --------------------------------
 
@@ -134,6 +135,10 @@ MAX_TARGET_LENGTH = 128
 # never runs without a human. Not a setting: a rule a config line could relax is
 # a rule a model's phrasing or a typo could relax, and "never" is the point.
 CRITICAL_ASSET_GUARD_FROM = HIGH_WRITE
+# F2: the same rule for accounts. A privileged or service account is never
+# locked, disabled or reset by a machine — the first removes the responder, the
+# second silently stops a business process. Not a setting, for the same reason.
+PROTECTED_IDENTITY_GUARD_FROM = HIGH_WRITE
 _ENDPOINT_KINDS = frozenset({KIND_IP, KIND_HOST, KIND_ENDPOINT})
 
 # --- Target shape validation ----------------------------------------------
@@ -234,6 +239,9 @@ class ActionAssessment:
     # human (who may still approve); binding for autopilot.
     criticality: str = asset_criticality.STANDARD
     criticality_reason: Optional[str] = None
+    # F2: what the target account is, judged by identity_role.
+    identity_role: str = identity_role.STANDARD
+    identity_reason: Optional[str] = None
 
     def as_dict(self) -> Dict[str, Any]:
         return {
@@ -246,6 +254,8 @@ class ActionAssessment:
             'reason': self.reason,
             'criticality': self.criticality,
             'criticality_reason': self.criticality_reason,
+            'identity_role': self.identity_role,
+            'identity_reason': self.identity_reason,
         }
 
 
@@ -286,6 +296,16 @@ def assess_action(action_type: str, target: str) -> ActionAssessment:
                 criticality_reason=f'{found.reason} ({found.source}: {found.matched})',
             )
 
+    if kind == KIND_USER:
+        found_role = identity_role.classify_identity(value)
+        if found_role.is_protected:
+            return ActionAssessment(
+                action_type=(action_type or '').strip(), target=value, risk_class=risk,
+                target_kind=kind, rule=rule, allowed=True,
+                identity_role=found_role.role,
+                identity_reason=f'{found_role.reason} ({found_role.source}: {found_role.matched})',
+            )
+
     return verdict(True)
 
 
@@ -318,6 +338,14 @@ def autopilot_allows(assessments: Iterable[ActionAssessment]) -> Tuple[bool, Opt
                 f'{item.action_type} targets a CRITICAL asset ({item.criticality_reason}) — '
                 f'a {item.risk_class} action on a crown-jewel asset always needs a human'
             )
+        if (
+            item.identity_role != identity_role.STANDARD
+            and RISK_ORDER[item.risk_class] >= RISK_ORDER[PROTECTED_IDENTITY_GUARD_FROM]
+        ):
+            return False, (
+                f'{item.action_type} targets a {item.identity_role} account ({item.identity_reason}) — '
+                f'a {item.risk_class} action on a {item.identity_role.lower()} account always needs a human'
+            )
         if RISK_ORDER[item.risk_class] > ceiling:
             return False, (
                 f'{item.action_type} is {item.risk_class}, above the '
@@ -343,4 +371,5 @@ def action_policy_config() -> Dict[str, Any]:
         'protected_targets': sorted(PROTECTED_TARGETS),
         'overrides': ACTION_RISK_OVERRIDES,
         'asset_criticality': asset_criticality.criticality_config(),
+        'identity_roles': identity_role.identity_config(),
     }

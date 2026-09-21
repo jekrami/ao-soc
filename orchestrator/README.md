@@ -49,6 +49,7 @@ python soc_orchestrator.py
 | `ACTION_ALLOW_DESTRUCTIVE` | *(off)* | Allow `DESTRUCTIVE` actions to dispatch at all, even with human approval |
 | `ACTION_RISK_OVERRIDES` | *(none)* | Site verbs, e.g. `reboot switch=DESTRUCTIVE` |
 | `PROTECTED_TARGETS` | loopback | Extra targets no action may ever touch |
+| `IDENTITY_ROLES_FILE` | *(none)* | JSON identity map (static accounts, name patterns) marking `PRIVILEGED` and `SERVICE` accounts. Re-read when the file changes. See `config/identities.example.json` and *Identity roles* below |
 | `ASSET_CRITICALITY_FILE` | *(none)* | JSON asset map (static names, hostname patterns, CIDR ranges) marking `CRITICAL` assets. Re-read when the file changes. See `config/assets.example.json` and *Asset criticality* below |
 | `DECISION_FEEDBACK_WINDOW_HOURS` | `72` | How long after a decision settles an outcome may be recorded |
 | `OLLAMA_HOST` | `localhost` | Ollama host (`<ollama-host>`); set to your LAN IP/hostname. `WORKSTATION_IP` still honored as a fallback. Bind addresses (`0.0.0.0`, `::`) resolve to `localhost` — they are where Ollama *listens*, not somewhere you can dial. |
@@ -385,8 +386,9 @@ verdict is auto-approved and executed at ingest only if **all five** hold:
 3. **every action in the plan passes `action_policy`** — classified at or below
    `ACTION_MAX_AUTOPILOT_RISK`, with a target that parses as the thing the action
    needs it to be,
-4. **no containment-class action targets a `CRITICAL` asset** (F1) — see *Asset
-   criticality* below; and
+4. **no containment-class action targets a `CRITICAL` asset or a `PRIVILEGED` /
+   `SERVICE` account** (F1, F2) — see *Asset criticality* and *Identity roles*
+   below; and
 5. **precedent supports it** (D4, §7) — see below.
 
 Gates 3, 4 and 5 are the ones that protect the network. Confidence is a self-report, is
@@ -577,6 +579,37 @@ The verdict is stamped on each action at plan time, beside its risk class:
 `alert_soar_actions.asset_criticality` / `criticality_reason`, and on the action in the
 decision API. Rows written before 2.8 carry the column default `STANDARD`, which is not
 a finding — nothing classified them.
+
+### Identity roles (F2 — `identity_role.py`)
+
+Asset criticality protects hosts; this protects accounts, where the failure modes differ
+and the remedy does not. Locking a **privileged** administrator removes the person who
+would respond to the incident. Locking a **service account** (`svc_backup`) silently
+stops a business process, and nothing in the alert says so. Both need a human who knows
+the business, so an action of class `HIGH_WRITE` or above (disable, revoke session,
+reset password, force logoff) on either is **never executed by autopilot** — same rule,
+same place, same independence from confidence and precedent as F1, and equally not
+configurable. A human can still approve it; watching or tagging an account is unaffected.
+
+| Layer | Matches | Example |
+|-------|---------|---------|
+| **Static map** | an account, exactly. Authoritative both ways: it can also *exempt* | `"svc_backup": "SERVICE"`, `"lab.admin": "STANDARD"` |
+| **Name patterns** | a regex against the identifier and its short form | `^(svc\|service)[-_.].+` |
+
+`CORP\svc_backup` and `svc_backup@corp.example` both reduce to `svc_backup`: a domain or
+a UPN suffix is where an account lives, not what it is. A protective static entry written
+with a domain (`CORP\bob`) also protects the bare `bob` that detections usually report;
+an *exemption* never does, so exempting one domain's user cannot exempt another's. When a
+name matches both a privileged and a service pattern, `PRIVILEGED` wins — both block, so
+the choice only decides what the analyst is told.
+
+Built-in conventions apply with no configuration — `administrator` / `admin` / `root` /
+`krbtgt`, `adm-*` / `*-adm`, `svc-*` / `service.*` / `*-svc` — and `"defaults": false`
+removes them. The file hot-reloads; a broken one never widens anything and is reported
+under `preflight` on `/health`, as is *autopilot on with no identity file at all*.
+Stamped per action as `alert_soar_actions.identity_role` / `identity_reason`. The lookup
+is by name convention and a configured map, not by directory group membership: an
+account nobody named or patterned is `STANDARD`.
 
 ## Corrections and outcomes
 
@@ -789,6 +822,11 @@ rejected outright — plus the Phase A governance:
   discloses nothing until authenticated, and `actor:assert` is not implied by acting;
 - **action policy**: unknown verbs classify HIGH_WRITE, the three measured malformed
   targets are rejected, DESTRUCTIVE is off, and one bad action fails the whole plan;
+- **identity roles (F2)**: naming conventions with no file, domain and UPN forms
+  reducing to one name, an exemption that cannot leak across domains, privileged beating
+  service, watching a service account still allowed, a hot-reloaded edit, a broken file
+  that never widens anything, and a 99%-confidence `CONTAIN` disabling `svc_backup` held
+  `PENDING` with the precedent gate off;
 - **asset criticality (F1)**: each of the three layers, an exemption beating a pattern,
   a CRITICAL target refused for autopilot but still approvable by a human, watching a
   domain controller still allowed, a hot-reloaded edit, a broken file that never widens

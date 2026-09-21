@@ -291,6 +291,8 @@ def _format_action(row) -> dict:
         'policy_reason': row.get('policy_reason'),
         'asset_criticality': row.get('asset_criticality') or 'STANDARD',
         'criticality_reason': row.get('criticality_reason'),
+        'identity_role': row.get('identity_role') or 'STANDARD',
+        'identity_reason': row.get('identity_reason'),
         'status': row['status'],
         # E1: where it went, what the executor called it, and how hard it was
         # to get there. Empty on a pre-2.7 row, which is honest — nothing
@@ -354,6 +356,8 @@ def _action_row(alert_id: str, decision_id: int, item: dict, now: datetime) -> d
         'policy_reason': assessment.reason,
         'asset_criticality': assessment.criticality,
         'criticality_reason': assessment.criticality_reason,
+        'identity_role': assessment.identity_role,
+        'identity_reason': assessment.identity_reason,
         'status': 'PENDING',
         'created_at': now,
     }

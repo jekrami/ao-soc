@@ -104,6 +104,9 @@ alert_soar_actions = Table(
     # to "why did the machine not act here?" is a column, not a log line.
     Column('asset_criticality', String(16), nullable=False, default='STANDARD'),
     Column('criticality_reason', String, nullable=True),
+    # F2: what the target account is. Same reasoning as asset_criticality.
+    Column('identity_role', String(16), nullable=False, default='STANDARD'),
+    Column('identity_reason', String, nullable=True),
     Column('status', String(32), nullable=False, default='PENDING'),
     Column('result_json', String, nullable=True),
     # E1: which executor carried it, its own identifier for the action, and how
@@ -516,6 +519,14 @@ def _migrate_alert_soar_actions(conn) -> None:
         ))
     if 'criticality_reason' not in cols:
         conn.execute(text('ALTER TABLE alert_soar_actions ADD COLUMN criticality_reason TEXT'))
+    # Pre-2.8.1 rows were never run through the identity lookup; as above,
+    # STANDARD is the column default, not a finding.
+    if 'identity_role' not in cols:
+        conn.execute(text(
+            "ALTER TABLE alert_soar_actions ADD COLUMN identity_role TEXT NOT NULL DEFAULT 'STANDARD'"
+        ))
+    if 'identity_reason' not in cols:
+        conn.execute(text('ALTER TABLE alert_soar_actions ADD COLUMN identity_reason TEXT'))
 
 
 def _normalize_steps(steps: List) -> List[dict]:
