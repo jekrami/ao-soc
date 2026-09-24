@@ -155,7 +155,7 @@ ao-soc/
 
 ## Run It
 
-**Version:** 2.8.10 — see `VERSION` at repo root (bump on every release).
+**Version:** 2.8.11 — see `VERSION` at repo root (bump on every release).
 
 One-time setup (each machine):
 
@@ -423,7 +423,7 @@ See `orchestrator/README.md` for Splunk field mapping and environment variables.
 | Document | Purpose |
 | -------- | ------- |
 | [`docs/user-manual/USER-MANUAL_v1.0.md`](docs/user-manual/USER-MANUAL_v1.0.md) | **User manual v1.0** — installation, sign-in, every menu and page, the approve / edit / reject / rollback workflow, daily routine, glossary. With screenshots |
-| [`docs/user-manual/USER-MANUAL-fa_v1.1.md`](docs/user-manual/USER-MANUAL-fa_v1.1.md) | Persian edition of the user manual (v1.1), with screenshots of the Persian UI |
+| [`docs/user-manual/USER-MANUAL-fa_v2.0.md`](docs/user-manual/USER-MANUAL-fa_v2.0.md) | Persian edition of the user manual (v2.0), written in Persian rather than translated, with screenshots of the Persian UI |
 | `docs/user-manual/*.pdf`, `*.docx` | The same manuals as single-file PDF and Word documents, images embedded, for handing to users. Generated from the Markdown with `node scripts/manual/build-manual.js`; never edited by hand |
 | [`docs/AI-SOC-PLAN.md`](docs/AI-SOC-PLAN.md) | Master plan v2.4 — milestone status, roadmap phases, risk register, autonomy ramp |
 | [`docs/MODEL-BENCHMARK.md`](docs/MODEL-BENCHMARK.md) | Local LLM benchmark for the Tier-2 decision — 14 models, selection, and why confidence must not gate automation |
@@ -498,6 +498,7 @@ matches the types in `frontend/src/types.ts`.
 
 ## New Features
 
+- **v2.8.11 — The Persian manual, rewritten to a Persian writing standard.** `docs/user-manual/USER-MANUAL-fa_v2.0.md` replaces the v1.x Persian text: written as Persian technical documentation rather than a sentence-by-sentence translation, in the formal-but-human register, with one consistent point of view (impersonal for how the system behaves, second person for what the analyst does), notes, warnings and limits labelled as such and placed beside the step they concern, and every UI label quoted exactly as the interface writes it. The RTL output was fixed to match: `<w:bidi/>` is now the first child of `<w:sectPr>` (docx-js has no section-bidi option, so the builder patches the XML and rebuilds the package with `[Content_Types].xml` first, which Word requires); Persian list markers are written as runs with Persian digits instead of Word numbering, whose `numbering.xml` carries no bidi; paragraphs align START, never RIGHT, which in RTL is the visual left; the library’s duplicate Heading styles are dropped; and the PDF embeds Vazirmatn (SIL OFL, in `scripts/manual/fonts/`) so a Persian PDF renders on a machine with no Persian font. Verified with the persian-writing skill’s own checkers: `fa_lint.py` (remaining hits are Latin digits inside code, version strings and a model name), `verify_docx.py` and `verify_pdf.py`. Documentation and tooling only; no application code change.
 - **v2.8.10 — The user manuals as PDF and Word.** `scripts/manual/build-manual.js` turns each Markdown manual into a self-contained PDF (printed by the locally installed Edge or Chrome) and a Word `.docx` (built with the `docx` library), both with every screenshot embedded, carrying the same version-tagged name as their source (`USER-MANUAL_v1.0.pdf`, `USER-MANUAL-fa_v1.1.docx`). The Persian edition is laid out right to left in both, with commands and code kept left to right. Only the newest version of each edition is exported; older ones stay on disk as published. Run `npm install` then `node build-manual.js` in `scripts/manual/`. Also: the Persian manual is now v1.1, because v1.0 showed the overall posture card where the Security Situation panel belonged (both are titled «وضعیت امنیتی» in the Persian UI); the corrected screenshot is in `images_fa_v1.1/` and v1.0 is kept unchanged.
 - **v2.8.9 — The Persian user manual.** `docs/user-manual/USER-MANUAL-fa_v1.0.md` (document version 1.0), the Persian edition of the user manual, written in Persian with Solar Hijri dating and Persian digits, with 30 screenshots of the Persian (RTL) interface in `docs/user-manual/images_fa_v1.0/`. Same scope as the English edition. Documentation only; no code change.
 - **v2.8.8 — The user manual.** `docs/user-manual/USER-MANUAL_v1.0.md` (document version 1.0) with 30 screenshots in `docs/user-manual/images_v1.0/`, captured from the demo stack: demo and Docker installation, sign-in, the top bar and every menu, each Command Center panel, the Tier-2 workflow (approve, edit, reject, audit trail, outcome, autopilot), the Live Alerts playbook, the incident details page, the archive and rollback, Entity Risk, System Health, the Persian UI, a daily shift routine, a glossary of badges and statuses, and troubleshooting. Documentation only; no code change.

@@ -27,7 +27,7 @@
 const fs = require('fs');
 const path = require('path');
 const { pathToFileURL } = require('url');
-const { marked } = require('marked');
+const { marked, Marked } = require('marked');
 const docx = require('docx');
 
 const MANUAL_DIR = path.resolve(__dirname, '../../docs/user-manual');
@@ -39,6 +39,17 @@ const MAX_IMAGE_W = Math.floor((CONTENT_WIDTH / 1440) * 96);        // px at 96 
 const MAX_IMAGE_H = 820;                                            // px, leaves room for a caption
 
 const ARABIC_SCRIPT = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
+
+// Persian face (SIL Open Font License) \u2014 see fonts/README.md. The PDF embeds
+// these files, so a Persian PDF renders identically on a machine that has no
+// Persian font installed.
+const FA_FONT = 'Vazirmatn';
+const FA_FONT_FILES = [
+  ['Vazirmatn-Regular.ttf', 400],
+  ['Vazirmatn-Medium.ttf', 500],
+  ['Vazirmatn-SemiBold.ttf', 600],
+  ['Vazirmatn-Bold.ttf', 700],
+];
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -72,17 +83,33 @@ function toPersianDigits(s) {
 // ---------------------------------------------------------------------------
 
 function htmlFor(manual) {
-  const body = marked.parse(manual.md);
-  const font = manual.rtl ? "Tahoma, 'Segoe UI', sans-serif" : "'Segoe UI', Calibri, Arial, sans-serif";
+  // A CLI flag such as `-SkipInstall` is a legal break opportunity right after
+  // its hyphen, and in an RTL line the orphaned "-" lands far from the word it
+  // belongs to. A word joiner inside inline code removes those breaks.
+  const md = new Marked({
+    renderer: {
+      // marked passes a string here in v12 and a token object from v13 on
+      codespan(token) {
+        const text = typeof token === 'string' ? token : token.text;
+        return `<code>${text.replace(/-(?=\S)/g, '-⁠')}</code>`;
+      },
+    },
+  });
+  const body = md.parse(manual.md);
+  const font = manual.rtl ? `'${FA_FONT}', Tahoma, sans-serif` : "'Segoe UI', Calibri, Arial, sans-serif";
+  const faces = manual.rtl ? FA_FONT_FILES.map(([file, weight]) => `
+  @font-face { font-family: '${FA_FONT}'; font-weight: ${weight}; font-style: normal;
+               src: url('${pathToFileURL(path.join(__dirname, 'fonts', file)).href}') format('truetype'); }`).join('') : '';
   return `<!doctype html>
 <html lang="${manual.rtl ? 'fa' : 'en'}" dir="${manual.rtl ? 'rtl' : 'ltr'}">
 <head>
 <meta charset="utf-8">
 <base href="${pathToFileURL(manual.dir).href}/">
 <title>${manual.title}</title>
-<style>
+<style>${faces}
   @page { size: A4; margin: 20mm 18mm 22mm; }
-  body { font-family: ${font}; font-size: 10.5pt; line-height: 1.65; color: #1b1f24; margin: 0; }
+  body { font-family: ${font}; font-size: ${manual.rtl ? '11.5pt' : '10.5pt'};
+         line-height: ${manual.rtl ? '1.85' : '1.65'}; letter-spacing: 0; color: #1b1f24; margin: 0; }
   h1 { font-size: 22pt; color: #0b3d91; border-bottom: 3px solid #0b3d91; padding-bottom: 6px; margin: 0 0 14px; }
   h2 { font-size: 15pt; color: #0b3d91; border-bottom: 1px solid #c9d3e3; padding-bottom: 4px; margin-top: 0;
        break-before: page; }
@@ -97,8 +124,10 @@ function htmlFor(manual) {
   thead:not(:has(th:not(:empty))) { display: none; }
   th { background: #e8eef8; color: #13315c; text-align: start; }
   th, td { border: 1px solid #c9d3e3; padding: 4px 7px; vertical-align: top; }
+  /* isolate, not embed: an inline code span that starts with "-" (a CLI flag)
+     otherwise loses its leading character to the surrounding RTL run */
   code { font-family: Consolas, 'Courier New', monospace; font-size: 9pt; background: #f1f3f6;
-         padding: 1px 4px; border-radius: 3px; direction: ltr; unicode-bidi: embed; }
+         padding: 1px 4px; border-radius: 3px; direction: ltr; unicode-bidi: isolate; }
   pre { background: #f1f3f6; border: 1px solid #dde2ea; border-radius: 4px; padding: 8px 10px;
         direction: ltr; text-align: left; white-space: pre-wrap; break-inside: avoid; }
   pre code { background: none; padding: 0; }
@@ -140,7 +169,7 @@ async function buildPdf(manual, browser, out) {
       headerTemplate: '<span></span>',
       footerTemplate: `<div style="width:100%;font-size:8px;color:#667;padding:0 18mm;display:flex;
         justify-content:space-between;direction:${manual.rtl ? 'rtl' : 'ltr'};font-family:Tahoma,'Segoe UI',sans-serif">
-        <span>${label}</span><span><span class="pageNumber"></span> / <span class="totalPages"></span></span></div>`,
+        <span>${label}</span><span dir="ltr"><span class="pageNumber"></span> / <span class="totalPages"></span></span></div>`,
       margin: { top: '20mm', bottom: '22mm', left: '18mm', right: '18mm' },
     });
     await page.close();
@@ -162,7 +191,11 @@ class DocxBuilder {
   constructor(manual) {
     this.m = manual;
     this.rtl = manual.rtl;
-    this.font = manual.rtl ? 'Tahoma' : 'Calibri';
+    // Vazirmatn is the Persian face the PDF embeds; Word uses it when the
+    // reader has it installed and substitutes otherwise, so Tahoma — present
+    // on every Windows machine and correct for Persian — is the fallback.
+    this.font = manual.rtl ? FA_FONT : 'Calibri';
+    this.csFont = manual.rtl ? FA_FONT : 'Tahoma';
     this.listInstance = 0;
   }
 
@@ -178,8 +211,8 @@ class DocxBuilder {
       color: style.color || (mono ? '8B1E3F' : undefined),
       size: style.size || (mono ? 18 : undefined),
       rightToLeft: isRtl,
-      font: mono ? { ascii: 'Consolas', hAnsi: 'Consolas', cs: 'Consolas' }
-                 : { ascii: this.font, hAnsi: this.font, cs: 'Tahoma' },
+      font: mono ? { ascii: 'Consolas', hAnsi: 'Consolas', cs: this.csFont }
+                 : { ascii: this.font, hAnsi: this.font, cs: this.csFont, hint: 'cs' },
       shading: mono ? { type: ShadingType.CLEAR, fill: 'F1F3F6', color: 'auto' } : undefined,
     });
   }
@@ -208,12 +241,14 @@ class DocxBuilder {
     return out;
   }
 
+  // START, never RIGHT: in a bidirectional paragraph OOXML reads RIGHT as
+  // "end of text", which in RTL is the visual left.
   para(children, opts = {}) {
     return new Paragraph({
       children,
       bidirectional: this.rtl && !opts.ltr,
-      alignment: opts.ltr ? AlignmentType.START : undefined,
-      spacing: { after: opts.after ?? 100, line: 300 },
+      alignment: this.rtl || opts.ltr ? AlignmentType.START : undefined,
+      spacing: { after: opts.after ?? 100, line: this.rtl ? 330 : 300 },
       ...opts.extra,
     });
   }
@@ -249,8 +284,10 @@ class DocxBuilder {
     return new Paragraph({
       heading: level,
       bidirectional: this.rtl,
+      alignment: this.rtl ? AlignmentType.START : undefined,
       pageBreakBefore: t.depth === 2,
       keepNext: true,
+      keepLines: true,
       children: this.inline(t.tokens),
     });
   }
@@ -264,7 +301,7 @@ class DocxBuilder {
       keepLines: true,
       keepNext: i < all.length - 1,
       children: [new TextRun({ text: line || ' ', size: 18,
-                               font: { ascii: 'Consolas', hAnsi: 'Consolas', cs: 'Consolas' } })],
+                               font: { ascii: 'Consolas', hAnsi: 'Consolas', cs: this.csFont } })],
     }));
   }
 
@@ -298,12 +335,18 @@ class DocxBuilder {
     });
   }
 
+  // Word's own list numbering lives in numbering.xml, which carries no bidi:
+  // in a Persian document it renders a Latin "1." on the wrong side and drags
+  // in a fallback bullet font. So in RTL the marker is written as an ordinary
+  // run with Persian digits; the Latin document keeps real Word lists.
   list(t, level = 0) {
     const out = [];
     const reference = t.ordered ? 'ordered' : 'bullet';
     const instance = t.ordered ? ++this.listInstance : 0;
+    let index = Number(t.start || 1);
     for (const item of t.items) {
       let first = true;
+      const marker = t.ordered ? `${toPersianDigits(index++)}.  ` : '•  ';
       for (const child of item.tokens) {
         if (child.type === 'list') { out.push(...this.list(child, level + 1)); continue; }
         if (child.type === 'space') continue;
@@ -311,12 +354,15 @@ class DocxBuilder {
         const imgs = this.images(inl);
         const runs = this.inline(inl);
         if (runs.length) {
+          const marked = this.rtl && first ? [this.run(marker, { bold: t.ordered }), ...runs] : runs;
           out.push(new Paragraph({
-            children: runs,
+            children: marked,
             bidirectional: this.rtl,
-            spacing: { after: 60, line: 300 },
-            numbering: first ? { reference, level, instance } : undefined,
-            indent: first ? undefined : { start: 720 * (level + 1) },
+            alignment: this.rtl ? AlignmentType.START : undefined,
+            spacing: { after: 60, line: this.rtl ? 330 : 300 },
+            numbering: !this.rtl && first ? { reference, level, instance } : undefined,
+            indent: this.rtl ? { start: 360 * (level + 1), hanging: first ? 360 : 0 }
+                             : (first ? undefined : { start: 720 * (level + 1) }),
           }));
           first = false;
         }
@@ -373,7 +419,7 @@ class DocxBuilder {
       : `${this.m.title} · v${this.m.version} · © J.Ekrami-Labs`;
     const headingStyle = (id, size, color, before, after) => ({
       id, name: id, basedOn: 'Normal', next: 'Normal', quickFormat: true,
-      run: { size, bold: true, color, font: { ascii: this.font, hAnsi: this.font, cs: 'Tahoma' },
+      run: { size, bold: true, color, font: { ascii: this.font, hAnsi: this.font, cs: this.csFont, hint: 'cs' },
              sizeComplexScript: size, boldComplexScript: true },
       paragraph: { spacing: { before, after } },
     });
@@ -384,7 +430,9 @@ class DocxBuilder {
       styles: {
         default: {
           document: {
-            run: { size: 21, font: { ascii: this.font, hAnsi: this.font, cs: 'Tahoma' }, sizeComplexScript: 21 },
+            run: { size: 21, font: { ascii: this.font, hAnsi: this.font, cs: this.csFont, hint: 'cs' },
+                   sizeComplexScript: 21, rightToLeft: this.rtl },
+            paragraph: { bidirectional: this.rtl, alignment: this.rtl ? AlignmentType.START : undefined },
           },
         },
         paragraphStyles: [
@@ -435,8 +483,62 @@ function unescape(s) {
     .replace(/&quot;/g, '"').replace(/&#39;/g, "'");
 }
 
+/**
+ * docx-js writes its own Heading1–3 styles (Word's template blue) beside the
+ * ones defined here, leaving two definitions of the same styleId in
+ * styles.xml. Keep the last definition of each — ours — and drop the earlier
+ * duplicate, so the heading a reader sees is the heading this file describes.
+ */
+function dropDuplicateStyles(xml) {
+  const seen = new Map();
+  const re = /<w:style\b[^>]*w:styleId="([^"]+)"[\s\S]*?<\/w:style>/g;
+  for (let m; (m = re.exec(xml));) {
+    const list = seen.get(m[1]) || [];
+    list.push(m[0]);
+    seen.set(m[1], list);
+  }
+  let out = xml;
+  for (const [, list] of seen) {
+    for (const dup of list.slice(0, -1)) out = out.replace(dup, '');
+  }
+  return out;
+}
+
+/**
+ * docx-js has no section-level `bidi` option, so the flag never reaches the
+ * XML. Without it, anything that carries no direction of its own — a table
+ * added later, a renderer's default — falls back to left-to-right. OOXML
+ * requires <w:bidi/> to be the FIRST child of <w:sectPr>; appended anywhere
+ * else it is ignored. The guard makes this safe to run twice.
+ */
+async function postProcessDocx(buffer, { rtl }) {
+  const JSZip = require('jszip');
+  const zip = await JSZip.loadAsync(buffer);
+  const name = 'word/document.xml';
+  const xml = await zip.file(name).async('string');
+  const patched = rtl ? xml.replace(/(<w:sectPr[^>]*>)(?!<w:bidi\/>)/g, '$1<w:bidi/>') : xml;
+  const styles = dropDuplicateStyles(await zip.file('word/styles.xml').async('string'));
+
+  // Rebuild rather than re-serialise in place: [Content_Types].xml must be the
+  // FIRST entry in the archive or Word can refuse the whole package, and a
+  // plain regenerate does not guarantee that order.
+  const out = new JSZip();
+  const names = Object.keys(zip.files).filter(n => !zip.files[n].dir);
+  const ordered = ['[Content_Types].xml', ...names.filter(n => n !== '[Content_Types].xml')];
+  for (const n of ordered) {
+    if (n === name) out.file(n, patched);
+    else if (n === 'word/styles.xml') out.file(n, styles);
+    else out.file(n, await zip.file(n).async('nodebuffer'));
+  }
+  return {
+    buffer: await out.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }),
+    sections: (patched.match(/<w:bidi\/>/g) || []).length,
+  };
+}
+
 async function buildDocx(manual, out) {
-  const buffer = await Packer.toBuffer(new DocxBuilder(manual).document());
+  const packed = await Packer.toBuffer(new DocxBuilder(manual).document());
+  const { buffer } = await postProcessDocx(packed, { rtl: manual.rtl });
   fs.writeFileSync(out, buffer);
 }
 
