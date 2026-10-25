@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { Bot, CheckCircle2, User, X } from 'lucide-react';
-import { useAoSoc } from '@/store/useAoSoc';
+import { useAfraSOC } from '@/store/useAfraSOC';
 
 /**
  * Incidents leave the active queue the moment containment completes. Without a
@@ -10,7 +10,7 @@ import { useAoSoc } from '@/store/useAoSoc';
  */
 export const ClearedBanner: React.FC = () => {
   const { t } = useTranslation();
-  const { recentlyCleared, dismissCleared } = useAoSoc();
+  const { recentlyCleared, dismissCleared } = useAfraSOC();
 
   if (recentlyCleared.length === 0) return null;
 

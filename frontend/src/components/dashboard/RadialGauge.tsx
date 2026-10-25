@@ -59,6 +59,12 @@ export const RadialGauge: React.FC<RadialGaugeProps> = ({
   const endDeg = sweep / 2;
   const valueEnd = startDeg + (sweep * v) / 100;
   const hex = TONE_HEX[tone];
+  const text = display ?? String(Math.round(v));
+  // Stay inside the hole. A word such as ELEVATED is much wider than a two-digit score.
+  const inner = Math.max(28, (r - thickness / 2) * 2 - 8);
+  const fontSize = display == null
+    ? Math.min(24, Math.floor(inner * 0.34))
+    : Math.max(9, Math.min(13, Math.floor(inner / (text.length * 0.7))));
 
   return (
     <div className="flex flex-col items-center gap-1.5">
@@ -82,11 +88,18 @@ export const RadialGauge: React.FC<RadialGaugeProps> = ({
             />
           )}
         </svg>
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="font-mono text-2xl font-semibold tracking-tight" style={{ color: hex }}>
-            {display ?? Math.round(v)}
+        <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-1">
+          <span
+            className="font-mono font-semibold leading-none"
+            style={{ color: hex, fontSize, maxWidth: inner }}
+          >
+            {text}
           </span>
-          {sublabel && <span className="text-[10px] text-muted">{sublabel}</span>}
+          {sublabel && (
+            <span className="text-[10px] leading-tight text-muted mt-1" style={{ maxWidth: inner }}>
+              {sublabel}
+            </span>
+          )}
         </div>
       </div>
       {label && <span className="label text-center">{label}</span>}

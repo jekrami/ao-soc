@@ -6,7 +6,7 @@
 | **Co-writer** | Claude (Opus 5, Sonnet 5) |
 | **Copyright** | © J.Ekrami-Labs |
 | **Date** | Summer 2026 |
-| **Applies to** | `ao-soc` 2.8.7 (plan v2.8.3) — Phases E and F |
+| **Applies to** | `AfraSOC` 2.8.7 (plan v2.8.3) — Phases E and F |
 
 ---
 
@@ -65,16 +65,16 @@ Roles are `ingest` (may POST detections and nothing else), `viewer` (read), `ana
 (read and act), `service` (a confidential client that may name the operator it acts for),
 `admin`. Give the SIEM an `ingest` key. Give nobody an `admin` key by default.
 
-There are **two** key sets, and they are not the same thing:
+Machine keys and human login are not the same thing:
 
 | Setting | Who holds it | Purpose |
 |---|---|---|
 | `BROKER_API_KEYS` | the SIEM, the UI API, scripts | machine access to the broker. The UI API's entry is the `service` key |
-| `AOSOC_API_KEYS` | **each analyst, personally** | signing in to the dashboard. Required — with none set the UI API mints a random key into its log on every start |
+| `AUTH_JWT_*` / `AUTH_BOOTSTRAP_*` / `SMTP_*` | operators (humans) | dashboard login: password + captcha + email OTP, then RS256 JWT. See `deploy/.env.example`. `AfraSOC_API_KEYS` is retired |
 
-**One named key per analyst.** Approvals, edits and rollbacks are recorded under the
-authenticated name; a shared key is an audit trail that names nobody, and R11's only
-control is that the corpus is auditable.
+Approvals, edits and rollbacks are recorded under the authenticated operator name
+(`X-Actor` from the JWT `sub`); a shared machine key is an audit trail that names
+nobody, and R11's only control is that the corpus is auditable.
 
 **Run the test suite inside the image before Stage 0.** The suite passed on Python 3.14;
 the image is Python 3.13. They are expected to agree and nothing has checked:
@@ -106,9 +106,10 @@ CASE_SYNC_PROVIDER=none
 
 **Check, in this order:**
 
-1. `GET /health` with an analyst key. Read the `preflight` block first — it lists
-   everything configured that will silently do less than it claims. It must be
-   `{"ok": true}` before anything else matters.
+1. `GET /health` with a broker `viewer`/`analyst` key (or an authenticated dashboard
+   session). Read the `preflight` block first — it lists everything configured that
+   will silently do less than it claims. It must be `{"ok": true}` before anything
+   else matters.
 2. `GET /metrics` returns a Prometheus body.
 3. Send one detection. `POST /detections` with any of the seven vendors' shapes.
 4. Open the dashboard. The incident, the situation panel, the decision and an unassigned
@@ -127,8 +128,8 @@ Change one thing:
 
 ```
 LLM_PROVIDER=ollama
-AOSOC_MODEL_HOST=<the GPU host>
-AOSOC_MODEL_PORT=11434
+AfraSOC_MODEL_HOST=<the GPU host>
+AfraSOC_MODEL_PORT=11434
 MODEL_NAME=qwen2.5:7b
 TI_PROVIDER=local        # or misp, if there is one
 ```
@@ -136,7 +137,7 @@ TI_PROVIDER=local        # or misp, if there is one
 These go in `deploy/.env`; then `docker compose --env-file deploy/.env -f
 deploy/docker-compose.yml up -d` recreates the broker with them.
 
-> `AOSOC_MODEL_HOST` becomes `OLLAMA_HOST` inside the container: the host AI-SOC
+> `AfraSOC_MODEL_HOST` becomes `OLLAMA_HOST` inside the container: the host AI-SOC
 > **dials**. It is deliberately not spelt `OLLAMA_HOST` in `deploy/.env`, because Ollama's
 > installer exports that name in your shell as a *bind* address (`0.0.0.0:11434`), compose
 > prefers your shell to `--env-file`, and a bind address is mapped to `localhost` — inside
@@ -409,13 +410,15 @@ Nothing here is a code change; it is what must be true before a site depends on 
       else. No `admin` key is in routine use
 - [ ] Browser traffic is same-origin: the dashboard is served by nginx, which proxies `/api/`
       to the UI API, so CORS never applies. If anything else is ever exposed, set
-      `AOSOC_CORS_ORIGINS` (UI API) and `BROKER_CORS_ORIGINS` (broker) to its real origin —
+      `AfraSOC_CORS_ORIGINS` (UI API) and `BROKER_CORS_ORIGINS` (broker) to its real origin —
       `'*'` is refused outright by the broker. (`ALLOWED_ORIGINS`, which earlier versions of
       these files set, was read by nothing.)
-- [ ] `AOSOC_API_KEYS` holds one named key per analyst, and nobody signs in with a shared one
+- [ ] Human AAA is configured: JWT keypair mounted (`AUTH_JWT_PRIVATE_KEY_FILE` on the
+      broker, `AUTH_JWT_PUBLIC_KEY_FILE` on the UI API), bootstrap admin used once, OTP
+      via SMTP (not `log`), and each operator has their own account — not a shared login
 - [ ] `deploy/.env` is not in version control, and its secrets have been rotated since
       the pilot
-- [ ] Known residual, stated rather than hidden: **pre-shared keys are not an IdP.** SSO,
+- [ ] Known residual, stated rather than hidden: **human JWT login is not an IdP.** SSO,
       per-object RBAC and secrets management are M14's remainder
 
 **Data**

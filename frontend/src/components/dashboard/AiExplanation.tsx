@@ -1,12 +1,12 @@
 import { useTranslation } from 'react-i18next';
 import { Card, CardHeader, CardTitle, CardSubtitle, CardBody } from '@/components/ui/card';
-import { useAoSoc } from '@/store/useAoSoc';
+import { useSelectedIncident } from '@/hooks/useSelectedIncident';
 import { Progress } from '@/components/ui/progress';
 import { Brain, Sparkles } from 'lucide-react';
 
 export const AiExplanation: React.FC = () => {
   const { t } = useTranslation();
-  const { selectedIncident, selectedExplanation } = useAoSoc();
+  const { selectedIncident, selectedExplanation } = useSelectedIncident();
   const exp = selectedExplanation ?? selectedIncident?.ai_explanation;
 
   if (!exp) {

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# start-demo.sh — Prepare and launch the full AO-SOC demo stack (Linux/macOS)
+# start-demo.sh — Prepare and launch the full AfraSOC demo stack (Linux/macOS)
 # =============================================================================
 #
 # One-shot demo bootstrap for local recordings and smoke tests (no Ollama, no Splunk).
@@ -80,18 +80,18 @@ mkdir -p "$LOG_DIR"
 # Nothing in the stack runs unauthenticated any more, so the launcher mints the
 # keys and wires them through: the UI API holds a service key for the broker,
 # and the operator signs in to the dashboard with the analyst key printed at
-# the end. Set AOSOC_DEMO_KEY / AOSOC_DEMO_SERVICE_KEY to pin them across runs.
+# the end. Set AfraSOC_DEMO_KEY / AfraSOC_DEMO_SERVICE_KEY to pin them across runs.
 new_key() {
   head -c 24 /dev/urandom | base64 | tr '+/' '-_' | tr -d '='
 }
-OPERATOR_KEY="${AOSOC_DEMO_KEY:-$(new_key)}"
-SERVICE_KEY="${AOSOC_DEMO_SERVICE_KEY:-$(new_key)}"
+OPERATOR_KEY="${AfraSOC_DEMO_KEY:-$(new_key)}"
+SERVICE_KEY="${AfraSOC_DEMO_SERVICE_KEY:-$(new_key)}"
 
 # Broker principals: the UI API (service — may name the operator it acts for)
 # and the AI runner / seeder (analyst). UI API principal: the human.
 export BROKER_API_KEYS="ui-api:service:${SERVICE_KEY},demo-runner:analyst:${OPERATOR_KEY}"
 export BROKER_API_KEY="$SERVICE_KEY"
-export AOSOC_API_KEYS="analyst:analyst:${OPERATOR_KEY}"
+export AfraSOC_API_KEYS="analyst:analyst:${OPERATOR_KEY}"
 
 # --- Helpers ---
 
@@ -240,7 +240,7 @@ fi
 
 echo ""
 echo "========================================"
-echo " AO-SOC demo stack is running"
+echo " AfraSOC demo stack is running"
 echo "========================================"
 echo ""
 echo "  Dashboard:     $DASHBOARD_URL"

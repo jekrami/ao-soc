@@ -37,12 +37,12 @@ Three mechanics make bidirectional sync survivable:
 """
 from __future__ import annotations
 
+from timeutil import utcnow as _utcnow
+
 import asyncio
-import json
 import logging
 import os
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import select, update
@@ -134,7 +134,7 @@ class CaseSnapshot:
 
     def as_document(self) -> Dict[str, Any]:
         return {
-            'source': 'ao-soc',
+            'source': 'AfraSOC',
             'case_id': self.case_id,
             'situation_id': self.situation_id,
             'alert_id': self.alert_id,
@@ -253,8 +253,6 @@ def enabled() -> bool:
     return get_sync_provider().name != 'none'
 
 
-def _utcnow() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 # --- Outbound --------------------------------------------------------------

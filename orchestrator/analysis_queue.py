@@ -31,10 +31,12 @@ Two properties worth stating because they are what make it trustworthy:
 """
 from __future__ import annotations
 
+from timeutil import utcnow as _utcnow
+
 import asyncio
 import logging
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from sqlalchemy import func, select, update
@@ -91,8 +93,6 @@ _workers: List[asyncio.Task] = []
 _claim_lock = asyncio.Lock()
 
 
-def _utcnow() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def _backoff(attempts: int) -> timedelta:
@@ -494,15 +494,3 @@ async def retry_job(job_id: int) -> Optional[Dict[str, Any]]:
         ).mappings().one()
     logger.info('Analysis job %d for situation %s requeued by hand', job_id, row['situation_id'])
     return _serialize(requeued)
-
-
-def queue_config() -> Dict[str, Any]:
-    """Reported on /health beside the other active policies."""
-    return {
-        'intake_mode': INTAKE_MODE,
-        'concurrency': ANALYSIS_CONCURRENCY,
-        'max_attempts': ANALYSIS_MAX_ATTEMPTS,
-        'retry_base_seconds': ANALYSIS_RETRY_BASE_SECONDS,
-        'retry_max_seconds': ANALYSIS_RETRY_MAX_SECONDS,
-        'high_water': ANALYSIS_QUEUE_HIGH_WATER,
-    }

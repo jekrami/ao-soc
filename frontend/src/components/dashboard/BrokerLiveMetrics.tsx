@@ -1,19 +1,24 @@
 import { useTranslation } from 'react-i18next';
+import { useQueryClient } from '@tanstack/react-query';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { useAoSoc } from '@/store/useAoSoc';
+import { useSummary } from '@/hooks/useHealth';
+import { useIncidents } from '@/hooks/useIncidents';
+import { queryKeys } from '@/lib/queryKeys';
 import { Radio, ShieldAlert, ShieldCheck, RefreshCw } from 'lucide-react';
 
 export const BrokerLiveMetrics: React.FC = () => {
   const { t } = useTranslation();
-  const { summary, loading, refreshIncidents } = useAoSoc();
+  const { data: summary, isFetching: summaryBusy } = useSummary();
+  const { isFetching: incidentsBusy } = useIncidents();
+  const queryClient = useQueryClient();
   const live = summary?.broker_live_alerts ?? 0;
 
   if (live === 0) return null;
 
   const pending = summary?.broker_pending_alerts ?? 0;
   const contained = summary?.broker_contained_alerts ?? 0;
-  const busy = loading.incidents || loading.summary;
+  const busy = incidentsBusy || summaryBusy;
 
   return (
     <Card className="px-4 py-3 flex flex-wrap items-center justify-between gap-3 border-info/30 bg-info/5">
@@ -33,7 +38,11 @@ export const BrokerLiveMetrics: React.FC = () => {
         size="sm"
         variant="outline"
         disabled={busy}
-        onClick={() => { void refreshIncidents(); }}
+        aria-label={t('common.refreshAlerts')}
+        onClick={() => {
+          void queryClient.invalidateQueries({ queryKey: queryKeys.incidents(false) });
+          void queryClient.invalidateQueries({ queryKey: queryKeys.summary });
+        }}
       >
         <RefreshCw className={`h-3.5 w-3.5 ${busy ? 'animate-spin' : ''}`} />
         {t('common.refreshAlerts')}

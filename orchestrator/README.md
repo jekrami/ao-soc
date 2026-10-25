@@ -87,7 +87,7 @@ python soc_orchestrator.py
 | `RESPONSE_DRY_RUN` | `false` | Nothing is sent; each connector's exact payload is recorded and the action reports `SIMULATED`. **Start a deployment here** |
 | `RESPONSE_MAX_ATTEMPTS` | `3` | Attempts per action. Only transport failures are retried — a refusal is an answer |
 | `RESPONSE_RETRY_BACKOFF` | `1.5` | Seconds, doubling per attempt |
-| `RESPONSE_SITE_ID` | `ao-soc` | Idempotency namespace, so two installations feeding one SOAR platform cannot collide |
+| `RESPONSE_SITE_ID` | `AfraSOC` | Idempotency namespace, so two installations feeding one SOAR platform cannot collide |
 | `CONNECTOR_<NAME>_DRIVER` | *(unset)* | `log`, `noop`, `webhook` or `wazuh`. A routed connector with no driver **fails** its actions rather than silently writing them to a file |
 | `CONNECTOR_<NAME>_VERBS` | *(all)* | Policy rule names this executor performs. Anything else routed to it is `BLOCKED` before a packet leaves |
 | `CONNECTOR_<NAME>_URL` / `_TOKEN_ENV` | *(unset)* | Endpoint, and the **name of the variable** holding its secret — never the secret itself, because settings are reported on `/health` |
@@ -102,22 +102,49 @@ python soc_orchestrator.py
 | `THEHIVE_URL` / `THEHIVE_API_KEY` | *(unset)* | On-prem TheHive 5 instance |
 | `METRICS_ENABLED` | `true` | Serve `GET /metrics` in Prometheus exposition format |
 | `BACKUP_DIR` | `data/backups` | Where `backup.py` writes archives and their manifests |
+| `AUTH_JWT_PRIVATE_KEY_FILE` | *(required for human login)* | PEM path for RS256 signing of dashboard access JWTs. UI API gets only the public PEM |
+| `AUTH_HMAC_KEY` | *(derived if unset)* | HMAC key for OTP and refresh-token hashes — not the JWT signing key |
+| `AUTH_OTP_DELIVERY` | `smtp` | `smtp` (production) or `log` (local-dev only, requires `AUTH_OTP_LOG_ENABLED=true`) |
+| `AUTH_BOOTSTRAP_USERNAME` / `_PASSWORD` / `_EMAIL` | *(unset)* | Seed the first `admin` when `operators` is empty; cleared from the process env after insert |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_FROM` | *(unset)* | Mail settings when `AUTH_OTP_DELIVERY=smtp` |
 
 ## Authentication
 
-**No route but `GET /health` is reachable without a key.** The broker dispatches to
-tools that act on the network, so an open ingest path is an unauthenticated remote
-"isolate host" primitive (risk R1). Present the key as `X-API-Key: <secret>` or
-`Authorization: Bearer <secret>` — the second is there so an IdP token replaces the
-shared secret later without changing a single call site.
+**Machine callers** use API keys. **Human operators** use dashboard JWT login
+(password + captcha, then email OTP when that toggle is on) via `/api/auth/*` —
+see `human_auth.py` and `deploy/.env.example`. `AfraSOC_API_KEYS` is not used here.
 
-| Role | Scopes |
+Password length, lockout, the OTP toggle, token lifetime, idle timeout, the
+absolute session cap, and the per-operator active-session limit are rows in
+`auth_policy` (not environment variables). An admin edits them on the Settings
+page; each save is an append-only `POLICY_CHANGE` audit row. Defaults: 12-character
+passwords, OTP required, 30-minute access tokens, 30-minute idle timeout, 8-hour
+absolute cap, 5 active sessions. A new sign-in past the cap revokes the oldest
+live session (`SESSION_LIMIT`).
+
+**No machine route but `GET /health` is reachable without a key** (auth routes are
+the human exception). The broker dispatches to tools that act on the network, so an
+open ingest path is an unauthenticated remote "isolate host" primitive (risk R1).
+Present a machine key as `X-API-Key: <secret>` or `Authorization: Bearer <secret>` —
+the second is also how a verified human access JWT is carried after the UI API
+proxies login.
+
+| Machine role (`BROKER_API_KEYS`) | Scopes |
 |------|--------|
 | `ingest` | `detections:write` — post detections, nothing else |
 | `viewer` | `decisions:read` |
 | `analyst` | `decisions:read`, `decisions:act` |
 | `service` | all of the above plus `actor:assert` — a confidential client (the UI API) that may name the operator it is acting for |
 | `admin` | everything |
+
+| Human role (JWT claim / `operators.role`) | May do |
+|------|--------|
+| `viewer` | read; own auth-audit rows only |
+| `analyst` | read and act (same decision scopes as machine `analyst`) |
+| `admin` | analyst powers + user management + full auth audit |
+
+`ingest` and `service` cannot be assigned to a human. Legacy human `user` rows
+are rewritten to `analyst` on startup.
 
 ```bash
 export BROKER_API_KEYS="ui-api:service:$(openssl rand -base64 24),splunk-prod:ingest:$(openssl rand -base64 24)"
@@ -557,11 +584,32 @@ the ones it used. **An id it returns that was never offered is dropped** — and
 `enrichment.precedent.fabricated`, because a model that invents case ids is a fact
 worth having.
 
-**Embeddings are deferred, not forgotten.** The lab default is hybrid BM25 + vector
-with `snowflake-arctic-embed2`, which is benchmarked and already local. A vector index
-earns its keep when ranking rather than corpus size is the limit; this corpus is one
-row per decision. The deterministic path also works with `LLM_PROVIDER=echo` and on a
+**Embeddings over the precedent corpus remain deferred.** A vector index earns its
+keep when ranking rather than corpus size is the limit; this corpus is one row per
+decision. The deterministic path also works with `LLM_PROVIDER=echo` and on a
 machine with no GPU, which the model-free rule requires.
+
+## Document knowledge (M09 — LightRAG beside the gate)
+
+Written procedures are a different question from precedent: *"which SOP / approved
+tool / change window applies here?"* That corpus is markdown under `KNOWLEDGE_DIR`,
+indexed by LightRAG (`lightrag-hku`) into `LIGHTRAG_WORKING_DIR` when
+`KNOWLEDGE_ENABLED=true`.
+
+| Setting | Default | Role |
+|---------|---------|------|
+| `KNOWLEDGE_ENABLED` | `false` | Master switch |
+| `KNOWLEDGE_DIR` | *(unset)* | Markdown corpus root |
+| `LIGHTRAG_WORKING_DIR` | `orchestrator/rag_storage` | Graph + vector store (gitignored) |
+| `LIGHTRAG_EMBED_MODEL` | *(unset)* | Ollama embed model — required when enabled |
+| `LIGHTRAG_QUERY_MODE` | `mix` | LightRAG query mode |
+| `KNOWLEDGE_TOP_K` | `4` | Chunks offered to the prompt |
+
+Retrieval runs inside the analysis job next to intel and precedent. Results are
+offered as `DOC-…` ids; an id the model invents is dropped and recorded
+(`enrichment.knowledge.fabricated`). **Knowledge never opens or closes autopilot** —
+`precedent.py` alone does that. A retrieval failure yields an empty section and the
+verdict still proceeds. Sample SOPs ship under `knowledge/corpus/`.
 
 ## Action risk policy (`action_policy.py`)
 
@@ -742,7 +790,7 @@ analysis continues, the hashes still travel with the decision, and `persisted` i
 losing a decision to an audit-table fault would be the worse failure.
 
 **The envelope.** `GET /api/alerts/{id}/decision/envelope` exports one decision under a
-schema version (`ao-soc.decision-envelope/1`), leaving the dashboard's own decision object
+schema version (`AfraSOC.decision-envelope/1`), leaving the dashboard's own decision object
 alone:
 
 ```text
@@ -835,7 +883,7 @@ Five properties, each because the alternative is an incident rather than a bug:
 ```json
 {"execution_id":"exec_a1eb351592","status":"DONE","connector":"firewall","driver":"webhook",
  "action":"Block IP","target":"185.220.101.7","risk_class":"HIGH_WRITE","attempts":2,
- "idempotency_key":"ao-soc:41:a3","external_ref":"FW-991","delivered_at":"2026-08-14T16:12:32Z"}
+ "idempotency_key":"AfraSOC:41:a3","external_ref":"FW-991","delivered_at":"2026-08-14T16:12:32Z"}
 ```
 
 Tail the `log` driver during a demo: `tail -f orchestrator/data/soar-actions.jsonl`.
@@ -915,7 +963,7 @@ misconfiguration there is: no error, no warning, and the default behaves exactly
 if the setting had never been made. Two kinds are reported, each with what was
 probably meant: names this project has been known to misname (`LLM_ENDPOINT` →
 `OLLAMA_HOST`, `LLM_MODEL` → `MODEL_NAME`, `ALLOWED_ORIGINS` → `BROKER_CORS_ORIGINS`,
-`DASHBOARD_API_KEYS` → `AOSOC_API_KEYS`), and any variable carrying one of our prefixes
+`DASHBOARD_API_KEYS` / `AfraSOC_API_KEYS` → `AUTH_JWT_PUBLIC_KEY_FILE`), and any variable carrying one of our prefixes
 (`TIER2_`, `RESPONSE_`, `TI_`, `ACTION_`, `CASE_SYNC_`, ...) that the code does not
 recognise — a misspelling. The set of names the code reads is derived from its own
 source, so it cannot fall behind it. Ollama's own variables (`OLLAMA_MODELS`, ...) and
@@ -928,7 +976,7 @@ python backup.py create
 ```
 
 ```bash
-python backup.py verify data/backups/ao-soc-20260814T101500Z.db
+python backup.py verify data/backups/AfraSOC-20260814T101500Z.db
 ```
 
 A decision, a human correction, an outcome and a receipt exist in exactly one place

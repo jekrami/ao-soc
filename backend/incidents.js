@@ -1,7 +1,18 @@
 import { incidents as mockIncidents, summary as mockSummary } from './mockData.js';
 import { getBrokerIncident, listBrokerIncidents } from './alertStore.js';
-import { listBrokerDecisions } from './decisions.js';
+import { brokerAvailable, brokerFetch } from './brokerClient.js';
 import { buildMitrePayload } from './posture.js';
+
+async function listBrokerDecisions() {
+  if (!(await brokerAvailable())) return [];
+  try {
+    const data = await brokerFetch('/api/decisions');
+    return data.items || [];
+  } catch (err) {
+    console.warn('[incidents] broker decision list failed:', err.message);
+    return [];
+  }
+}
 
 const SEVERITY_ORDER = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
 
@@ -94,7 +105,7 @@ export async function listIncidents(severityFilter = '', { includeDemo = null, s
   const brokerIds = new Set(broker.map(i => i.id));
   const mock = mockIncidents
     .filter(i => !brokerIds.has(i.id))
-    .map(i => ({ ...i, source: 'mock' }));
+    .map(i => ({ ...i, source: 'demo' }));
 
   const showDemo = includeDemo ?? broker.length === 0;
   let merged = showDemo ? [...broker, ...mock] : [...broker];
@@ -137,7 +148,7 @@ export async function getIncident(id) {
   const broker = await getBrokerIncident(id);
   if (broker) return broker;
   const mock = mockIncidents.find(i => i.id === id);
-  return mock ? { ...mock, source: 'mock' } : null;
+  return mock ? { ...mock, source: 'demo' } : null;
 }
 
 export async function buildSummary(incidentList = null) {
@@ -145,7 +156,7 @@ export async function buildSummary(incidentList = null) {
   // automation rate are computed from, so this must not use the active filter.
   const allIncidents = incidentList ?? await listIncidents('', { includeDemo: true, status: 'all' });
   const liveIncidents = allIncidents.filter(i => i.source === 'broker');
-  const demoIncidents = allIncidents.filter(i => i.source === 'mock');
+  const demoIncidents = allIncidents.filter(i => i.source === 'demo');
   const postureIncidents = liveIncidents.length > 0 ? liveIncidents : allIncidents;
 
   const counts = severityCounts(postureIncidents);

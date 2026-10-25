@@ -1,7 +1,9 @@
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card, CardHeader, CardTitle, CardSubtitle, CardBody } from '@/components/ui/card';
-import { useAoSoc } from '@/store/useAoSoc';
+import { useSystemHealth } from '@/hooks/useHealth';
+import { useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/queryKeys';
 import { StatusDot } from '@/components/ui/status-dot';
 import { Progress } from '@/components/ui/progress';
 import { fmtNumber } from '@/lib/utils';
@@ -25,7 +27,9 @@ const buffer = new HealthBuffer();
 
 export const SystemHealthPanel: React.FC = () => {
   const { t, i18n } = useTranslation();
-  const { systemHealth, refreshHealth } = useAoSoc();
+  const { data: systemHealth } = useSystemHealth();
+  const queryClient = useQueryClient();
+  const refreshHealth = () => queryClient.invalidateQueries({ queryKey: queryKeys.health });
   const numberLocale = i18n.language === 'fa' ? 'fa-IR' : 'en-US';
 
   useMemo(() => {

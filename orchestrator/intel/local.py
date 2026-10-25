@@ -37,7 +37,6 @@ from threat_intel import (
     IntelObservation,
     IntelProvider,
     MALICIOUS,
-    UNKNOWN,
 )
 
 logger = logging.getLogger(__name__)

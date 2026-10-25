@@ -38,6 +38,8 @@ own.
 """
 from __future__ import annotations
 
+from timeutil import utcnow as _utcnow
+
 import asyncio
 import ipaddress
 import json
@@ -45,8 +47,8 @@ import logging
 import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import select
 
@@ -93,8 +95,6 @@ except ValueError:
     LOOKUP_TIMEOUT = 10.0
 
 
-def _utcnow() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 # --- The contract ----------------------------------------------------------
@@ -259,11 +259,6 @@ def set_intel_provider(provider: IntelProvider) -> None:
     """Install a provider explicitly (tests, scripts)."""
     global _active
     _active = provider
-
-
-def reset_intel_provider() -> None:
-    global _active
-    _active = None
 
 
 # --- Indicator extraction --------------------------------------------------

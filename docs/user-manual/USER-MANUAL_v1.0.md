@@ -1,4 +1,4 @@
-# AO-SOC Command Center — User Manual
+# AfraSOC Command Center — User Manual
 
 | | |
 |---|---|
@@ -7,9 +7,9 @@
 | **Copyright** | © J.Ekrami-Labs |
 | **Date** | Summer 2026 |
 | **Document version** | 1.0 |
-| **Applies to** | `ao-soc` 2.8.8 |
+| **Applies to** | `AfraSOC` 2.8.8 |
 
-This manual is for the **people who use AO-SOC**: the SOC analyst on shift, the shift lead,
+This manual is for the **people who use AfraSOC**: the SOC analyst on shift, the shift lead,
 and whoever installs it. It covers how to install it, how to sign in, what each menu and
 page shows, and how to work an incident from the queue to the archive.
 
@@ -24,7 +24,7 @@ sample data.
 
 ## Contents
 
-1. [What AO-SOC is, in one minute](#1-what-ao-soc-is-in-one-minute)
+1. [What AfraSOC is, in one minute](#1-what-AfraSOC-is-in-one-minute)
 2. [Installation](#2-installation)
 3. [Signing in](#3-signing-in)
 4. [The screen layout and the top bar](#4-the-screen-layout-and-the-top-bar)
@@ -42,11 +42,11 @@ sample data.
 
 ---
 
-## 1. What AO-SOC is, in one minute
+## 1. What AfraSOC is, in one minute
 
-AO-SOC is the **decision layer** of a Security Operations Center. It does **not** collect
+AfraSOC is the **decision layer** of a Security Operations Center. It does **not** collect
 logs, store logs or detect attacks. Your existing tools do that (Splunk, Wazuh, Elastic,
-Sentinel, CrowdStrike, or anything that sends CEF). AO-SOC does four things with what
+Sentinel, CrowdStrike, or anything that sends CEF). AfraSOC does four things with what
 those tools send it:
 
 1. **Correlates.** Detections from different tools about the same user, host or address
@@ -64,11 +64,11 @@ those tools send it:
    can be **rolled back** from the dashboard.
 
 ```
-Detection tools → AO-SOC correlation → AI Tier-2 decision → YOU (approve / edit / reject)
+Detection tools → AfraSOC correlation → AI Tier-2 decision → YOU (approve / edit / reject)
                → policy guardrails → response tools → audit, archive, rollback
 ```
 
-> **Playbooks in AO-SOC.** In this product a *playbook* is the **action plan attached to
+> **Playbooks in AfraSOC.** In this product a *playbook* is the **action plan attached to
 > each decision**. It is visible in two places: the **Bundled action plan** in the AI
 > Tier-2 Decision panel, where you approve it and it runs, and the **Incident Playbook**
 > checklist on the Live Alerts page, which is a read-only containment summary. You do not
@@ -79,7 +79,7 @@ Detection tools → AO-SOC correlation → AI Tier-2 decision → YOU (approve /
 
 ## 2. Installation
 
-There are two ways to run AO-SOC:
+There are two ways to run AfraSOC:
 
 | | Use it for | Section |
 |---|---|---|
@@ -93,7 +93,7 @@ There are two ways to run AO-SOC:
 | Python | 3.11 or later | Broker (demo) |
 | Node.js + npm | 20 or later | UI API and dashboard (demo) |
 | Docker + Docker Compose | recent | Production |
-| Ollama + model `qwen3.5:latest` (or `qwen2.5:7b`) | optional | Real AI decisions. Without a model, AO-SOC runs in *model-free* mode and a rule fallback decides |
+| Ollama + model `qwen3.5:latest` (or `qwen2.5:7b`) | optional | Real AI decisions. Without a model, AfraSOC runs in *model-free* mode and a rule fallback decides |
 | Browser | Current Edge, Chrome or Firefox | Dashboard. Designed for 1920×1080 and larger; works on tablets and phones |
 
 **Ports**
@@ -107,7 +107,7 @@ There are two ways to run AO-SOC:
 
 ### 2.1 Demo installation (Windows, Linux, macOS)
 
-**Step 1. Get the code** and open a terminal in the `ao-soc` folder.
+**Step 1. Get the code** and open a terminal in the `AfraSOC` folder.
 
 **Step 2. Start everything with one command.**
 
@@ -185,7 +185,7 @@ Fill them into `deploy/.env`:
 |---|---|---|
 | `BROKER_API_KEYS` | Machines: the SIEM (`ingest`), the UI API (`service`) | `ui-api:service:<key>,siem:ingest:<key>` |
 | `UI_API_BROKER_KEY` | The UI API: the same secret as its `service` entry above | `<key>` |
-| `AOSOC_API_KEYS` | **Each analyst personally**, for signing in to the dashboard | `soclead:analyst:<key>,dutydesk:viewer:<key>` |
+| `AfraSOC_API_KEYS` | **Each analyst personally**, for signing in to the dashboard | `soclead:analyst:<key>,dutydesk:viewer:<key>` |
 
 The format is `name:role:secret`, with entries separated by commas. **Give every analyst
 their own key.** Approvals, edits and rollbacks are recorded under the key's name, so a
@@ -252,7 +252,7 @@ Every page has the same **top bar**:
 
 | # | Element | What it does |
 |---|---|---|
-| 1 | **AO-SOC logo** | Returns to the Command Center |
+| 1 | **AfraSOC logo** | Returns to the Command Center |
 | 2 | **Main menu** | The six pages (table below) |
 | 3 | **Pipeline status** (Splunk · AI Broker · LLM · SOAR) | A green dot means the part is online, amber degraded, red offline, grey unknown. Refreshed every 5 seconds |
 | 4 | **Posture** | Overall security posture (`LOW` / `GUARDED` / `HEIGHTENED` / `ELEVATED`) with its score from 0 to 100 |
@@ -322,7 +322,7 @@ title, the **risk** score, the AI **confidence** and the number of affected **as
 The bar at the bottom of each card is the risk score, coloured by severity.
 
 A title such as *"Privilege escalation to SYSTEM (+2 related from 3 tools)"* means
-AO-SOC joined three detections from three different tools into one situation.
+AfraSOC joined three detections from three different tools into one situation.
 
 #### Attack storyboard
 
@@ -334,7 +334,7 @@ AO-SOC joined three detections from three different tools into one situation.
 - **Evidence linked.** The individual pieces of evidence, their type (auth, process,
   network) and weight.
 - **Mitigate Attack** (red button). Marks the incident **CONTAINED** by hand, **without**
-  running the plan. Use it only when the threat was already contained outside AO-SOC. The
+  running the plan. Use it only when the threat was already contained outside AfraSOC. The
   normal route is **Approve plan** (Section 6).
 
 #### Security Situation: why several alerts became one incident
@@ -424,7 +424,7 @@ A compact version of the System Health page (Section 11).
 
 ## 6. Working an incident: the AI Tier-2 Decision
 
-This panel is the heart of AO-SOC. You **review once**, and the response tools then run
+This panel is the heart of AfraSOC. You **review once**, and the response tools then run
 the whole plan.
 
 ![AI Tier-2 Decision](images_v1.0/07-tier2-decision.png)
@@ -491,7 +491,7 @@ Your correction is stored as a **label** that the system learns from. It feeds t
 *precedent* that later decisions are compared with. Editing is how the system gets better,
 so an edit is more useful than a silent reject.
 
-AO-SOC refuses an edit that could never run, for example a *Block IP* action whose target
+AfraSOC refuses an edit that could never run, for example a *Block IP* action whose target
 is not an IP address. A plan that has already been executed cannot be edited, because it
 is the record of what was sent.
 
@@ -745,7 +745,7 @@ and review which detection sources produce false positives.
 | **Critical asset / Privileged account / Service account** | Targets autopilot never touches |
 | **Pending approval → Approved → Executing → Complete** | The normal status sequence of a plan |
 | **Failed** | The response tool answered and declined. The reason is in the receipt |
-| **Blocked** | The action never left AO-SOC. The target was malformed, or no tool performs it |
+| **Blocked** | The action never left AfraSOC. The target was malformed, or no tool performs it |
 | **Dry run** | Simulated only. Nothing was sent to any tool |
 | **Superseded** | The situation was merged into another one, and the live decision is there |
 | **Precedent** | Similar past cases that people decided, which autopilot relies on |
@@ -758,7 +758,7 @@ and review which detection sources produce false positives.
 
 | Symptom | What to do |
 |---|---|
-| The sign-in screen keeps coming back | The key is wrong, revoked, or belongs to the broker rather than the dashboard. Ask your administrator for a key from `AOSOC_API_KEYS` |
+| The sign-in screen keeps coming back | The key is wrong, revoked, or belongs to the broker rather than the dashboard. Ask your administrator for a key from `AfraSOC_API_KEYS` |
 | *"Failed to load dashboard … port 4317"* | The UI API is not running. Demo: restart with `start-demo`. Docker: `docker compose -f deploy/docker-compose.yml ps` |
 | The queue is empty | Check that the detection tools are sending to the broker with an **ingest** key. Demo: rerun `start-demo`, or on Windows run `orchestrator\trigger-alert.ps1` |
 | New incidents stopped getting decisions | The analysis queue may hold failed jobs. Ask the administrator to check `GET /api/queue` on the broker. Detections are stored regardless and can be retried |
@@ -779,4 +779,4 @@ Audit trail.
 
 | Version | Date | What changed | Author |
 |---|---|---|---|
-| 1.0 | Summer 2026 | First edition, for `ao-soc` 2.8.8: installation (demo and Docker), sign-in, every menu and page, the Tier-2 workflow (approve, edit, reject, audit, outcome, rollback), Live Alerts playbook, daily routine, glossary and troubleshooting. 31 screenshots from the demo stack | J.Ekrami, Claude (Opus 5) |
+| 1.0 | Summer 2026 | First edition, for `AfraSOC` 2.8.8: installation (demo and Docker), sign-in, every menu and page, the Tier-2 workflow (approve, edit, reject, audit, outcome, rollback), Live Alerts playbook, daily routine, glossary and troubleshooting. 31 screenshots from the demo stack | J.Ekrami, Claude (Opus 5) |

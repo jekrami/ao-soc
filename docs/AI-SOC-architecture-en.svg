@@ -115,8 +115,8 @@
   <text class="chip" x="739" y="437" text-anchor="middle" fill="#e0e7ff">Structured reasoning — built</text>
   <text class="box-sub" x="739" y="458" text-anchor="middle">evidence · rationale · ATT&amp;CK · JSON output</text>
   <rect x="928" y="416" width="330" height="56" rx="7" fill="#ffffff" fill-opacity="0.14" stroke="#c7d2fe" stroke-width="1"/>
-  <text class="chip" x="1093" y="437" text-anchor="middle" fill="#e0e7ff">RAG · verification &amp; precedent — built</text>
-  <text class="box-sub" x="1093" y="458" text-anchor="middle">intel checked · ATT&amp;CK catalogue · cited precedent</text>
+  <text class="chip" x="1093" y="437" text-anchor="middle" fill="#e0e7ff">RAG · verification, precedent &amp; procedures — built</text>
+  <text class="box-sub" x="1093" y="458" text-anchor="middle">intel · ATT&amp;CK · cited precedent · LightRAG SOPs (context only)</text>
 
   <!-- L4 tier2 -->
   <rect x="560" y="510" width="712" height="82" rx="9" fill="#b91c1c"/>
@@ -152,26 +152,26 @@
   <text class="box-sub" x="446" y="456" text-anchor="middle">Searchable · retention drops</text>
   <text class="box-sub" x="446" y="476" text-anchor="middle">vendor copies, never decisions</text>
 
-  <!-- Side: dashboard -->
+  <!-- Side: dashboard (+ human AAA boundary on UI API) -->
   <rect x="348" y="510" width="196" height="278" rx="9" fill="#1d4ed8"/>
   <circle cx="372" cy="534" r="7" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"/>
   <text class="side-title" x="446" y="539" text-anchor="middle">DASHBOARD</text>
-  <text class="box-sub" x="446" y="568" text-anchor="middle">7 operational routes</text>
-  <text class="box-sub" x="446" y="592" text-anchor="middle">Bilingual EN / FA</text>
-  <text class="box-sub" x="446" y="616" text-anchor="middle">Full RTL support</text>
-  <text class="box-sub" x="446" y="640" text-anchor="middle">Executive KPIs</text>
-  <text class="box-sub" x="446" y="664" text-anchor="middle">ATT&amp;CK heatmap</text>
-  <text class="box-sub" x="446" y="688" text-anchor="middle">Tier-2 panel</text>
-  <text class="box-sub" x="446" y="712" text-anchor="middle">Incident archive</text>
+  <text class="box-sub" x="446" y="568" text-anchor="middle">Home · Search · Dashboards</text>
+  <text class="box-sub" x="446" y="592" text-anchor="middle">Reports · Alerts · Sources</text>
+  <text class="box-sub" x="446" y="616" text-anchor="middle">Query lang over decision store</text>
+  <text class="box-sub" x="446" y="640" text-anchor="middle">Human AAA · EN / FA · RTL</text>
+  <text class="box-sub" x="446" y="664" text-anchor="middle">password · captcha · OTP · JWT</text>
+  <text class="box-sub" x="446" y="688" text-anchor="middle">Tier-2 desk · KPIs · ATT&amp;CK</text>
+  <text class="box-sub" x="446" y="712" text-anchor="middle">Rules never enter intake</text>
   <line x1="368" y1="730" x2="524" y2="730" stroke="#93c5fd" stroke-width="1.5"/>
-  <text class="box-sub" x="446" y="754" text-anchor="middle">Outcomes attributed</text>
-  <text class="box-sub" x="446" y="774" text-anchor="middle">per source tool</text>
+  <text class="box-sub" x="446" y="754" text-anchor="middle">UI API verifies public PEM</text>
+  <text class="box-sub" x="446" y="774" text-anchor="middle">broker keeps connector keys</text>
 
   <!-- Governance -->
   <rect x="348" y="806" width="924" height="58" rx="9" fill="#334155"/>
   <circle cx="1248" cy="835" r="7" fill="#f59e0b" stroke="#ffffff" stroke-width="1.5"/>
-  <text class="box-title" x="810" y="830" text-anchor="middle">GOVERNANCE &amp; SECURITY — authentication · RBAC · secrets management · audit</text>
-  <text class="box-sub" x="810" y="852" text-anchor="middle">Auth and roles on every route · metrics with latency histograms · start-up preflight · verified backups · containers; IdP/SSO and RBAC remain</text>
+  <text class="box-title" x="810" y="830" text-anchor="middle">GOVERNANCE &amp; SECURITY — human JWT · connector API keys · audit · secrets</text>
+  <text class="box-sub" x="810" y="852" text-anchor="middle">Human AAA on the dashboard · machine keys on the broker · metrics · preflight · backups · containers; IdP/SSO and per-object RBAC remain</text>
 
   <!-- ================= Arrows ================= -->
   <line x1="296" y1="199" x2="330" y2="199" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
@@ -210,5 +210,5 @@
   <text class="legend" x="1010" y="946">dashed line = external dependency</text>
 
   <!-- ================= Footer ================= -->
-  <text class="foot" x="830" y="994" text-anchor="middle">Written by J.Ekrami · Co-written with Claude (Opus 5, Sonnet 5) · © J.Ekrami-Labs · Summer 2026 · matches plan v2.8.3</text>
+  <text class="foot" x="830" y="994" text-anchor="middle">Written by J.Ekrami · Co-written with Cursor Grok 4.5 · © J.Ekrami-Labs · Summer 2026 · matches plan v2.9.0</text>
 </svg>

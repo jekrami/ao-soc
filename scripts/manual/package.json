@@ -1,8 +1,8 @@
 {
-  "name": "ao-soc-manual-builder",
+  "name": "AfraSOC-manual-builder",
   "version": "1.0.0",
   "private": true,
-  "description": "Builds the PDF and Word editions of the AO-SOC user manuals from their Markdown source.",
+  "description": "Builds the PDF and Word editions of the AfraSOC user manuals from their Markdown source.",
   "license": "UNLICENSED",
   "scripts": {
     "build": "node build-manual.js"

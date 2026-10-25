@@ -36,12 +36,13 @@ not which weights. A site that needs the second pins its tags to digests.
 """
 from __future__ import annotations
 
+from timeutil import utcnow as _utcnow
+
 import hashlib
 import json
 import logging
 import os
 import uuid
-from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from sqlalchemy import select
@@ -72,8 +73,6 @@ def reasoning_hash(prompt: str, response: str) -> str:
     return hashlib.sha256((prompt or '').encode('utf-8') + b'\x00' + (response or '').encode('utf-8')).hexdigest()
 
 
-def _utcnow() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def _summary(row) -> Dict[str, Any]:
@@ -210,8 +209,3 @@ async def reasoning_hash_for(run_id: Optional[str]) -> str:
         return ''
     row = await _load(run_id)
     return (row['reasoning_hash'] if row else '') or ''
-
-
-def provenance_config() -> Dict[str, Any]:
-    """Reported on /health."""
-    return {'retain_text': RETAIN_TEXT}

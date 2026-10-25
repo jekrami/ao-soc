@@ -14,7 +14,8 @@ if (!BROKER_API_KEY) {
   );
 }
 
-export async function brokerFetch(path, init = {}) {
+/** Low-level broker call that keeps status and body for the transparent proxy. */
+export async function brokerExchange(path, init = {}) {
   const url = `${BROKER_URL}${path}`;
   const { actor, headers, ...rest } = init;
   const res = await fetch(url, {
@@ -26,13 +27,26 @@ export async function brokerFetch(path, init = {}) {
     },
     ...rest,
   });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    const err = new Error(`Broker ${res.status} ${path}: ${text}`);
-    err.status = res.status;
+  const text = await res.text().catch(() => '');
+  let data;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = undefined;
+    }
+  }
+  return { ok: res.ok, status: res.status, data, text };
+}
+
+export async function brokerFetch(path, init = {}) {
+  const exchange = await brokerExchange(path, init);
+  if (!exchange.ok) {
+    const err = new Error(`Broker ${exchange.status} ${path}: ${exchange.text}`);
+    err.status = exchange.status;
     throw err;
   }
-  return res.json();
+  return exchange.data;
 }
 
 export async function brokerAvailable() {

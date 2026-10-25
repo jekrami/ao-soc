@@ -16,6 +16,10 @@ bench_results.json
 # it holds the key that can approve a containment.
 deploy/.env
 
+# Human AAA JWT PEMs (private must never be committed).
+deploy/secrets/*
+!deploy/secrets/.gitkeep
+
 # Site-specific asset and identity maps (F1, F2): they name a site's domain
 # controllers, subnets and privileged accounts. The examples live in
 # orchestrator/config/ and are checked in; a site's own never are.

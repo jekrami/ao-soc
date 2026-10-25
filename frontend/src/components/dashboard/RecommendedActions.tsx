@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card, CardHeader, CardTitle, CardSubtitle, CardBody } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { useAoSoc } from '@/store/useAoSoc';
+import { useSelectedIncident } from '@/hooks/useSelectedIncident';
+import { useExecuteAction } from '@/hooks/useDecisions';
 import {
   Power, UserX, Ban, Ticket, ArrowUpRight, ShieldOff, Loader2, CheckCircle2
 } from 'lucide-react';
@@ -20,7 +21,8 @@ const iconFor = (action: string) => {
 
 export const RecommendedActions: React.FC = () => {
   const { t } = useTranslation();
-  const { selectedIncident, executeAction } = useAoSoc();
+  const { selectedIncident } = useSelectedIncident();
+  const executeAction = useExecuteAction();
   const isBroker = selectedIncident?.source === 'broker';
   const [busy, setBusy] = useState<string | null>(null);
   const [done, setDone] = useState<Record<string, string>>({});
@@ -37,8 +39,10 @@ export const RecommendedActions: React.FC = () => {
 
   const trigger = async (a: RecommendedAction) => {
     setBusy(a.id);
-    const result = await executeAction(selectedIncident.id, a.id);
-    if (result) setDone(d => ({ ...d, [a.id]: result.execution_id }));
+    try {
+      const result = await executeAction.mutateAsync({ incidentId: selectedIncident.id, actionId: a.id });
+      if (result) setDone(d => ({ ...d, [a.id]: result.execution_id }));
+    } catch { /* surfaced via query error */ }
     setBusy(null);
   };
 

@@ -15,6 +15,9 @@ COPY backend/package.json backend/package-lock.json* ./
 RUN npm install --omit=dev --no-audit --no-fund
 
 COPY backend/ ./
+# Same contract as the broker image: repo-root VERSION lands at /VERSION so
+# server.js (which resolves ../VERSION from /srv) can read it at boot.
+COPY VERSION /VERSION
 
 USER node
 

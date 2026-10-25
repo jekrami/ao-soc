@@ -3,7 +3,7 @@ import { initReactI18next } from 'react-i18next';
 import en from './locales/en.json';
 import fa from './locales/fa.json';
 
-export const LOCALE_STORAGE_KEY = 'ao-soc-locale';
+export const LOCALE_STORAGE_KEY = 'AfraSOC-locale';
 export const SUPPORTED_LOCALES = ['en', 'fa'] as const;
 export type AppLocale = (typeof SUPPORTED_LOCALES)[number];
 

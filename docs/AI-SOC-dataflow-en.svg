@@ -37,7 +37,7 @@
   <!-- ================= Title ================= -->
   <text class="t1" x="1000" y="54" text-anchor="middle">AI-SOC DATA FLOW</text>
   <text class="t2" x="1000" y="84" text-anchor="middle">One alert, end to end — from an external detection tool to a closed case</text>
-  <text class="t3" x="1000" y="108" text-anchor="middle">Version 2.8.11 — Summer 2026</text>
+  <text class="t3" x="1000" y="108" text-anchor="middle">Version 2.8.12 — Summer 2026</text>
 
   <!-- ================= PHASE A ================= -->
   <rect x="384" y="134" width="1080" height="28" rx="14" fill="#e2e8f0"/>
@@ -98,14 +98,14 @@
 
   <!-- b9 precedent -->
   <rect x="384" y="1064" width="1080" height="80" rx="9" fill="#4338ca"/>
-  <text class="box-title" x="924" y="1092" text-anchor="middle">8 · Precedent retrieval — what this SOC decided the last time it saw this shape</text>
-  <text class="box-sub" x="924" y="1114" text-anchor="middle">Weighted similarity over past settled decisions: techniques 30 · narrative 20 · sources 15 · entities 15 · entity shape 10 · severity 10.</text>
-  <text class="box-sub" x="924" y="1132" text-anchor="middle">A failure here costs the analyst context, not the verdict — it logs and returns nothing.</text>
+  <text class="box-title" x="924" y="1092" text-anchor="middle">8 · Precedent + document knowledge — decisions and SOPs beside the gate</text>
+  <text class="box-sub" x="924" y="1114" text-anchor="middle">Precedent: weighted similarity over settled human decisions (autopilot gate). Knowledge: LightRAG over markdown SOPs — cited DOC-… ids only, never a gate.</text>
+  <text class="box-sub" x="924" y="1132" text-anchor="middle">Either failure costs context, not the verdict — the detection stays stored and analysis continues with an empty section.</text>
 
   <!-- b10 prompt -->
   <rect x="384" y="1170" width="1080" height="66" rx="9" fill="#4338ca"/>
   <text class="box-title" x="924" y="1198" text-anchor="middle">9 · Prompt assembly</text>
-  <text class="box-sub" x="924" y="1220" text-anchor="middle">The situation document (N detections from M tools · the entity graph · the time span · the tools' own techniques) · the intel report · precedents to cite</text>
+  <text class="box-sub" x="924" y="1220" text-anchor="middle">The situation document · the intel report · precedents (PREC-…) · knowledge procedures (DOC-…) — all labelled and cited separately</text>
 
   <!-- b11 inference -->
   <rect x="384" y="1262" width="1080" height="80" rx="9" fill="#4338ca"/>
@@ -118,7 +118,7 @@
   <text class="box-title" x="924" y="1396" text-anchor="middle">11 · Parse and normalise — where the model is held to account</text>
   <text class="box-sub" x="924" y="1418" text-anchor="middle">A response that will not parse raises. It never falls back to the reply envelope, which would parse cleanly and silently default every field.</text>
   <text class="box-sub" x="924" y="1436" text-anchor="middle">The tool's asserted technique outranks the model's. Every ID is checked against the catalogue: verified · unlisted · unknown · malformed.</text>
-  <text class="box-sub" x="924" y="1454" text-anchor="middle">A precedent id the model invented is dropped from the reasoning — and kept, because a model that invents case ids is a fact worth having.</text>
+  <text class="box-sub" x="924" y="1454" text-anchor="middle">A PREC-… or DOC-… id the model invented is dropped — and kept, because inventing citations is a fact about the model.</text>
 
   <!-- b13 persist -->
   <rect x="384" y="1490" width="1080" height="58" rx="9" fill="#475569"/>
@@ -413,5 +413,5 @@
   <text class="legend" x="1230" y="2638">dashed = an external dependency or a store access</text>
 
   <!-- ================= Footer ================= -->
-  <text class="foot" x="1000" y="2690" text-anchor="middle">Written by J.Ekrami · Co-written with Claude (Opus 5, Sonnet 5) · © J.Ekrami-Labs · Summer 2026 · matches AO-SOC v2.8.11</text>
+  <text class="foot" x="1000" y="2690" text-anchor="middle">Written by J.Ekrami · Co-written with Claude (Opus 5, Sonnet 5) · © J.Ekrami-Labs · Summer 2026 · matches AfraSOC v2.8.12</text>
 </svg>

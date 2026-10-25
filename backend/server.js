@@ -1,409 +1,97 @@
-// AO-SOC Mock API
-// Endpoints intentionally mirror what a real Splunk -> Broker -> LLM -> SOAR
-// pipeline would expose to the dashboard.
+// AfraSOC UI API — merges broker decisions with dashboard reads.
+// Endpoints mirror what the React command center needs; business logic stays
+// in the broker. Demo entity lists are the only mock surface left.
 
 import express from 'express';
 import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
-import {
-  highRiskUsers,
-  highRiskHosts,
-  highRiskIps,
-} from './mockData.js';
-import { getExplanationByIncidentId } from './explanationStore.js';
-import {
-  addBrokerCaseNote,
-  assignBrokerCase,
-  escalateBrokerCase,
-  getBrokerCase,
-  listBrokerCases,
-  setBrokerCaseState,
-} from './cases.js';
-import { isBrokerIncident, mitigateBrokerIncident } from './alertStore.js';
-import {
-  approveBrokerDecision,
-  editBrokerDecision,
-  getBrokerDecision,
-  getBrokerCorrelationMetrics,
-  getBrokerEnvelope,
-  getBrokerFeedback,
-  getBrokerSituation,
-  getBrokerOutcomeSummary,
-  listBrokerActions,
-  listBrokerCorrections,
-  recordBrokerOutcome,
-  rejectBrokerDecision,
-  rollbackBrokerAction,
-} from './decisions.js';
-import { buildSummary, buildMitre, getIncident, listArchive, listIncidents } from './incidents.js';
-import { buildSystemHealth } from './systemHealth.js';
-import { DECISIONS_ACT, DECISIONS_READ, actorOf, authConfig, requireScope } from './auth.js';
+import { fileURLToPath, pathToFileURL } from 'url';
+import { buildSummary } from './incidents.js';
+import { DECISIONS_READ, authConfig, requireScope } from './auth.js';
+import { authProxyRouter } from './authProxy.js';
+import { brokerProxyRouter } from './proxy.js';
+import { incidentsRouter } from './routes/incidents.js';
+import { postureRouter } from './routes/posture.js';
 
 const app = express();
 
-// R1: the dashboard origin is configuration, not '*'. Credentials travel in a
-// header, so the allow-list is what stops any page on any host driving this API.
-const allowedOrigins = (process.env.AOSOC_CORS_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173')
+const allowedOrigins = (process.env.AfraSOC_CORS_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173')
   .split(',')
   .map(o => o.trim())
   .filter(Boolean);
 
 app.use(cors({
   origin: allowedOrigins,
+  credentials: true,
   methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 app.use(express.json());
 
 const port = process.env.PORT || 4317;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const appVersion = fs.readFileSync(path.resolve(__dirname, '../VERSION'), 'utf8').trim();
+
+function readAppVersion() {
+  // Docker images copy repo-root VERSION to /VERSION (see deploy/ui-api.Dockerfile).
+  // Locally, ../VERSION is the monorepo root next to backend/.
+  const candidates = [
+    path.resolve(__dirname, '../VERSION'),
+    '/VERSION',
+  ];
+  for (const candidate of candidates) {
+    try {
+      return fs.readFileSync(candidate, 'utf8').trim();
+    } catch {
+      /* try the next path */
+    }
+  }
+  try {
+    return JSON.parse(fs.readFileSync(path.resolve(__dirname, 'package.json'), 'utf8')).version || '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+}
+
+const appVersion = readAppVersion();
 
 app.use((req, _res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
   next();
 });
 
-// Liveness is the one open path — start-up probes need it and it causes
-// nothing. Everything else under /api needs at least decisions:read; the
-// routes that can cause an action ask for decisions:act on top.
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, service: 'ao-soc-mock-api', version: appVersion, auth: authConfig() });
+  res.json({ ok: true, service: 'AfraSOC-ui-api', version: appVersion, auth: authConfig() });
 });
 
+// Human AAA: /api/auth/* is proxied without a UI-API JWT gate (captcha/login/otp
+// are open; the broker enforces Bearer on the rest). Every other /api route
+// requires a verified access JWT.
 app.use('/api', (req, res, next) => {
   if (req.path === '/health') return next();
+  if (req.path === '/auth' || req.path.startsWith('/auth/')) return next();
   return requireScope(DECISIONS_READ)(req, res, next);
 });
 
-app.get('/api/summary', async (_req, res) => {
-  res.json(await buildSummary());
-});
+app.use('/api', authProxyRouter());
+app.use('/api', postureRouter());
+app.use('/api', incidentsRouter());
+app.use('/api', brokerProxyRouter());
 
-const INCIDENT_STATUS_FILTERS = new Set(['active', 'cleared', 'all']);
-
-app.get('/api/incidents', async (req, res) => {
-  const severity = (req.query.severity || '').toUpperCase();
-  const includeDemo = req.query.include === 'demo';
-  const requested = String(req.query.status || 'active').toLowerCase();
-  const status = INCIDENT_STATUS_FILTERS.has(requested) ? requested : 'active';
-  const items = await listIncidents(severity, { includeDemo, status });
-  res.json({ count: items.length, items, status });
-});
-
-app.get('/api/archive', async (req, res) => {
-  const items = await listArchive({ includeDemo: req.query.include !== 'live' });
-  res.json({ count: items.length, items });
-});
-
-app.get('/api/incidents/:id', async (req, res) => {
-  const inc = await getIncident(req.params.id);
-  if (!inc) return res.status(404).json({ error: 'incident not found' });
-  res.json(inc);
-});
-
-app.get('/api/entities/users', (_req, res) => res.json({ count: highRiskUsers.length, items: highRiskUsers }));
-app.get('/api/entities/hosts', (_req, res) => res.json({ count: highRiskHosts.length, items: highRiskHosts }));
-app.get('/api/entities/ips',   (_req, res) => res.json({ count: highRiskIps.length,   items: highRiskIps }));
-
-app.get('/api/mitre', async (_req, res) => {
-  res.json(await buildMitre());
-});
-
-app.get('/api/system/health', async (_req, res) => {
-  res.json(await buildSystemHealth());
-});
-
-app.get('/api/incidents/:id/explanations', async (req, res) => {
-  const explanation = await getExplanationByIncidentId(req.params.id);
-  if (!explanation) return res.status(404).json({ error: 'explanation not found' });
-  res.json(explanation);
-});
-
-app.post('/api/incidents/:id/mitigate', requireScope(DECISIONS_ACT), async (req, res) => {
-  if (!(await isBrokerIncident(req.params.id))) {
-    return res.status(404).json({ error: 'broker incident not found' });
-  }
-  const updated = await mitigateBrokerIncident(req.params.id);
-  if (!updated) return res.status(404).json({ error: 'broker incident not found' });
-  res.json(updated);
-});
-
-app.get('/api/incidents/:id/decision', async (req, res) => {
-  if (!(await isBrokerIncident(req.params.id))) {
-    return res.status(404).json({ error: 'broker incident not found', code: 'NOT_BROKER' });
-  }
+function isMainModule() {
+  const entry = process.argv[1];
+  if (!entry) return false;
   try {
-    const decision = await getBrokerDecision(req.params.id);
-    res.json(decision);
-  } catch (err) {
-    const status = err.status === 404 ? 404 : 502;
-    res.status(status).json({ error: err.message, code: 'BROKER_DECISION_FAILED' });
+    return import.meta.url === pathToFileURL(path.resolve(entry)).href;
+  } catch {
+    return false;
   }
-});
+}
 
-app.post('/api/incidents/:id/decision/approve', requireScope(DECISIONS_ACT), async (req, res) => {
-  if (!(await isBrokerIncident(req.params.id))) {
-    return res.status(404).json({ error: 'broker incident not found', code: 'NOT_BROKER' });
-  }
-  try {
-    // The approver is the authenticated operator, not a name in the body.
-    const decision = await approveBrokerDecision(req.params.id, actorOf(req));
-    res.status(202).json(decision);
-  } catch (err) {
-    const status = err.status === 404 ? 404 : 502;
-    res.status(status).json({ error: err.message, code: 'BROKER_APPROVE_FAILED' });
-  }
-});
-
-// F5: the decision as an auditor or a SOAR bridge would read it. Read-only.
-app.get('/api/incidents/:id/decision/envelope', async (req, res) => {
-  if (!(await isBrokerIncident(req.params.id))) {
-    return res.status(404).json({ error: 'broker incident not found', code: 'NOT_BROKER' });
-  }
-  try {
-    res.json(await getBrokerEnvelope(req.params.id));
-  } catch (err) {
-    const status = err.status === 404 ? 404 : 502;
-    res.status(status).json({ error: err.message, code: 'BROKER_ENVELOPE_FAILED' });
-  }
-});
-
-// F4: take back one executed action. The broker refuses what has no inverse
-// (422) and what has not run, is already undone, or is in flight (409); both
-// messages are written for the analyst, so they are passed through.
-app.post('/api/incidents/:id/actions/:actionId/rollback', requireScope(DECISIONS_ACT), async (req, res) => {
-  if (!(await isBrokerIncident(req.params.id))) {
-    return res.status(404).json({ error: 'broker incident not found', code: 'NOT_BROKER' });
-  }
-  try {
-    const decision = await rollbackBrokerAction(
-      req.params.id, req.params.actionId, actorOf(req), req.body?.note || '',
-    );
-    res.json(decision);
-  } catch (err) {
-    const status = [404, 409, 422].includes(err.status) ? err.status : 502;
-    res.status(status).json({ error: err.message, code: 'BROKER_ROLLBACK_FAILED' });
-  }
-});
-
-app.post('/api/incidents/:id/decision/reject', requireScope(DECISIONS_ACT), async (req, res) => {
-  if (!(await isBrokerIncident(req.params.id))) {
-    return res.status(404).json({ error: 'broker incident not found', code: 'NOT_BROKER' });
-  }
-  try {
-    const note = req.body?.note || '';
-    const decision = await rejectBrokerDecision(req.params.id, actorOf(req), note);
-    res.json(decision);
-  } catch (err) {
-    const status = err.status === 404 ? 404 : 502;
-    res.status(status).json({ error: err.message, code: 'BROKER_REJECT_FAILED' });
-  }
-});
-
-// A4: correct the verdict and/or the plan. The broker refuses anything that
-// could never dispatch (422) and anything already executed (409); both messages
-// are meant for the analyst, so they are passed through rather than flattened.
-app.post('/api/incidents/:id/decision/edit', requireScope(DECISIONS_ACT), async (req, res) => {
-  if (!(await isBrokerIncident(req.params.id))) {
-    return res.status(404).json({ error: 'broker incident not found', code: 'NOT_BROKER' });
-  }
-  try {
-    const decision = await editBrokerDecision(req.params.id, actorOf(req), {
-      decision: req.body?.decision,
-      rationale: req.body?.rationale,
-      risk_of_action: req.body?.risk_of_action,
-      actions: req.body?.actions,
-      note: req.body?.note,
-    });
-    res.json(decision);
-  } catch (err) {
-    const status = [404, 409, 422].includes(err.status) ? err.status : 502;
-    res.status(status).json({ error: err.message, code: 'BROKER_EDIT_FAILED' });
-  }
-});
-
-// A5: what actually happened.
-app.post('/api/incidents/:id/decision/outcome', requireScope(DECISIONS_ACT), async (req, res) => {
-  if (!(await isBrokerIncident(req.params.id))) {
-    return res.status(404).json({ error: 'broker incident not found', code: 'NOT_BROKER' });
-  }
-  try {
-    const feedback = await recordBrokerOutcome(
-      req.params.id, actorOf(req), req.body?.outcome, req.body?.note || ''
-    );
-    res.status(201).json(feedback);
-  } catch (err) {
-    const status = [404, 409, 422].includes(err.status) ? err.status : 502;
-    res.status(status).json({ error: err.message, code: 'BROKER_OUTCOME_FAILED' });
-  }
-});
-
-app.get('/api/incidents/:id/decision/feedback', async (req, res) => {
-  if (!(await isBrokerIncident(req.params.id))) {
-    return res.status(404).json({ error: 'broker incident not found', code: 'NOT_BROKER' });
-  }
-  try {
-    res.json(await getBrokerFeedback(req.params.id));
-  } catch (err) {
-    res.status(err.status === 404 ? 404 : 502).json({ error: err.message, code: 'BROKER_FEEDBACK_FAILED' });
-  }
-});
-
-app.get('/api/incidents/:id/situation', async (req, res) => {
-  if (!(await isBrokerIncident(req.params.id))) {
-    return res.status(404).json({ error: 'broker incident not found', code: 'NOT_BROKER' });
-  }
-  try {
-    res.json(await getBrokerSituation(req.params.id));
-  } catch (err) {
-    // 404 here is not an error condition: incidents ingested before correlation
-    // existed were never correlated, and saying so is the honest answer.
-    const status = err.status === 404 ? 404 : 502;
-    res.status(status).json({ error: err.message, code: 'BROKER_SITUATION_FAILED' });
-  }
-});
-
-app.get('/api/correlation/metrics', async (_req, res) => {
-  res.json(await getBrokerCorrelationMetrics() ?? { available: false });
-});
-
-app.get('/api/decisions/outcomes', async (_req, res) => {
-  try {
-    res.json(await getBrokerOutcomeSummary());
-  } catch (err) {
-    res.status(502).json({ error: err.message, code: 'BROKER_OUTCOMES_FAILED' });
-  }
-});
-
-app.get('/api/corrections', async (_req, res) => {
-  try {
-    res.json(await listBrokerCorrections());
-  } catch (err) {
-    res.status(502).json({ error: err.message, code: 'BROKER_CORRECTIONS_FAILED' });
-  }
-});
-
-app.get('/api/incidents/:id/actions', async (req, res) => {
-  if (!(await isBrokerIncident(req.params.id))) {
-    const inc = await getIncident(req.params.id);
-    if (!inc) return res.status(404).json({ error: 'incident not found' });
-    const items = (inc.recommended_actions || []).map(a => ({
-      id: a.id,
-      action: a.action,
-      target: a.target,
-      reason: a.reason,
-      status: 'PENDING',
-      result: null,
-    }));
-    return res.json({ count: items.length, items });
-  }
-  try {
-    const payload = await listBrokerActions(req.params.id);
-    res.json(payload);
-  } catch (err) {
-    const status = err.status === 404 ? 404 : 502;
-    res.status(status).json({ error: err.message, code: 'BROKER_ACTIONS_FAILED' });
-  }
-});
-
-app.post('/api/incidents/:id/actions/:actionId/execute', requireScope(DECISIONS_ACT), async (req, res) => {
-  if (await isBrokerIncident(req.params.id)) {
-    return res.status(409).json({
-      error: 'Use decision approval to auto-execute the full SOAR plan for broker incidents',
-      code: 'USE_DECISION_APPROVE',
-    });
-  }
-  const inc = await getIncident(req.params.id);
-  if (!inc) return res.status(404).json({ error: 'incident not found' });
-  const action = (inc.recommended_actions || []).find(a => a.id === req.params.actionId);
-  if (!action) return res.status(404).json({ error: 'action not found' });
-  const execution_id = `exec_${Date.now().toString(36)}`;
-  console.log(`[SOAR] execute ${action.action} on ${action.target} (incident ${inc.id}) -> ${execution_id}`);
-  res.json({
-    execution_id,
-    status: 'QUEUED',
-    action: action.action,
-    target: action.target,
-    queued_at: new Date().toISOString()
+if (isMainModule()) {
+  app.listen(port, () => {
+    console.log(`AfraSOC UI API listening on http://localhost:${port}`);
   });
-});
+}
 
-// --- E5. Case management (M11/M13) ---------------------------------------
-// Reads are open to any authenticated viewer; every write needs decisions:act
-// and carries the operator's identity to the broker. None of these can approve
-// a decision or dispatch an action — the broker refuses that structurally (E2).
-
-const caseError = (res, err, code) => {
-  const status = [404, 409, 422].includes(err.status) ? err.status : 502;
-  return res.status(status).json({ error: err.message, code });
-};
-
-app.get('/api/cases', async (req, res) => {
-  try {
-    res.json(await listBrokerCases({
-      state: req.query.state,
-      assignee: req.query.assignee,
-      priority: req.query.priority,
-      unassigned: req.query.unassigned,
-      limit: req.query.limit,
-    }));
-  } catch (err) {
-    caseError(res, err, 'BROKER_CASES_FAILED');
-  }
-});
-
-app.get('/api/incidents/:id/case', async (req, res) => {
-  if (!(await isBrokerIncident(req.params.id))) {
-    return res.status(404).json({ error: 'broker incident not found', code: 'NOT_BROKER' });
-  }
-  try {
-    res.json(await getBrokerCase(req.params.id));
-  } catch (err) {
-    caseError(res, err, 'BROKER_CASE_FAILED');
-  }
-});
-
-app.post('/api/cases/:caseId/assign', requireScope(DECISIONS_ACT), async (req, res) => {
-  try {
-    res.json(await assignBrokerCase(
-      req.params.caseId, actorOf(req), req.body?.assignee ?? '', req.body?.note || ''
-    ));
-  } catch (err) {
-    caseError(res, err, 'BROKER_CASE_ASSIGN_FAILED');
-  }
-});
-
-app.post('/api/cases/:caseId/state', requireScope(DECISIONS_ACT), async (req, res) => {
-  try {
-    res.json(await setBrokerCaseState(
-      req.params.caseId, actorOf(req), req.body?.state, req.body?.note || ''
-    ));
-  } catch (err) {
-    caseError(res, err, 'BROKER_CASE_STATE_FAILED');
-  }
-});
-
-app.post('/api/cases/:caseId/escalate', requireScope(DECISIONS_ACT), async (req, res) => {
-  try {
-    res.json(await escalateBrokerCase(
-      req.params.caseId, actorOf(req), req.body?.tier, req.body?.to || '', req.body?.reason || ''
-    ));
-  } catch (err) {
-    caseError(res, err, 'BROKER_CASE_ESCALATE_FAILED');
-  }
-});
-
-app.post('/api/cases/:caseId/notes', requireScope(DECISIONS_ACT), async (req, res) => {
-  try {
-    res.status(201).json(await addBrokerCaseNote(req.params.caseId, actorOf(req), req.body?.note));
-  } catch (err) {
-    caseError(res, err, 'BROKER_CASE_NOTE_FAILED');
-  }
-});
-
-app.listen(port, () => {
-  console.log(`AO-SOC mock API listening on http://localhost:${port}`);
-});
+export { app, buildSummary };

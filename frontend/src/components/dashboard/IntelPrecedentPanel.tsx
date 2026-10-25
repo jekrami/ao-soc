@@ -1,10 +1,11 @@
 import { useTranslation } from 'react-i18next';
 import {
-  AlertTriangle, BadgeCheck, HelpCircle, History, ShieldQuestion, WifiOff,
+  AlertTriangle, BadgeCheck, BookOpen, HelpCircle, History, ShieldQuestion, WifiOff,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardSubtitle, CardBody } from '@/components/ui/card';
-import { useAoSoc } from '@/store/useAoSoc';
+import { useSelectedIncident } from '@/hooks/useSelectedIncident';
 import type { IntelObservation } from '@/types';
+import type { KnowledgeCitation } from '@/types/knowledge';
 
 /**
  * What was verified, and what this SOC has decided before (Phase D).
@@ -41,12 +42,13 @@ const IndicatorRow: React.FC<{ item: IntelObservation }> = ({ item }) => (
 
 export const IntelPrecedentPanel: React.FC = () => {
   const { t } = useTranslation();
-  const { selectedIncident, selectedTier2Decision } = useAoSoc();
+  const { selectedIncident, selectedTier2Decision } = useSelectedIncident();
 
   if (selectedIncident?.source !== 'broker') return null;
 
   const intel = selectedIncident.threat_intel ?? null;
   const precedent = selectedIncident.precedent ?? null;
+  const knowledge: KnowledgeCitation | null = selectedIncident.knowledge ?? null;
   const basis = selectedTier2Decision?.autopilot_basis ?? null;
   const techniques = selectedIncident.mitre_techniques ?? [];
   const unverified = techniques.filter(
@@ -148,8 +150,52 @@ export const IntelPrecedentPanel: React.FC = () => {
               store keeps it rather than quietly discarding it. */}
           {precedent && precedent.fabricated.length > 0 && (
             <div className="mt-1.5 flex items-start gap-2 rounded-md border border-high/40 bg-high/10 p-2 text-[11px] text-high">
-              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
               <span>{t('intel.fabricated', { ids: precedent.fabricated.join(', ') })}</span>
+            </div>
+          )}
+        </div>
+
+        {/* --- Document knowledge (M09) — cited context, never a gate ----- */}
+        <div>
+          <div className="mb-1.5 flex items-center gap-2 text-xs uppercase tracking-wide text-muted">
+            <BookOpen className="h-3.5 w-3.5" aria-hidden />
+            {t('intel.knowledge')}
+          </div>
+
+          {!knowledge || knowledge.status === 'disabled' || (knowledge.offered === 0 && !knowledge.status) ? (
+            <div className="flex items-start gap-2 rounded-md border border-border bg-surface2/40 p-2 text-xs text-muted">
+              <ShieldQuestion className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+              <span>{t('intel.knowledgeDisabled')}</span>
+            </div>
+          ) : knowledge.status === 'degraded' ? (
+            <div className="flex items-start gap-2 rounded-md border border-high/40 bg-high/10 p-2 text-xs text-high">
+              <WifiOff className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+              <span>{t('intel.knowledgeDegraded', { error: knowledge.error || 'unknown' })}</span>
+            </div>
+          ) : knowledge.offered > 0 ? (
+            <div className="space-y-1.5 text-xs text-muted">
+              <div>
+                {t('intel.knowledgeOffered', {
+                  count: knowledge.offered,
+                  cited: knowledge.cited.length,
+                })}
+              </div>
+              {(knowledge.chunks || []).slice(0, 3).map(chunk => (
+                <div key={chunk.id} className="rounded border border-border/60 bg-surface2/30 px-2 py-1">
+                  <span className="font-mono text-[11px] text-fg">{chunk.id}</span>
+                  <span className="text-muted"> · {chunk.title}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-xs text-muted">{t('intel.knowledgeEmpty')}</div>
+          )}
+
+          {knowledge && knowledge.fabricated.length > 0 && (
+            <div className="mt-1.5 flex items-start gap-2 rounded-md border border-high/40 bg-high/10 p-2 text-[11px] text-high">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+              <span>{t('intel.knowledgeFabricated', { ids: knowledge.fabricated.join(', ') })}</span>
             </div>
           )}
         </div>

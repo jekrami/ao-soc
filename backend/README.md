@@ -1,4 +1,4 @@
-# AO-SOC Mock API
+# AfraSOC Mock API
 
 Express server that simulates the data plane of an AI-Augmented SOC.
 

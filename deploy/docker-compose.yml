@@ -34,32 +34,34 @@
 #     (`check_deployment_drift`) fails the build if this file, deploy/.env.example
 #     or the runbook offers a setting nothing reads.
 
-name: ao-soc
+name: AfraSOC
 
 services:
   broker:
     build:
       context: ..
       dockerfile: deploy/orchestrator.Dockerfile
-    image: ao-soc/broker:2.8.11
+    image: AfraSOC/broker:2.8.12
     restart: unless-stopped
     env_file:
       - .env
     environment:
-      # --- identity and access (A1) ---
+      # --- identity and access (A1 + human AAA) ---
       BROKER_API_KEYS: ${BROKER_API_KEYS:?set BROKER_API_KEYS in deploy/.env}
+      # RS256 signing key for human access JWTs. Public half goes to ui-api only.
+      AUTH_JWT_PRIVATE_KEY_FILE: ${AUTH_JWT_PRIVATE_KEY_FILE:-/secrets/jwt-private.pem}
       # --- the model (Rule 5). OLLAMA_HOST here is the host AI-SOC dials; a
       #     bind address such as 0.0.0.0 is mapped to localhost, which inside a
       #     container is the container itself, so name the GPU host.
-      #     The deploy-level names are AOSOC_MODEL_HOST / AOSOC_MODEL_PORT, not
+      #     The deploy-level names are AfraSOC_MODEL_HOST / AfraSOC_MODEL_PORT, not
       #     Ollama's own: compose resolves a variable from the calling shell
       #     before --env-file, and OLLAMA_HOST is routinely exported in that
       #     shell as a bind address (0.0.0.0:11434), which then silently
       #     replaced the GPU host. Run deploy/check_env.py before `up` for the
       #     general case. ---
       LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
-      OLLAMA_HOST: ${AOSOC_MODEL_HOST:-host.docker.internal}
-      OLLAMA_PORT: ${AOSOC_MODEL_PORT:-11434}
+      OLLAMA_HOST: ${AfraSOC_MODEL_HOST:-host.docker.internal}
+      OLLAMA_PORT: ${AfraSOC_MODEL_PORT:-11434}
       MODEL_NAME: ${MODEL_NAME:-qwen2.5:7b}
       # --- verification (D1) ---
       TI_PROVIDER: ${TI_PROVIDER:-none}
@@ -80,23 +82,35 @@ services:
       RESPONSE_ROUTES: ${RESPONSE_ROUTES:-*=soar}
       # --- system of record (E3) ---
       CASE_SYNC_PROVIDER: ${CASE_SYNC_PROVIDER:-none}
+      # Document knowledge (M09) — off unless a site turns it on
+      KNOWLEDGE_ENABLED: ${KNOWLEDGE_ENABLED:-false}
+      KNOWLEDGE_DIR: ${KNOWLEDGE_DIR:-}
+      LIGHTRAG_WORKING_DIR: ${LIGHTRAG_WORKING_DIR:-/data/rag_storage}
+      LIGHTRAG_EMBED_MODEL: ${LIGHTRAG_EMBED_MODEL:-}
+      LIGHTRAG_QUERY_MODE: ${LIGHTRAG_QUERY_MODE:-mix}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     volumes:
       - decision-store:/data
+      # LightRAG index (optional). Separate from soc_matrix.db — preflight says so.
+      # Mount a host path or leave the named volume; set KNOWLEDGE_* in deploy/.env.
+      - rag-store:/data/rag_storage
       # The site's own asset and identity maps. Read-only: the broker reads
       # them and never writes them, and a container that can rewrite what it is
       # forbidden to touch has been given a way to forbid itself less.
-      - ${AOSOC_CONFIG_DIR:-./config}:/config:ro
+      - ${AfraSOC_CONFIG_DIR:-./config}:/config:ro
+      # Human AAA JWT keypair (openssl genrsa + rsa -pubout). Private PEM here;
+      # ui-api mounts the same directory but is configured for the public file only.
+      - ./secrets:/secrets:ro
     extra_hosts:
       # So OLLAMA_HOST can name the GPU host on a Linux daemon too.
       - "host.docker.internal:host-gateway"
-    networks: [ao-soc]
+    networks: [ AfraSOC ]
 
   ui-api:
     build:
       context: ..
       dockerfile: deploy/ui-api.Dockerfile
-    image: ao-soc/ui-api:2.8.11
+    image: AfraSOC/ui-api:2.8.12
     restart: unless-stopped
     depends_on:
       broker:
@@ -105,31 +119,37 @@ services:
       PORT: 4000
       BROKER_URL: http://broker:8500
       BROKER_API_KEY: ${UI_API_BROKER_KEY:?set UI_API_BROKER_KEY in deploy/.env}
-      # One named key per analyst. Approvals, edits and rollbacks are recorded
-      # under the authenticated name, so a shared key is an audit trail that
-      # names nobody. Required: with none set the service mints a random key
-      # into its log on every start, which is not something to log in with.
-      AOSOC_API_KEYS: ${AOSOC_API_KEYS:?set AOSOC_API_KEYS in deploy/.env (name:role:secret, one per analyst)}
-    networks: [ao-soc]
+      # Human AAA: verify RS256 access JWTs with the PUBLIC PEM only.
+      # Never point this at jwt-private.pem. Operators sign in via /api/auth
+      # (password + captcha + email OTP); AfraSOC_API_KEYS is no longer used.
+      AUTH_JWT_PUBLIC_KEY_FILE: ${AUTH_JWT_PUBLIC_KEY_FILE:-/secrets/jwt-public.pem}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-true}
+    volumes:
+      - ./secrets:/secrets:ro
+    networks: [ AfraSOC ]
 
   dashboard:
     build:
       context: ..
       dockerfile: deploy/frontend.Dockerfile
-    image: ao-soc/dashboard:2.8.11
+    image: AfraSOC/dashboard:2.8.12
     restart: unless-stopped
     depends_on:
       - ui-api
     ports:
       - "${DASHBOARD_PORT:-8080}:8080"
-    networks: [ao-soc]
+    networks: [ AfraSOC ]
 
 volumes:
   decision-store:
     # Every decision, correction, outcome, receipt and model run. Nothing
     # upstream can reproduce these — back it up (orchestrator/backup.py).
-    name: ao-soc-decision-store
+    name: AfraSOC-decision-store
+  rag-store:
+    # LightRAG working directory when KNOWLEDGE_ENABLED=true. Not covered by
+    # backup.py — back it up separately if the site relies on indexed SOPs.
+    name: AfraSOC-rag-store
 
 networks:
-  ao-soc:
+  AfraSOC:
     driver: bridge

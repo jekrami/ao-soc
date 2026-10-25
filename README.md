@@ -1,4 +1,4 @@
-# AO-SOC Command Center
+# AfraSOC Command Center
 
 An enterprise UI for an **AI-Augmented Security Operations Center**.
 
@@ -12,7 +12,7 @@ This dashboard is **not** a raw-log SIEM. It answers five questions for the huma
 
 ## Architecture
 
-AO-SOC evolves in three autonomy stages. **v2.0** implements **Stage 2**; **v3.0** is reserved for **Stage 3**.
+AfraSOC evolves in three autonomy stages. **v2.0** implements **Stage 2**; **v3.0** is reserved for **Stage 3**.
 
 ### Current pipeline (v2.7 — Stage 2, correlated, verified and routed)
 
@@ -94,7 +94,7 @@ exceptions.
 ## Project Layout
 
 ```
-ao-soc/
+AfraSOC/
 ├── backend/                    Express mock API (port 4317)
 │   ├── server.js               All endpoints
 │   ├── mockData.js             Realistic seed data + jittering health
@@ -136,7 +136,7 @@ ao-soc/
     │   ├── index.css           Tailwind + theme tokens
     │   ├── types.ts            Domain types (Incident, Entity, …)
     │   ├── lib/                api.ts, utils.ts
-    │   ├── store/useAoSoc.ts   Zustand store
+    │   ├── store/useAfraSOC.ts   Zustand store
     │   ├── components/
     │   │   ├── ui/             ShadCN-style primitives (Card, Button, …)
     │   │   ├── layout/         TopNav
@@ -170,19 +170,27 @@ cd ../frontend && npm install
 ### Authentication (required since 2.3.0)
 
 **There is no unauthenticated path.** The broker can dispatch actions to tools
-that act on the network, so every route that can cause one requires a key — and
-so does every route that reads a decision. Keys are pre-shared and carry a role;
-M14 replaces them with a real IdP without changing what the API expects, because
-`Authorization: Bearer <token>` is already accepted alongside `X-API-Key`.
+that act on the network, so every machine route that can cause one requires a
+key — and so does every route that reads a decision. **Humans** sign in on the
+dashboard with username, password, captcha and email OTP, then hold a short-lived
+RS256 JWT (see `deploy/.env.example` `AUTH_*`). Machine callers keep
+`BROKER_API_KEYS`. `AfraSOC_API_KEYS` / ApiKeyGate are retired. M14's remainder is
+SSO and per-object RBAC; `Authorization: Bearer` is already the human path.
 
 ```bash
-# name : role : secret        (comma-separated)
+# Machine keys — name : role : secret (comma-separated)
 export BROKER_API_KEYS="ui-api:service:$(openssl rand -base64 24),splunk-prod:ingest:$(openssl rand -base64 24)"
-export AOSOC_API_KEYS="jek:analyst:$(openssl rand -base64 24)"   # UI API — the humans
-export BROKER_API_KEY="<the ui-api secret>"                      # UI API → broker
+export BROKER_API_KEY="<the ui-api secret>"   # UI API → broker (service role)
+
+# Human AAA JWT keypair (broker signs; UI API gets the public PEM only)
+mkdir -p deploy/secrets
+openssl genrsa -out deploy/secrets/jwt-private.pem 2048
+openssl rsa -in deploy/secrets/jwt-private.pem -pubout -out deploy/secrets/jwt-public.pem
+export AUTH_JWT_PRIVATE_KEY_FILE=deploy/secrets/jwt-private.pem
+export AUTH_JWT_PUBLIC_KEY_FILE=deploy/secrets/jwt-public.pem
 ```
 
-| Role | May do |
+| Machine role (`BROKER_API_KEYS`) | May do |
 | ---- | ------ |
 | `ingest` | post detections — nothing else |
 | `viewer` | read decisions; cannot cause an action |
@@ -190,12 +198,22 @@ export BROKER_API_KEY="<the ui-api secret>"                      # UI API → br
 | `service` | a confidential client (the UI API) acting for a named operator |
 | `admin` | everything |
 
-If no keys are configured the service **mints a random one and prints it** rather
-than serving without auth — a local demo still runs, an unauthenticated
-deployment is not reachable by accident. `scripts/start-demo.ps1` / `.sh`
-generate the whole set and print the operator key to sign in with.
+| Human role (dashboard JWT) | May do |
+| ---- | ------ |
+| `viewer` | read decisions and own audit; cannot approve, reject, edit, mitigate, or manage users |
+| `analyst` | read and act (approve, reject, edit, outcome, mitigate) |
+| `admin` | analyst powers plus user management and full auth audit |
 
-CORS is an allow-list (`BROKER_CORS_ORIGINS`, `AOSOC_CORS_ORIGINS`), defaulting
+`ingest` and `service` are machine-only — they cannot be assigned to a human
+operator. A legacy human role of `user` is migrated to `analyst` on broker
+startup. Bootstrap the first admin with `AUTH_BOOTSTRAP_*` when `operators`
+is empty.
+
+If no broker keys are configured the service **mints a random one and prints it**
+rather than serving without auth — a local demo still runs, an unauthenticated
+deployment is not reachable by accident.
+
+CORS is an allow-list (`BROKER_CORS_ORIGINS`, `AfraSOC_CORS_ORIGINS`), defaulting
 to localhost. `'*'` is refused, not honoured.
 
 ---
@@ -498,6 +516,7 @@ matches the types in `frontend/src/types.ts`.
 
 ## New Features
 
+- **v2.8.12 — Document knowledge beside the gate (LightRAG) and a structural split.** `orchestrator/knowledge/` indexes site markdown SOPs with LightRAG when enabled; analysis cites `DOC-…` ids with the same grounding gate as precedent, and knowledge never opens or closes autopilot. Broker HTTP routes live under `orchestrator/routes/`; the UI API under `backend/routes/`; the dashboard talks through `src/services/` and store slices. Verification panel shows procedures in EN/FA. Plan v2.8.4; both diagram pairs updated.
 - **v2.8.11 — The Persian manual, rewritten to a Persian writing standard.** `docs/user-manual/USER-MANUAL-fa_v2.0.md` replaces the v1.x Persian text: written as Persian technical documentation rather than a sentence-by-sentence translation, in the formal-but-human register, with one consistent point of view (impersonal for how the system behaves, second person for what the analyst does), notes, warnings and limits labelled as such and placed beside the step they concern, and every UI label quoted exactly as the interface writes it. The RTL output was fixed to match: `<w:bidi/>` is now the first child of `<w:sectPr>` (docx-js has no section-bidi option, so the builder patches the XML and rebuilds the package with `[Content_Types].xml` first, which Word requires); Persian list markers are written as runs with Persian digits instead of Word numbering, whose `numbering.xml` carries no bidi; paragraphs align START, never RIGHT, which in RTL is the visual left; the library’s duplicate Heading styles are dropped; and the PDF embeds Vazirmatn (SIL OFL, in `scripts/manual/fonts/`) so a Persian PDF renders on a machine with no Persian font. Verified with the persian-writing skill’s own checkers: `fa_lint.py` (remaining hits are Latin digits inside code, version strings and a model name), `verify_docx.py` and `verify_pdf.py`. Documentation and tooling only; no application code change.
 - **v2.8.10 — The user manuals as PDF and Word.** `scripts/manual/build-manual.js` turns each Markdown manual into a self-contained PDF (printed by the locally installed Edge or Chrome) and a Word `.docx` (built with the `docx` library), both with every screenshot embedded, carrying the same version-tagged name as their source (`USER-MANUAL_v1.0.pdf`, `USER-MANUAL-fa_v1.1.docx`). The Persian edition is laid out right to left in both, with commands and code kept left to right. Only the newest version of each edition is exported; older ones stay on disk as published. Run `npm install` then `node build-manual.js` in `scripts/manual/`. Also: the Persian manual is now v1.1, because v1.0 showed the overall posture card where the Security Situation panel belonged (both are titled «وضعیت امنیتی» in the Persian UI); the corrected screenshot is in `images_fa_v1.1/` and v1.0 is kept unchanged.
 - **v2.8.9 — The Persian user manual.** `docs/user-manual/USER-MANUAL-fa_v1.0.md` (document version 1.0), the Persian edition of the user manual, written in Persian with Solar Hijri dating and Persian digits, with 30 screenshots of the Persian (RTL) interface in `docs/user-manual/images_fa_v1.0/`. Same scope as the English edition. Documentation only; no code change.
@@ -562,7 +581,7 @@ matches the types in `frontend/src/types.ts`.
 - **v2.2.0** — Incident lifecycle + AI test mode. Cleared incidents leave the active queue the moment containment completes and move to a new **`/archive`** page showing the decision, who approved it (analyst or autopilot), and every delivered SOAR action with its execution id; the dashboard announces each clearing instead of letting the row vanish. `GET /api/incidents` now defaults to `status=active` (`cleared` / `all` also accepted) and `GET /api/archive` joins cleared incidents to their decisions. New **AI test mode** (`run_ai_demo.py`, `-Ai` / `--ai`): mocked alerts, real Ollama inference, and opt-in **autopilot** that auto-executes `CONTAIN`/`ESCALATE` verdicts at ≥90% confidence — never `MONITOR`/`IGNORE`, at any confidence. Actions are delivered through a new pluggable `soar.py` adapter (JSONL sink by default) and SOAR execution now runs in the background, so approval returns immediately and the UI streams `EXECUTING → DONE`.
 - **v2.1.0** — The Tier-2 decision now comes from the LLM, not a severity lookup. `build_splunk_analysis_prompt` asks the model for `tier2_decision` (`decision`, `confidence`, `rationale`, `risk_of_action`) and explicitly instructs it not to mirror `threat_severity`. The verdict is gated against the allowed decision vocabulary — an unrecognized decision discards the whole proposal and the rule path decides, with missing individual fields falling back one at a time. New `tier2_decisions.decision_source` column (auto-migrated; pre-2.1 rows stamped `rules`) is exposed on the decision API and shown as an **AI verdict** / **Rule fallback** badge on the Tier-2 panel.
 - **v2.0.1** — Config hygiene: removed the hardcoded Ollama LAN IP default; host is now `OLLAMA_HOST` / `OLLAMA_PORT` (defaulting to `localhost:11434`, `<ollama-host>` in docs) with `OLLAMA_ENDPOINT` and legacy `WORKSTATION_IP` still honored.
-- **v2.0.0** — Stage 2 AI Tier-2 autonomy (major): the broker derives a structured decision (`CONTAIN` / `ESCALATE` / `INVESTIGATE` / `MONITOR` / `IGNORE`) plus a bundled SOAR action plan per alert. Analyst reviews once and clicks **Approve plan**; the orchestrator then auto-executes every action (policy-gated) and contains the incident with no per-step clicks. This shifts AO-SOC from "AI explains" to "AI operates Tier-2 after one human yes". New endpoints: decision approve/reject and live action status.
+- **v2.0.0** — Stage 2 AI Tier-2 autonomy (major): the broker derives a structured decision (`CONTAIN` / `ESCALATE` / `INVESTIGATE` / `MONITOR` / `IGNORE`) plus a bundled SOAR action plan per alert. Analyst reviews once and clicks **Approve plan**; the orchestrator then auto-executes every action (policy-gated) and contains the incident with no per-step clicks. This shifts AfraSOC from "AI explains" to "AI operates Tier-2 after one human yes". New endpoints: decision approve/reject and live action status.
 
 ## Authorship
 

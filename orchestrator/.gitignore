@@ -5,3 +5,6 @@ __pycache__/
 .venv/
 venv/
 test_soc_matrix.db
+# LightRAG working directory — embeddings and KG, not source
+rag_storage/
+**/ao_soc_index_state.json

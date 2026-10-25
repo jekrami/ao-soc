@@ -4,11 +4,11 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Brand / surfaces
-        bg:        '#0B1220',
-        surface:   '#111827',
-        surface2:  '#0F172A',
-        border:    '#1F2937',
+        // Surfaces use CSS variables so light/dark can swap without class churn
+        bg:        'var(--color-bg)',
+        surface:   'var(--color-surface)',
+        surface2:  'var(--color-surface2)',
+        border:    'var(--color-border)',
         // Information
         info:      '#3B82F6',
         // Risk
@@ -17,9 +17,9 @@ export default {
         high:      '#F97316',
         critical:  '#EF4444',
         // Text
-        fg:        '#F9FAFB',
-        muted:     '#9CA3AF',
-        subtle:    '#6B7280'
+        fg:        'var(--color-fg)',
+        muted:     'var(--color-muted)',
+        subtle:    'var(--color-subtle)',
       },
       fontFamily: {
         sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],

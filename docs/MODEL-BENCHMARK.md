@@ -2,11 +2,11 @@
 
 |  |  |
 |---|---|
-| **Project** | AI-SOC / AO-SOC Command Center |
+| **Project** | AI-SOC / AfraSOC Command Center |
 | **Document** | Model benchmark for the M08 AI Analysis / M10 Tier-2 Analyst layer |
 | **Version** | 1.0 |
 | **Date** | Summer 2026 |
-| **Applies to** | ao-soc v2.2.1 |
+| **Applies to** | AfraSOC v2.2.1 |
 | **Hardware** | NVIDIA RTX 3090, 24 GB, driver 610.88 |
 | **Runtime** | Ollama, local, offline |
 | **Writer** | J.Ekrami |
@@ -196,7 +196,7 @@ Confidence is also **unstable between runs**: the same model over the same five 
 produced confidence spreads of **45 and 15** on two runs at temperature 0.1. Any threshold
 tuned on one run is fitted to noise.
 
-### Consequences for AO-SOC
+### Consequences for AfraSOC
 
 1. The `confidence ≥ TIER2_AUTOPILOT_MIN_CONFIDENCE` gate **is not a safety mechanism.**
    The verdict-type restriction (`CONTAIN`/`ESCALATE` only) is doing all the real work.

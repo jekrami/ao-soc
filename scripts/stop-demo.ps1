@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Stop AO-SOC demo processes started by start-demo.ps1.
+  Stop AfraSOC demo processes started by start-demo.ps1.
 
 .DESCRIPTION
   Terminates broker, UI API, frontend, and simulator processes recorded in
@@ -40,7 +40,7 @@ function Stop-PortListeners([int]$Port) {
     }
 }
 
-Write-Host 'Stopping AO-SOC demo stack...' -ForegroundColor Cyan
+Write-Host 'Stopping AfraSOC demo stack...' -ForegroundColor Cyan
 
 if (Test-Path $PidFile) {
     try {

@@ -2,13 +2,17 @@ import { useTranslation } from 'react-i18next';
 import { Card, CardHeader, CardTitle, CardSubtitle, CardBody } from '@/components/ui/card';
 import { SeverityChip, StatusPill, RiskBadge } from '@/components/ui/chip';
 import { Progress } from '@/components/ui/progress';
-import { useAoSoc } from '@/store/useAoSoc';
+import { LiveBadge } from '@/components/ui/LiveBadge';
+import { useIncidents } from '@/hooks/useIncidents';
+import { useAfraSOC } from '@/store/useAfraSOC';
 import { cn, riskColor } from '@/lib/utils';
 import { Server, ListChecks } from 'lucide-react';
 
 export const IncidentQueue: React.FC = () => {
   const { t } = useTranslation();
-  const { incidents, selectedIncidentId, selectIncident } = useAoSoc();
+  const { data: incidents = [] } = useIncidents();
+  const selectedIncidentId = useAfraSOC(s => s.selectedIncidentId);
+  const setSelectedIncidentId = useAfraSOC(s => s.setSelectedIncidentId);
 
   return (
     <Card className="flex flex-col h-full">
@@ -28,7 +32,9 @@ export const IncidentQueue: React.FC = () => {
           return (
             <button
               key={inc.id}
-              onClick={() => { void selectIncident(inc.id); }}
+              type="button"
+              aria-label={inc.title}
+              onClick={() => setSelectedIncidentId(inc.id)}
               className={cn(
                 'w-full text-start rounded-md p-3 border transition-colors',
                 isSelected
@@ -39,16 +45,7 @@ export const IncidentQueue: React.FC = () => {
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-1.5">
                   <SeverityChip severity={inc.severity} />
-                  {inc.source === 'broker' && (
-                    <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold tracking-wide bg-info/15 text-info border border-info/30">
-                      {t('common.live')}
-                    </span>
-                  )}
-                  {inc.source === 'mock' && (
-                    <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold tracking-wide bg-muted/15 text-muted border border-border">
-                      {t('common.demo')}
-                    </span>
-                  )}
+                  <LiveBadge source={inc.source} />
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="font-mono text-[11px] text-muted">{inc.id}</span>
@@ -82,8 +79,8 @@ export const IncidentQueue: React.FC = () => {
               <div className="mt-2">
                 <Progress value={inc.risk_score} tone={
                   inc.risk_score >= 90 ? 'critical' :
-                  inc.risk_score >= 70 ? 'high'     :
-                  inc.risk_score >= 40 ? 'medium'   : 'low'
+                    inc.risk_score >= 70 ? 'high' :
+                      inc.risk_score >= 40 ? 'medium' : 'low'
                 } />
               </div>
             </button>

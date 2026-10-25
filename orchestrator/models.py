@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -63,71 +63,6 @@ class SetTrustWeightRequest(BaseModel):
     """Operator judgement about a detection source (B5)."""
 
     trust_weight: float = Field(..., ge=0.1, le=2.0)
-
-
-class ContainmentStepResponse(BaseModel):
-    step_id: str
-    description: str
-    order_index: int
-    completed: bool
-
-
-class SecurityEventResponse(BaseModel):
-    id: str
-    db_id: int
-    timestamp: Optional[str]
-    source_ip: str
-    dest_ip: str
-    signature: str
-    threat_severity: str
-    incident_analysis: str
-    mitigation_status: str
-    recommended_containment_steps: List[ContainmentStepResponse]
-    created_at: Optional[str]
-    updated_at: Optional[str]
-
-
-class AiExplanationResponse(BaseModel):
-    id: int
-    incident_id: str
-    summary: str
-    bullets: List[str]
-    likelihood: float
-    recommendation: str
-    evidence: List[EvidencePayload]
-    recommended_actions: List[RecommendedActionPayload]
-    version: str
-    created_at: datetime
-    updated_at: datetime
-
-
-class Tier2ActionPlanItem(BaseModel):
-    id: str
-    action: str
-    target: str
-    reason: str = ''
-    status: str = 'PENDING'
-    result: Optional[Dict[str, Any]] = None
-    created_at: Optional[str] = None
-    completed_at: Optional[str] = None
-
-
-class Tier2DecisionResponse(BaseModel):
-    alert_id: str
-    decision: str
-    decision_source: str = 'rules'
-    confidence: int = Field(..., ge=0, le=100)
-    rationale: str
-    risk_of_action: Optional[str] = None
-    approval_status: str
-    human_approval_required: bool = True
-    approved_by: Optional[str] = None
-    rejected_by: Optional[str] = None
-    rejection_note: Optional[str] = None
-    required_actions: List[Tier2ActionPlanItem] = Field(default_factory=list)
-    created_at: Optional[str] = None
-    approved_at: Optional[str] = None
-    completed_at: Optional[str] = None
 
 
 class ApproveDecisionRequest(BaseModel):
@@ -204,3 +139,87 @@ class EscalateCaseRequest(BaseModel):
 
 class CaseNoteRequest(BaseModel):
     note: str
+
+
+# --- Observability workspace ---------------------------------------------
+
+class SearchJobRequest(BaseModel):
+    query: str
+    since: Optional[str] = None
+    until: Optional[str] = None
+
+
+class SavedSearchCreateRequest(BaseModel):
+    title: str
+    query: str
+    description: Optional[str] = ''
+    time_preset: Optional[str] = '24h'
+    visibility: Optional[str] = 'private'
+
+
+class SavedSearchUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    query: Optional[str] = None
+    description: Optional[str] = None
+    time_preset: Optional[str] = None
+    visibility: Optional[str] = None
+
+
+class DashboardCreateRequest(BaseModel):
+    title: str
+    description: Optional[str] = ''
+    visibility: Optional[str] = 'private'
+
+
+class DashboardPanelPayload(BaseModel):
+    id: Optional[str] = None
+    title: str = 'Panel'
+    description: Optional[str] = ''
+    viz: str = 'table'
+    saved_search_id: Optional[str] = None
+    x: int = 0
+    y: int = 0
+    w: int = 6
+    h: int = 4
+    drilldown: Optional[dict] = None
+
+
+class DashboardUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    visibility: Optional[str] = None
+    panels: Optional[List[DashboardPanelPayload]] = None
+
+
+class ReportCreateRequest(BaseModel):
+    saved_search_id: str
+    title: str
+    description: Optional[str] = ''
+    visibility: Optional[str] = 'private'
+    schedule_minutes: Optional[int] = None
+
+
+class ReportUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    visibility: Optional[str] = None
+    schedule_minutes: Optional[int] = None
+
+
+class AlertRuleCreateRequest(BaseModel):
+    saved_search_id: str
+    title: str
+    severity: Optional[str] = 'MEDIUM'
+    enabled: Optional[bool] = True
+    threshold_count: Optional[int] = 1
+    visibility: Optional[str] = 'private'
+    webhook_url: Optional[str] = ''
+
+
+class AlertRuleUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    severity: Optional[str] = None
+    enabled: Optional[bool] = None
+    threshold_count: Optional[int] = None
+    visibility: Optional[str] = None
+    webhook_url: Optional[str] = None

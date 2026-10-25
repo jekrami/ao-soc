@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { Card, CardHeader, CardTitle, CardSubtitle, CardBody } from '@/components/ui/card';
-import { useAoSoc } from '@/store/useAoSoc';
+import { useEntities } from '@/hooks/useHealth';
 import { Progress } from '@/components/ui/progress';
 import { cn, riskColor } from '@/lib/utils';
 import { User, Server, Globe } from 'lucide-react';
@@ -48,7 +48,10 @@ const EntityList: React.FC<{ items: Entity[]; type: EntityType }> = ({ items, ty
 
 export const RiskAnalytics: React.FC = () => {
   const { t } = useTranslation();
-  const { highRiskUsers, highRiskHosts, highRiskIps } = useAoSoc();
+  const { data: entities } = useEntities();
+  const highRiskUsers = entities?.users ?? [];
+  const highRiskHosts = entities?.hosts ?? [];
+  const highRiskIps = entities?.ips ?? [];
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">

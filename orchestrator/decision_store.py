@@ -29,11 +29,13 @@ prunes its own precedent has no way to ever earn autonomy.
 """
 from __future__ import annotations
 
+from timeutil import utcnow as _utcnow
+
 import json
 import logging
 import os
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy import and_, func, or_, select, update
 
@@ -52,8 +54,6 @@ logger = logging.getLogger(__name__)
 MAX_PAGE = 500
 
 
-def _utcnow() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def _parse_when(value: Optional[str]) -> Optional[datetime]:

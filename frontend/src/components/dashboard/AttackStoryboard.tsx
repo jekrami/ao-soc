@@ -2,8 +2,13 @@ import { useTranslation } from 'react-i18next';
 import { Card, CardHeader, CardTitle, CardSubtitle, CardBody } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { SeverityChip, StatusPill, RiskBadge } from '@/components/ui/chip';
-import { useAoSoc } from '@/store/useAoSoc';
+import { useIncidents, useMitigateIncident } from '@/hooks/useIncidents';
+import { useSelectedIncident } from '@/hooks/useSelectedIncident';
+import { useAfraSOC } from '@/store/useAfraSOC';
+import { LiveBadge } from '@/components/ui/LiveBadge';
+import { getAuthSession } from '@/lib/authSession';
 import { cn, riskColor } from '@/lib/utils';
+import { canActOnDecisions } from '@/types/auth';
 import {
   GitBranch, Clock, Cpu, Network, FileWarning, Server, KeyRound, Database, Upload, Activity, ShieldCheck, Loader2
 } from 'lucide-react';
@@ -11,24 +16,31 @@ import type { TimelineEvent } from '@/types';
 
 const iconFor = (label: string) => {
   const l = label.toLowerCase();
-  if (l.includes('login') || l.includes('auth'))   return KeyRound;
+  if (l.includes('login') || l.includes('auth')) return KeyRound;
   if (l.includes('powershell') || l.includes('exec')) return Cpu;
   if (l.includes('credential') || l.includes('dump')) return Database;
-  if (l.includes('lateral') || l.includes('smb'))    return Network;
-  if (l.includes('c2') || l.includes('control'))      return GitBranch;
-  if (l.includes('exfil') || l.includes('upload'))    return Upload;
-  if (l.includes('discovery') || l.includes('enum'))  return Activity;
-  if (l.includes('persistence'))                       return FileWarning;
+  if (l.includes('lateral') || l.includes('smb')) return Network;
+  if (l.includes('c2') || l.includes('control')) return GitBranch;
+  if (l.includes('exfil') || l.includes('upload')) return Upload;
+  if (l.includes('discovery') || l.includes('enum')) return Activity;
+  if (l.includes('persistence')) return FileWarning;
   return Server;
 };
 
 export const AttackStoryboard: React.FC = () => {
   const { t } = useTranslation();
-  const { selectedIncident, selectIncident, incidents, loading, mitigateIncident } = useAoSoc();
+  const { selectedIncident, isLoading } = useSelectedIncident();
+  const { data: incidents = [] } = useIncidents();
+  const setSelectedIncidentId = useAfraSOC(s => s.setSelectedIncidentId);
+  const mitigate = useMitigateIncident();
   const inc = selectedIncident;
-  const canMitigate = inc?.source === 'broker' && inc.status !== 'CONTAINED';
+  const canMitigate = Boolean(
+    inc?.source === 'broker'
+    && inc.status !== 'CONTAINED'
+    && canActOnDecisions(getAuthSession()?.role),
+  );
 
-  if (loading.incident && !inc) {
+  if (isLoading && !inc) {
     return (
       <Card className="h-full">
         <CardBody>
@@ -55,6 +67,7 @@ export const AttackStoryboard: React.FC = () => {
           <div className="flex items-center gap-2 mb-1 flex-wrap">
             <SeverityChip severity={inc.severity} />
             <StatusPill status={inc.status} />
+            <LiveBadge source={inc.source} />
             <span className="font-mono text-[11px] text-muted">{inc.id}</span>
           </div>
           <CardTitle className="text-base leading-tight">{inc.title}</CardTitle>
@@ -65,10 +78,10 @@ export const AttackStoryboard: React.FC = () => {
             <Button
               size="sm"
               variant="danger"
-              disabled={loading.mitigate}
-              onClick={() => { void mitigateIncident(inc.id); }}
+              disabled={mitigate.isPending}
+              onClick={() => { void mitigate.mutateAsync(inc.id); }}
             >
-              {loading.mitigate ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+              {mitigate.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
               {t('common.mitigateAttack')}
             </Button>
           )}
@@ -78,7 +91,7 @@ export const AttackStoryboard: React.FC = () => {
               return (
                 <button
                   key={i.id}
-                  onClick={() => { void selectIncident(i.id); }}
+                  onClick={() => setSelectedIncidentId(i.id)}
                   title={`${i.id} · ${i.severity}`}
                   className={cn(
                     'h-2.5 w-6 rounded-full transition-all border shrink-0',
@@ -94,10 +107,10 @@ export const AttackStoryboard: React.FC = () => {
 
       <CardBody className="flex-1 overflow-auto">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-          <Strip label={t('dashboard.riskScore')}  value={<RiskBadge score={inc.risk_score} />} />
-          <Strip label={t('common.confidence')}  value={<span className="font-mono text-fg text-sm">{inc.confidence}%</span>} />
-          <Strip label={t('dashboard.firstSeen')}  value={<span className="font-mono text-fg text-sm">{inc.first_seen}</span>} />
-          <Strip label={t('dashboard.lastSeen')}   value={<span className="font-mono text-fg text-sm">{inc.last_seen}</span>} />
+          <Strip label={t('dashboard.riskScore')} value={<RiskBadge score={inc.risk_score} />} />
+          <Strip label={t('common.confidence')} value={<span className="font-mono text-fg text-sm">{inc.confidence}%</span>} />
+          <Strip label={t('dashboard.firstSeen')} value={<span className="font-mono text-fg text-sm">{inc.first_seen}</span>} />
+          <Strip label={t('dashboard.lastSeen')} value={<span className="font-mono text-fg text-sm">{inc.last_seen}</span>} />
         </div>
 
         <div className="text-[11px] uppercase tracking-wider text-muted mb-2">{t('dashboard.attackChain')}</div>
@@ -162,7 +175,7 @@ const TimelineRow: React.FC<{ step: TimelineEvent }> = ({ step }) => {
 
 function currentColor(severity: string) {
   return severity === 'CRITICAL' ? '#EF4444' :
-         severity === 'HIGH'     ? '#F97316' :
-         severity === 'MEDIUM'   ? '#EAB308' :
-         severity === 'LOW'      ? '#22C55E' : '#3B82F6';
+    severity === 'HIGH' ? '#F97316' :
+      severity === 'MEDIUM' ? '#EAB308' :
+        severity === 'LOW' ? '#22C55E' : '#3B82F6';
 }

@@ -115,8 +115,8 @@
   <text class="chip" x="881" y="437" text-anchor="middle" fill="#e0e7ff">استدلال ساخت‌یافته — ساخته‌شده</text>
   <text class="box-sub" x="881" y="458" text-anchor="middle">شواهد · دلیل · نگاشت ATT&amp;CK · خروجی JSON</text>
   <rect x="362" y="416" width="330" height="56" rx="7" fill="#ffffff" fill-opacity="0.14" stroke="#c7d2fe" stroke-width="1"/>
-  <text class="chip" x="527" y="437" text-anchor="middle" fill="#e0e7ff">راستی‌آزمایی و بازیابی سابقه (RAG) — ساخته‌شده</text>
-  <text class="box-sub" x="527" y="458" text-anchor="middle">بررسی نشانه‌ها · فهرست ATT&amp;CK · سابقهٔ استنادشده</text>
+  <text class="chip" x="527" y="437" text-anchor="middle" fill="#e0e7ff">راستی‌آزمایی، سابقه و رویه‌ها (RAG) — ساخته‌شده</text>
+  <text class="box-sub" x="527" y="458" text-anchor="middle">هوش تهدید · ATT&amp;CK · سابقه · رویه‌های LightRAG (فقط زمینه)</text>
 
   <!-- L4 tier2 -->
   <rect x="348" y="510" width="712" height="82" rx="9" fill="#b91c1c"/>
@@ -152,26 +152,26 @@
   <text class="box-sub" x="1174" y="456" text-anchor="middle">انبار لاگ نیست —</text>
   <text class="box-sub" x="1174" y="476" text-anchor="middle">فقط آنچه تصمیم را می‌سازد</text>
 
-  <!-- Side: dashboard -->
+  <!-- Side: dashboard (+ human AAA boundary on UI API) -->
   <rect x="1076" y="510" width="196" height="278" rx="9" fill="#1d4ed8"/>
   <circle cx="1100" cy="534" r="7" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"/>
   <text class="box-title" x="1174" y="539" text-anchor="middle">داشبورد</text>
-  <text class="box-sub" x="1174" y="568" text-anchor="middle">۷ مسیر عملیاتی</text>
-  <text class="box-sub" x="1174" y="592" text-anchor="middle">دوزبانه — فارسی/انگلیسی</text>
-  <text class="box-sub" x="1174" y="616" text-anchor="middle">راست‌به‌چپ کامل</text>
-  <text class="box-sub" x="1174" y="640" text-anchor="middle">شاخص‌های مدیریتی</text>
-  <text class="box-sub" x="1174" y="664" text-anchor="middle">نقشهٔ حرارتی ATT&amp;CK</text>
-  <text class="box-sub" x="1174" y="688" text-anchor="middle">تابلوی تیر ۲</text>
-  <text class="box-sub" x="1174" y="712" text-anchor="middle">بایگانی رخدادها</text>
+  <text class="box-sub" x="1174" y="568" text-anchor="middle">خانه · جستجو · داشبوردها</text>
+  <text class="box-sub" x="1174" y="592" text-anchor="middle">گزارش · هشدار · منابع</text>
+  <text class="box-sub" x="1174" y="616" text-anchor="middle">زبان پرسمان روی مخزن تصمیم</text>
+  <text class="box-sub" x="1174" y="640" text-anchor="middle">AAA انسان · دوزبانه · RTL</text>
+  <text class="box-sub" x="1174" y="664" text-anchor="middle">رمز · کپچا · OTP · JWT</text>
+  <text class="box-sub" x="1174" y="688" text-anchor="middle">میز تیر ۲ · KPI · ATT&amp;CK</text>
+  <text class="box-sub" x="1174" y="712" text-anchor="middle">قاعده وارد intake نمی‌شود</text>
   <line x1="1096" y1="730" x2="1252" y2="730" stroke="#93c5fd" stroke-width="1.5"/>
-  <text class="box-sub" x="1174" y="754" text-anchor="middle">نتیجه به تفکیکِ</text>
-  <text class="box-sub" x="1174" y="774" text-anchor="middle">ابزارِ مبدأ سنجیده شود</text>
+  <text class="box-sub" x="1174" y="754" text-anchor="middle">UI API فقط PEM عمومی</text>
+  <text class="box-sub" x="1174" y="774" text-anchor="middle">کلید رابط روی کارگزار</text>
 
   <!-- Governance -->
   <rect x="348" y="806" width="924" height="58" rx="9" fill="#334155"/>
   <circle cx="372" cy="835" r="7" fill="#f59e0b" stroke="#ffffff" stroke-width="1.5"/>
-  <text class="box-title" x="810" y="830" text-anchor="middle">حاکمیت و امنیت — احراز هویت · کنترل دسترسی نقش‌محور · مدیریت اسرار · ممیزی</text>
-  <text class="box-sub" x="810" y="852" text-anchor="middle">فاز الف انجام شد — احراز هویت کلیدی و نقش‌ها روی همهٔ مسیرها، فهرست مجاز CORS، هویت تأییدکننده؛ باقی‌مانده: IdP/SSO، RBAC و مدیریت اسرار</text>
+  <text class="box-title" x="810" y="830" text-anchor="middle">حاکمیت و امنیت — JWT انسان · کلید API رابط‌ها · ممیزی · اسرار</text>
+  <text class="box-sub" x="810" y="852" text-anchor="middle">ورود انسان روی داشبورد · کلید ماشین روی کارگزار · متریک · پیش‌پرواز · پشتیبان · کانتینر؛ باقی‌مانده: IdP/SSO و RBAC شیءبه‌شیء</text>
 
   <!-- ================= Arrows ================= -->
   <line x1="1330" y1="199" x2="1296" y2="199" stroke="#334155" stroke-width="2.5" marker-end="url(#arw)"/>
@@ -210,5 +210,5 @@
   <text class="legend" x="560" y="946" text-anchor="start">خط‌چین = وابستگی بیرونی</text>
 
   <!-- ================= Footer ================= -->
-  <text class="foot" x="830" y="994" text-anchor="middle">نویسنده: J.Ekrami · هم‌نویسنده: Claude (Opus 5، Sonnet 5) · © J.Ekrami-Labs · تابستان ۱۴۰۵ · برابر با طرح نسخهٔ ۲.۸.۳</text>
+  <text class="foot" x="830" y="994" text-anchor="middle">نویسنده: J.Ekrami · هم‌نویسنده: Cursor Grok 4.5 · © J.Ekrami-Labs · تابستان ۱۴۰۵ · برابر با طرح نسخهٔ ۲.۹.۰</text>
 </svg>

@@ -1,14 +1,14 @@
 import { useTranslation } from 'react-i18next';
 import { Card, CardHeader, CardTitle, CardSubtitle, CardBody } from '@/components/ui/card';
 import { SystemHealthPanel } from '@/components/dashboard/SystemHealthPanel';
-import { useAoSoc } from '@/store/useAoSoc';
+import { useSystemHealth } from '@/hooks/useHealth';
 import { StatusDot } from '@/components/ui/status-dot';
 import { fmtNumber } from '@/lib/utils';
 import { Activity, Cpu, Database, Workflow, Brain, Network, Timer, Server } from 'lucide-react';
 
 export const SystemHealthPage: React.FC = () => {
   const { t, i18n } = useTranslation();
-  const { systemHealth, systemStatus } = useAoSoc();
+  const { data: systemHealth, systemStatus } = useSystemHealth();
   const numberLocale = i18n.language === 'fa' ? 'fa-IR' : 'en-US';
 
   return (

@@ -35,7 +35,7 @@ import ipaddress
 import os
 import re
 from dataclasses import dataclass, replace
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, Optional, Tuple
 
 import asset_criticality
 import identity_role
@@ -432,14 +432,6 @@ def autopilot_allows(assessments: Iterable[ActionAssessment]) -> Tuple[bool, Opt
                 f'{MAX_AUTOPILOT_RISK} autopilot ceiling'
             )
     return True, None
-
-
-def assess_plan(actions: Iterable[Dict[str, Any]]) -> List[ActionAssessment]:
-    """Assess a plan given as dicts with 'action_type'/'action' and 'target'."""
-    return [
-        assess_action(item.get('action_type') or item.get('action') or '', item.get('target') or '')
-        for item in actions
-    ]
 
 
 def action_policy_config() -> Dict[str, Any]:

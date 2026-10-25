@@ -38,7 +38,7 @@
   <!-- ================= Title ================= -->
   <text class="t1" x="1000" y="54" text-anchor="middle">جریان داده در AI-SOC</text>
   <text class="t2" x="1000" y="84" text-anchor="middle">یک هشدار، از آغاز تا پایان — از ابزار تشخیصِ بیرونی تا بسته‌شدن پرونده</text>
-  <text class="t3" x="1000" y="108" text-anchor="middle">نسخهٔ ۲.۸.۱۱ — تابستان ۱۴۰۵</text>
+  <text class="t3" x="1000" y="108" text-anchor="middle">نسخهٔ ۲.۸.۱۲ — تابستان ۱۴۰۵</text>
 
   <!-- ================= PHASE A ================= -->
   <rect x="536" y="134" width="1080" height="28" rx="14" fill="#e2e8f0"/>
@@ -99,14 +99,14 @@
 
   <!-- b9 precedent -->
   <rect x="536" y="1064" width="1080" height="80" rx="9" fill="#4338ca"/>
-  <text class="box-title" x="1076" y="1092" text-anchor="middle">۸ · بازیابی سابقه — این مرکز عملیات، بارِ پیش که چنین شکلی دید چه تصمیمی گرفت</text>
-  <text class="box-sub" x="1076" y="1114" text-anchor="middle">شباهتِ وزن‌دار بر تصمیم‌های نهایی‌شدهٔ پیشین: تکنیک ۳۰ · روایت ۲۰ · منابع ۱۵ · موجودیت‌ها ۱۵ · شکلِ موجودیت ۱۰ · شدت ۱۰.</text>
-  <text class="box-sub" x="1076" y="1132" text-anchor="middle">شکست در این مرحله «زمینه» را از تحلیلگر می‌گیرد، نه «رأی» را — ثبت می‌شود و چیزی برنمی‌گرداند.</text>
+  <text class="box-title" x="1076" y="1092" text-anchor="middle">۸ · سابقه و دانش سندی — تصمیم‌ها و رویه‌ها در کنار دروازه</text>
+  <text class="box-sub" x="1076" y="1114" text-anchor="middle">سابقه: شباهت وزن‌دار بر تصمیم‌های انسانیِ نهایی‌شده (دروازهٔ خلبان خودکار). دانش: LightRAG روی رویه‌های مارک‌داون — فقط شناسهٔ DOC-… استنادشده، هرگز دروازه.</text>
+  <text class="box-sub" x="1076" y="1132" text-anchor="middle">شکست در هر کدام «زمینه» را می‌گیرد، نه «رأی» را — تشخیص ذخیره می‌ماند و تحلیل با بخش خالی ادامه می‌یابد.</text>
 
   <!-- b10 prompt -->
   <rect x="536" y="1170" width="1080" height="66" rx="9" fill="#4338ca"/>
   <text class="box-title" x="1076" y="1198" text-anchor="middle">۹ · ساختِ پرسمان</text>
-  <text class="box-sub" x="1076" y="1220" text-anchor="middle">سندِ وضعیت (n تشخیص از m ابزار · گرافِ موجودیت · بازهٔ زمانی · تکنیک‌های خودِ ابزارها) · گزارش اطلاعات تهدید · سوابقی که باید استناد شوند</text>
+  <text class="box-sub" x="1076" y="1220" text-anchor="middle">سندِ وضعیت · گزارش اطلاعات تهدید · سوابق (PREC-…) · رویه‌های دانش (DOC-…) — همه برچسب‌دار و جدا استنادشده</text>
 
   <!-- b11 inference -->
   <rect x="536" y="1262" width="1080" height="80" rx="9" fill="#4338ca"/>
@@ -119,7 +119,7 @@
   <text class="box-title" x="1076" y="1396" text-anchor="middle">۱۱ · تجزیه و نرمال‌سازی — جایی که مدل پاسخ‌گو نگه داشته می‌شود</text>
   <text class="box-sub" x="1076" y="1418" text-anchor="middle">پاسخی که تجزیه نشود خطا می‌دهد. هرگز به پاکتِ پاسخ عقب‌نشینی نمی‌کند، که تمیز تجزیه می‌شد و هر میدان را خاموشانه پیش‌فرض می‌گرفت.</text>
   <text class="box-sub" x="1076" y="1436" text-anchor="middle">تکنیکی که ابزار ادعا کرده بر ادعای مدل مقدم است. هر شناسه با فهرست سنجیده می‌شود: تأییدشده · فهرست‌نشده · ناشناخته · بدشکل.</text>
-  <text class="box-sub" x="1076" y="1454" text-anchor="middle">شناسهٔ سابقه‌ای که مدل از خود ساخته، از استدلال حذف — و نگهداری — می‌شود؛ مدلی که شناسهٔ پرونده می‌سازد، خودْ واقعیتی ارزشمند است.</text>
+  <text class="box-sub" x="1076" y="1454" text-anchor="middle">شناسهٔ PREC-… یا DOC-… که مدل از خود ساخته حذف — و نگهداری — می‌شود؛ ساختن استناد، خودْ واقعیتی دربارهٔ مدل است.</text>
 
   <!-- b13 persist -->
   <rect x="536" y="1490" width="1080" height="58" rx="9" fill="#475569"/>
@@ -414,5 +414,5 @@
   <text class="legend" x="800" y="2638" text-anchor="start">خط‌چین = وابستگی بیرونی یا دسترسی به انباره</text>
 
   <!-- ================= Footer ================= -->
-  <text class="foot" x="1000" y="2690" text-anchor="middle">نویسنده: J.Ekrami · هم‌نویسنده: Claude (Opus 5، Sonnet 5) · © J.Ekrami-Labs · تابستان ۱۴۰۵ · برابر با AO-SOC نسخهٔ ۲.۸.۱۱</text>
+  <text class="foot" x="1000" y="2690" text-anchor="middle">نویسنده: J.Ekrami · هم‌نویسنده: Claude (Opus 5، Sonnet 5) · © J.Ekrami-Labs · تابستان ۱۴۰۵ · برابر با AfraSOC نسخهٔ ۲.۸.۱۲</text>
 </svg>

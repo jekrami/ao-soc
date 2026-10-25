@@ -1,0 +1,56 @@
+---
+alwaysApply: false
+---
+# Enterprise Observability and Analytics UI/UX Specification
+
+Design an enterprise-grade observability, log analytics, and security monitoring web application inspired by Splunk's functional model. The application must provide a unified environment for searching events, analyzing telemetry, creating dashboards, reviewing reports, managing alerts, and investigating anomalies. The interface must prioritize information density, analytical clarity, fast navigation, and a seamless transition from high-level summaries to detailed raw data.
+
+## Global Application Structure
+
+Implement persistent global navigation for major application areas, including Home, Search, Dashboards, Reports, Alerts, Data Sources, and Administration. Use contextual secondary navigation where necessary. Maintain consistent page titles, breadcrumbs, action placement, and permission-aware navigation. Provide a global search or command entry point if appropriate.
+
+## Dashboard Workspace
+
+A dashboard is a configurable composition of independent data-driven panels. Support grid-based layouts, configurable panel dimensions, panel reordering, reusable visualization components, descriptive titles, optional descriptions, and shared filters. Dashboard panels must support single-value KPIs, time-series charts, bar and area charts, pie charts, tables, maps, and other relevant visualizations.
+
+Every panel must clearly represent its query or data source, current time scope, loading state, data freshness, empty state, and error state. Use appropriate units, legends, comparison periods, and status indicators. Prioritize critical KPIs and operational anomalies near the top of the page.
+
+## Filters and Shared State
+
+Support global time-range selection, dropdowns, multi-select controls, text filters, and contextual filters for relevant dimensions such as service, host, environment, region, and severity. Filters must be capable of controlling multiple dashboard panels through shared state or tokens. Preserve selections during navigation where appropriate and make filter dependencies explicit. Support Apply and Reset actions when appropriate for expensive queries.
+
+## Interactive Visualizations
+
+Make relevant charts, metric values, and table rows interactive. Clicking a data point or category should be able to filter related panels, open a detailed search, or navigate to another dashboard. Pass the selected values and time range to the destination. Preserve investigation context and provide a predictable way to return to the original overview.
+
+## Search and Event Investigation
+
+Provide a dedicated search workspace with a prominent query editor, time-range selector, search execution controls, query history, job status, and cancellation. Support a structured query language capable of filtering, aggregating, sorting, transforming, and analyzing event data.
+
+Present results through an event list, timeline, discovered-fields sidebar, statistics table, and visualization view. Support sorting, field-based filtering, pagination, result inspection, and exporting. Clearly distinguish raw events from aggregated query results. Communicate execution time, result counts, warnings, errors, and loading states.
+
+## Reports and Saved Searches
+
+Allow users to save reusable searches and create reports from query results. Provide searchable content lists with titles, descriptions, owners, update timestamps, scheduling information, and permissions. Support opening, editing, duplicating, sharing, and exporting content according to user permissions.
+
+## Alerts
+
+Support configurable alert rules based on search results, thresholds, or event conditions. Provide alert configuration, scheduling or evaluation settings, severity, triggering conditions, notification actions, enabled status, and execution history. Distinguish alert definitions from individual occurrences. Provide contextual links from an alert to the affected dashboard, relevant search, and underlying events.
+
+## Dashboard Editor
+
+Provide a visual editing mode separate from normal dashboard viewing. Allow authorized users to add, configure, resize, reorder, and remove panels; select visualization types; configure data sources; define inputs and drilldowns; and customize layout and formatting. Include preview, save, cancel, and discard-change behaviors. Make editing controls contextual to the selected component.
+
+## Visual Design Principles
+
+Use a restrained, professional enterprise design with compact layouts, consistent spacing, legible typography, clear alignment, and a strong information hierarchy. Optimize for data density without sacrificing readability. Use color semantically for status and severity rather than decoration. Never communicate critical status through color alone. Keep panel titles descriptive and make units, time ranges, and data freshness explicit.
+
+Support both light and dark themes if feasible. Ensure responsive layouts, accessible contrast, keyboard navigation, and readable tables on smaller screens. Avoid unnecessary gradients, oversized cards, excessive borders, and decorative elements that compete with analytical information.
+
+## Interaction and Reliability
+
+All interactive elements must have functional outcomes. Use predictable loading states, localized error handling, empty-state explanations, and explicit feedback for saving, exporting, and configuration changes. Avoid page-wide flicker during data refresh. Preserve filters and navigation context when appropriate. Distinguish zero values, missing data, stale data, failed queries, and unavailable data sources.
+
+## Core UX Objective
+
+The application must support a continuous analytical workflow: observe a high-level dashboard, identify an anomaly, filter the data, drill into a relevant panel, inspect underlying events, refine the search, save the result, and create a reusable dashboard panel, report, or alert. The experience should serve both nontechnical operators who need immediate operational insight and technical analysts who require precise control over data investigation.

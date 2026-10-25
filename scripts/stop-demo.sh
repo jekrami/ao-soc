@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# stop-demo.sh — Stop AO-SOC demo processes started by start-demo.sh
+# stop-demo.sh — Stop AfraSOC demo processes started by start-demo.sh
 # =============================================================================
 #
 # Reads PIDs from scripts/.demo-pids and sends SIGTERM, then SIGKILL if needed.
@@ -48,7 +48,7 @@ kill_port() {
   fi
 }
 
-echo "Stopping AO-SOC demo stack..."
+echo "Stopping AfraSOC demo stack..."
 
 if [[ -f "$PID_FILE" ]]; then
   # PID file lines: name=pid

@@ -98,12 +98,6 @@ def load_catalog(path: Optional[Path] = None) -> Dict[str, Any]:
     return loaded
 
 
-def reset_catalog() -> None:
-    """Drop the cache (tests, and a catalogue swapped in at runtime)."""
-    global _catalog
-    _catalog = None
-
-
 def lookup_technique(technique_id: str) -> Dict[str, Any]:
     """Return ``{id, status, name, tactic}`` for one technique ID."""
     tid = str(technique_id or '').strip().upper()

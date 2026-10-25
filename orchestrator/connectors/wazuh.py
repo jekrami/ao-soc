@@ -205,7 +205,7 @@ class WazuhActiveResponseConnector(Connector):
 
             body = {
                 # The '!' runs the script directly rather than matching a
-                # configured rule — the whole point is that AO-SOC decided.
+                # configured rule — the whole point is that AfraSOC decided.
                 'command': f'!{command}',
                 'arguments': [request.target],
                 'alert': {

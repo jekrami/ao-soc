@@ -13,19 +13,160 @@
     "language": "Language",
     "switchToEnglish": "Switch to English",
     "switchToFarsi": "Switch to Farsi",
-    "archive": "Archive"
+    "archive": "Archive",
+    "audit": "Audit",
+    "users": "Users",
+    "settings": "Settings",
+    "logout": "Sign out",
+    "signedInAs": "Signed in as {{user}}",
+    "sessionLeft": "{{time}} left",
+    "home": "Home",
+    "search": "Search",
+    "dashboards": "Dashboards",
+    "reports": "Reports",
+    "alerts": "Alerts",
+    "dataSources": "Data Sources",
+    "administration": "Administration",
+    "operations": "Operations",
+    "analytics": "Analytics",
+    "primary": "Primary navigation",
+    "open": "Open navigation",
+    "close": "Close navigation",
+    "homeSecondary": "Home areas",
+    "savedSearch": "Saved search"
   },
   "footer": {
-    "title": "AO-SOC Command Center",
+    "title": "AfraSOC Command Center",
     "pipeline": "Splunk → AI Broker → Local LLM (Qwen) → SOAR"
   },
   "auth": {
-    "title": "AO-SOC sign-in",
-    "subtitle": "This console can approve actions that run on the network. Every request is authenticated.",
-    "keyLabel": "Operator API key",
-    "keyPlaceholder": "Paste your API key",
-    "signIn": "Sign in",
-    "hint": "The key is held for this browser tab only and is cleared when the tab closes."
+    "title": "AfraSOC sign-in",
+    "restoring": "Restoring session…",
+    "subtitle": "This console can approve actions that run on the network. Sign in with your operator account.",
+    "usernameLabel": "Username",
+    "passwordLabel": "Password",
+    "continue": "Continue",
+    "working": "Working…",
+    "captchaHint": "A self-hosted proof-of-work captcha runs when you continue — nothing is sent to a third party.",
+    "otpTitle": "Email verification",
+    "otpSubtitle": "Enter the six-digit code sent to your operator email.",
+    "otpLabel": "One-time code",
+    "verifyOtp": "Verify and sign in",
+    "backToCredentials": "Back",
+    "errors": {
+      "credentials": "Invalid username or password.",
+      "captcha": "Captcha failed — try again.",
+      "otp": "Invalid or expired code.",
+      "otpUnavailable": "Sign-in service is unavailable (token signing). Check broker JWT key permissions and try again.",
+      "generic": "Sign-in failed. Try again."
+    }
+  },
+  "authAudit": {
+    "title": "Authentication audit",
+    "subtitle": "Append-only record of human sign-in and account actions",
+    "tableTitle": "Audit log",
+    "tableLabel": "Authentication audit table",
+    "totalSummary": "{{count}} row(s) loaded",
+    "empty": "No audit rows yet",
+    "loadFailed": "Could not load the audit log",
+    "loadMore": "Load more",
+    "columns": {
+      "time": "Time",
+      "action": "Action",
+      "actor": "Actor",
+      "target": "Target",
+      "result": "Result",
+      "reason": "Reason"
+    }
+  },
+  "authUsers": {
+    "title": "Operators",
+    "subtitle": "Create and manage human operator accounts",
+    "createTitle": "Create operator",
+    "createSubtitle": "New accounts must change their password on first use when the broker requires it",
+    "listTitle": "Accounts",
+    "totalSummary": "{{count}} operator(s)",
+    "empty": "No operators found",
+    "loadFailed": "Could not load operators",
+    "create": "Create user",
+    "reasonLabel": "Reason (required for role and account changes)",
+    "reasonPlaceholder": "Why this change is being made",
+    "fields": {
+      "username": "Username",
+      "email": "Email",
+      "password": "Temporary password",
+      "role": "Role"
+    },
+    "roles": {
+      "admin": "Admin",
+      "analyst": "Analyst",
+      "viewer": "Viewer"
+    },
+    "badges": {
+      "disabled": "Disabled",
+      "locked": "Locked"
+    },
+    "actions": {
+      "changeRole": "Change role for {{user}} to {{role}}",
+      "setRole": "Make {{role}}",
+      "disable": "Disable {{user}}",
+      "disableShort": "Disable",
+      "enable": "Enable {{user}}",
+      "enableShort": "Enable",
+      "unlock": "Unlock {{user}}",
+      "unlockShort": "Unlock"
+    },
+    "errors": {
+      "reasonRequired": "A reason is required for this action.",
+      "action": "The action failed. Check permissions and try again."
+    }
+  },
+  "authSettings": {
+    "title": "Security settings",
+    "subtitle": "Password, one-time codes, and session limits. Every save is written to the audit log.",
+    "loading": "Loading security settings…",
+    "loadFailed": "Could not load security settings",
+    "passwordTitle": "Password and lockout",
+    "passwordSubtitle": "Account password rules",
+    "otpTitle": "One-time code",
+    "otpSubtitle": "Email verification after the password",
+    "sessionTitle": "Sessions",
+    "sessionSubtitle": "Token lifetime, idle timeout, and how many sessions one operator may hold",
+    "on": "On",
+    "off": "Off",
+    "reasonLabel": "Reason (required)",
+    "reasonPlaceholder": "Why this security change is being made",
+    "save": "Save security settings",
+    "saved": "Saved. The change is in the audit log.",
+    "system": "system",
+    "updated": "Last change by {{user}} at {{time}}",
+    "fields": {
+      "password_min_length": "Minimum password length",
+      "lock_threshold": "Failed attempts before lock",
+      "lock_duration_minutes": "Lock duration (minutes)",
+      "otp_enabled": "Require email one-time code",
+      "otp_ttl_minutes": "Code lifetime (minutes)",
+      "access_ttl_minutes": "Access token lifetime (minutes)",
+      "idle_timeout_minutes": "Idle timeout (minutes)",
+      "absolute_timeout_minutes": "Absolute session timeout (minutes)",
+      "max_active_sessions": "Active sessions per operator"
+    },
+    "hints": {
+      "password_min_length": "12–128 characters",
+      "lock_threshold": "3–20 failures, then the account locks",
+      "lock_duration_minutes": "1–1440 minutes",
+      "otp_ttl_minutes": "1–30 minutes. Used only while the code is required",
+      "access_ttl_minutes": "Default 30. Cannot be longer than the idle timeout",
+      "idle_timeout_minutes": "Default 30. No requests for this long ends the session",
+      "absolute_timeout_minutes": "Default 480 (8 hours), even if the operator stays active",
+      "max_active_sessions": "1–20. A new sign-in drops the oldest session past this cap"
+    },
+    "errors": {
+      "reasonRequired": "A reason is required to change security settings.",
+      "invalid": "Those values are not allowed. Check the ranges and that the token lifetime does not exceed the idle timeout.",
+      "unchanged": "Nothing changed.",
+      "action": "The settings could not be saved."
+    }
   },
   "common": {
     "refresh": "Refresh",
@@ -112,7 +253,7 @@
     }
   },
   "dashboard": {
-    "loadError": "Failed to load dashboard: {{error}}. Make sure the mock API is running on port 4317.",
+    "loadError": "Failed to load dashboard: {{error}}. Make sure the UI API is running on port 4317.",
     "executiveSummary": "Executive Summary",
     "executiveSubtitle": "What the security posture looks like right now",
     "mainOperations": "Main Operations",
@@ -234,7 +375,7 @@
   },
   "health": {
     "title": "System Health",
-    "subtitle": "Live telemetry from the AO-SOC pipeline",
+    "subtitle": "Live telemetry from the AfraSOC pipeline",
     "pipelineStatus": "Pipeline Status",
     "pipelineSubtitle": "End-to-end data flow",
     "splunk": "Splunk",
@@ -428,7 +569,13 @@
     "autoExecuted": "Executed without a human, on precedent",
     "offered": "{{count}} similar past decision(s) were put in front of the model; it cited {{cited}}.",
     "noPrecedent": "No sufficiently similar past decision — this one waits for an analyst by construction.",
-    "fabricated": "The model cited case id(s) it was never given: {{ids}}. They were dropped, not stored."
+    "fabricated": "The model cited case id(s) it was never given: {{ids}}. They were dropped, not stored.",
+    "knowledge": "Procedures",
+    "knowledgeDisabled": "No document knowledge base is configured. Empty here means no SOPs were searched — not that none apply.",
+    "knowledgeDegraded": "Document retrieval failed or degraded ({{error}}). The verdict still ran; cited procedures may be incomplete.",
+    "knowledgeOffered": "{{count}} procedure(s) were put in front of the model; it cited {{cited}}.",
+    "knowledgeEmpty": "The knowledge base was searched and no matching procedure was retrieved for this situation.",
+    "knowledgeFabricated": "The model cited document id(s) it was never given: {{ids}}. They were dropped, not stored."
   },
   "cases": {
     "title": "Case",
@@ -481,6 +628,121 @@
         "BLOCKED": "blocked",
         "SIMULATED": "dry run"
       }
+    }
+  },
+  "workspace": {
+    "filters": {
+      "label": "Shared filters",
+      "time": "Time",
+      "timePreset": "Time range {{preset}}",
+      "since": "Since",
+      "until": "Until",
+      "severity": "Severity",
+      "severityToggle": "Toggle severity {{severity}}",
+      "source": "Source",
+      "sourcePlaceholder": "tool…",
+      "entity": "Entity",
+      "entityPlaceholder": "user / host / IP",
+      "apply": "Apply",
+      "reset": "Reset"
+    },
+    "panel": {
+      "dataSource": "Data source",
+      "timeScope": "Time scope",
+      "freshness": "Freshness",
+      "updated": "Updated {{time}}",
+      "loading": "Loading…",
+      "error": "This panel failed to load",
+      "unavailable": "Data source unavailable",
+      "empty": "No rows yet",
+      "zero": "Zero results in this window",
+      "stale": "Data may be stale"
+    },
+    "theme": {
+      "switchToLight": "Switch to light theme",
+      "switchToDark": "Switch to dark theme"
+    },
+    "command": {
+      "open": "Open command palette",
+      "title": "Command palette",
+      "placeholder": "Go to…",
+      "empty": "No matches"
+    },
+    "search": {
+      "title": "Search",
+      "subtitle": "Query the decision store — situations, decisions, incidents, cases, audit",
+      "queryLabel": "Query",
+      "run": "Run",
+      "cancel": "Cancel",
+      "save": "Save",
+      "history": "History",
+      "elapsed": "{{ms}} ms",
+      "rows": "{{count}} rows",
+      "events": "Events",
+      "timeline": "Timeline",
+      "fields": "Fields",
+      "statistics": "Statistics",
+      "chart": "Chart",
+      "aggregationNote": "Aggregated result — not raw events",
+      "saveTitle": "Save search",
+      "saveName": "Title",
+      "addToDashboard": "Add to dashboard",
+      "saveAsReport": "Save as report",
+      "createRule": "Create alert rule",
+      "placeholder": "situations | where status = \"OPEN\" | head 50",
+      "running": "Running…",
+      "failed": "Search failed",
+      "noJob": "Run a query to see results"
+    },
+    "dashboards": {
+      "title": "Dashboards",
+      "subtitle": "Composable panels over saved searches",
+      "new": "New dashboard",
+      "edit": "Edit",
+      "view": "View",
+      "save": "Save",
+      "discard": "Discard",
+      "duplicate": "Duplicate",
+      "delete": "Delete",
+      "empty": "No dashboards yet",
+      "addPanel": "Add panel",
+      "unsaved": "You have unsaved changes. Leave anyway?",
+      "owner": "Owner",
+      "updated": "Updated",
+      "visibility": "Visibility"
+    },
+    "reports": {
+      "title": "Reports",
+      "subtitle": "Saved searches with optional schedule and CSV export",
+      "new": "New report",
+      "run": "Run",
+      "export": "Export CSV",
+      "schedule": "Schedule",
+      "lastRun": "Last run",
+      "empty": "No reports yet",
+      "onDemand": "On demand"
+    },
+    "alertsPage": {
+      "definitions": "Definitions",
+      "occurrences": "Occurrences",
+      "definitionsSubtitle": "Threshold rules over saved searches — they never enter intake",
+      "newRule": "New rule",
+      "enabled": "Enabled",
+      "threshold": "Threshold",
+      "evaluate": "Evaluate now",
+      "ruleOccurrence": "Rule",
+      "emptyRules": "No alert rules yet",
+      "emptyOcc": "No rule occurrences yet"
+    },
+    "sources": {
+      "title": "Data Sources",
+      "subtitle": "Detection adapters and trust weights",
+      "adapters": "Adapters",
+      "registry": "Detection sources",
+      "trust": "Trust weight",
+      "lastSeen": "Last seen",
+      "version": "Version",
+      "health": "Health"
     }
   }
 }

@@ -35,8 +35,8 @@ logger = logging.getLogger(__name__)
 _SEVERITY = {'LOW': 1, 'MEDIUM': 2, 'HIGH': 3, 'CRITICAL': 4}
 
 #: Every case we own carries this, which is how the pull finds them again.
-OWNER_TAG = 'ao-soc'
-REVISION_TAG_PREFIX = 'ao-soc-rev-'
+OWNER_TAG = 'AfraSOC'
+REVISION_TAG_PREFIX = 'AfraSOC-rev-'
 
 
 def _revision_from_tags(tags: Any) -> Optional[int]:
@@ -143,7 +143,7 @@ class TheHiveSyncProvider(CaseSyncProvider):
             'tags': [
                 OWNER_TAG,
                 f'{REVISION_TAG_PREFIX}{snapshot.revision}',
-                f'ao-soc-situation-{snapshot.situation_id}',
+                f'AfraSOC-situation-{snapshot.situation_id}',
             ],
             **({'assignee': snapshot.assignee} if snapshot.assignee else {}),
         }

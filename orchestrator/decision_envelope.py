@@ -42,7 +42,7 @@ import situation as situations
 import tier2
 from backup import app_version
 
-SCHEMA = 'ao-soc.decision-envelope/1'
+SCHEMA = 'AfraSOC.decision-envelope/1'
 
 # Autonomy, as the requirement's three stages read from a decision's own record.
 PROPOSED = 'PROPOSED'      # nobody has approved it: Stage 1/2, waiting for a person

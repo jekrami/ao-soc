@@ -1,12 +1,13 @@
 {
-  "name": "ao-soc-backend",
+  "name": "AfraSOC-backend",
   "version": "1.0.0",
-  "description": "Mock API for the AO-SOC Command Center dashboard",
+  "description": "UI API for the AfraSOC Command Center dashboard (broker proxy + demo entities)",
   "main": "server.js",
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev": "node --watch server.js",
+    "test": "node --test auth.test.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

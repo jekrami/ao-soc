@@ -45,8 +45,9 @@ logger = logging.getLogger(__name__)
 _NEAR_MISSES: Dict[str, str] = {
     'LLM_ENDPOINT': 'OLLAMA_HOST (and OLLAMA_PORT), or OLLAMA_ENDPOINT for a full URL',
     'LLM_MODEL': 'MODEL_NAME',
-    'ALLOWED_ORIGINS': 'BROKER_CORS_ORIGINS on the broker (AOSOC_CORS_ORIGINS on the UI API)',
-    'DASHBOARD_API_KEYS': 'AOSOC_API_KEYS (read by the UI API, not the broker)',
+    'ALLOWED_ORIGINS': 'BROKER_CORS_ORIGINS on the broker (AfraSOC_CORS_ORIGINS on the UI API)',
+    'DASHBOARD_API_KEYS': 'AUTH_JWT_PUBLIC_KEY_FILE (human JWT login; AfraSOC_API_KEYS retired)',
+    'AfraSOC_API_KEYS': 'AUTH_JWT_PUBLIC_KEY_FILE / AUTH_BOOTSTRAP_* (human login, not API keys)',
 }
 
 #: A setting that carries one of these prefixes is ours, so an unread one is a
@@ -57,7 +58,7 @@ _NEAR_MISSES: Dict[str, str] = {
 _OWNED_PREFIXES = (
     'TIER2_', 'RESPONSE_', 'TI_', 'ACTION_', 'ANALYSIS_', 'CASE_SYNC_', 'DETECTION_',
     'BROKER_', 'ASSET_', 'IDENTITY_', 'MISP_', 'THEHIVE_', 'CORRELATION_', 'SITUATION_',
-    'SOAR_', 'LLM_',
+    'SOAR_', 'LLM_', 'KNOWLEDGE_', 'LIGHTRAG_', 'AUTH_',
 )
 
 #: Prefixed names that are legitimate but read elsewhere (the UI API, the demo
@@ -233,6 +234,40 @@ def startup_problems() -> List[str]:
             )
     except Exception as exc:  # noqa: BLE001
         problems.append(f'action policy could not be inspected: {exc}')
+
+    # --- document knowledge (M09) — LightRAG beside the gate ---
+    try:
+        from knowledge import base as knowledge_base
+
+        if knowledge_base.KNOWLEDGE_ENABLED:
+            if not knowledge_base.KNOWLEDGE_DIR:
+                problems.append(
+                    'KNOWLEDGE_ENABLED is on but KNOWLEDGE_DIR is empty — retrieval stays disabled'
+                )
+            if not knowledge_base.LIGHTRAG_EMBED_MODEL:
+                problems.append(
+                    'KNOWLEDGE_ENABLED is on but LIGHTRAG_EMBED_MODEL is unset — '
+                    'indexing and retrieval cannot run (set an Ollama embed model name)'
+                )
+            problems.append(
+                'document knowledge is enabled: LIGHTRAG_WORKING_DIR is separate from '
+                'soc_matrix.db backups — back up that directory yourself if the corpus '
+                'must survive a restore'
+            )
+    except Exception as exc:  # noqa: BLE001
+        problems.append(f'knowledge could not be inspected: {exc}')
+
+    # Human OTP delivery. ``log`` is never the default; startup refuses it
+    # unless AUTH_OTP_LOG_ENABLED is exactly true. Reported here as well so
+    # /health shows the same sentence if the process is still up.
+    try:
+        import human_auth
+
+        problem = human_auth.otp_delivery_problem()
+        if problem:
+            problems.append(problem)
+    except Exception as exc:  # noqa: BLE001
+        problems.append(f'human authentication could not be inspected: {exc}')
 
     return problems
 

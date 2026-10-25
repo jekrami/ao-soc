@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card, CardHeader, CardTitle, CardSubtitle, CardBody } from '@/components/ui/card';
-import { useAoSoc } from '@/store/useAoSoc';
+import { useMitre } from '@/hooks/useHealth';
 import { cn } from '@/lib/utils';
 import { Crosshair } from 'lucide-react';
 
 export const MitreHeatmap: React.FC = () => {
   const { t } = useTranslation();
-  const { mitre } = useAoSoc();
+  const { data: mitre } = useMitre();
   const [hover, setHover] = useState<string | null>(null);
 
   const maxIntensity = useMemo(

@@ -7,23 +7,22 @@ alwaysApply: true
 # 1. PROJECT IDENTITY
 # ────────────────────────────────────────────────────────────
 
-You are an AI pair programmer working on AO-SOC (AI-Operated Security
+You are an AI pair programmer working on AfraSOC (AI-Operated Security
 Operations Center), codenamed Aegis-Link. This is a production-oriented,
 AI-augmented SOC dashboard targeting security analysts. The product surface
 is: what needs attention, how serious it is, why the AI thinks so, what to
 do next, and overall posture.
 
 The active feature branch is: feat/aegis-link-broker-orchestrator
-Current version: 2.0.1
+Current version: read from VERSION (2.8.x decision-layer line).
 
 Version roadmap:
-- v2.x is the Stage 2 product line: AI Tier-2 decisioning with human
-  confirmation, policy-gated SOAR auto-execution, hardening, tests,
-  integrations, and operational requirements needed to make Stage 2
-  production-ready.
-- v3.0 is reserved for Stage 3: fully autonomous decision-making and
-  execution with humans supervising by exception only. Do not label Stage 3
-  work as a v2.x release.
+- v2.x is Stage 2: AI Tier-2 decisioning with human confirmation,
+  precedent-gated autopilot, policy-gated SOAR dispatch, hardening,
+  integrations. The product is the **decision layer** — detection, log
+  storage, TIP and executors are external.
+- v3.0 is reserved for Stage 3: fully autonomous decision-making with
+  humans supervising by exception only. Do not label Stage 3 work as v2.x.
 
 Never suggest patterns that work "well enough in demos." Every decision
 should be defensible in a production SOC environment.
@@ -34,22 +33,29 @@ should be defensible in a production SOC environment.
 # ────────────────────────────────────────────────────────────
 
 orchestrator/   → Aegis-Link Python broker (FastAPI, port 8500)
-                  Owns: alert ingestion, Ollama LLM enrichment,
-                        SQLite persistence (soc_matrix.db),
-                        containment/mitigate logic, SOAR stubs
-                  Key file: soc_orchestrator.py
-                  DB: soc_matrix.db (lives inside orchestrator/, NOT root)
+                  Owns: detection intake, situation correlation, Tier-2
+                        analysis, precedent gate, document knowledge
+                        (LightRAG beside the gate), SOAR dispatch stubs,
+                        cases, SQLite decision store (soc_matrix.db)
+                  App factory: soc_orchestrator.py
+                  Routes: orchestrator/routes/*.py
+                  Prompts: orchestrator/prompts.py
+                  Knowledge: orchestrator/knowledge/ (cited DOC-… only;
+                        never an autopilot input — that is precedent.py)
+                  DB: orchestrator/soc_matrix.db (never repo root)
 
-backend/        → Express "UI API" (Node/JS, port 4317)
-                  Owns: merging broker alerts + demo data, posture/MITRE/
-                        summary computation, proxying LLM explanations
+backend/        → Express UI API (Node/JS, port 4317)
+                  Owns: merging broker alerts + demo entities, posture/
+                        MITRE/summary, proxying broker decisions/cases/
+                        knowledge. Routes under backend/routes/.
                   Never put business logic here that belongs in the broker.
 
 frontend/       → React + TypeScript command center (Vite, port 5173)
                   Owns: Command Center, Live Alerts, Incidents, Entities,
                         Health pages
-                  State: React Query for server state, local useState for UI
-                  No raw fetch calls outside of dedicated service modules.
+                  State: Zustand store (slices under store/slices/) for
+                        server+UI state; API calls only via src/services/
+                  No raw fetch outside src/lib/api.ts and services.
 
 Never collapse these layers. Do not put SQLite queries in the Express layer.
 Do not call the broker directly from React — always go through the backend proxy.

@@ -15,7 +15,7 @@ A connector is *named*, not typed. The name is a role at the site — ``soar``,
 
     CONNECTOR_EDR_DRIVER=wazuh
     CONNECTOR_EDR_URL=https://wazuh.internal:55000
-    CONNECTOR_EDR_USER=ao-soc
+    CONNECTOR_EDR_USER=AfraSOC
     CONNECTOR_EDR_PASSWORD_ENV=WAZUH_PASSWORD     # the *name* of the secret's variable
     CONNECTOR_EDR_AGENTS=001,002
     CONNECTOR_EDR_VERBS=isolate,collect

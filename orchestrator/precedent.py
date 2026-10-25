@@ -43,12 +43,13 @@ Two rules are load-bearing and must not be softened:
 """
 from __future__ import annotations
 
+from timeutil import utcnow as _utcnow
+
 import json
 import logging
 import os
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 from sqlalchemy import select
@@ -123,8 +124,6 @@ _STOPWORDS = frozenset({
 SEVERITY_RANK = {'LOW': 0, 'MEDIUM': 1, 'HIGH': 2, 'CRITICAL': 3}
 
 
-def _utcnow() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def _load(raw: Any, default: Any) -> Any:

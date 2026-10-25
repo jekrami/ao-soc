@@ -1,50 +1,30 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Card, CardHeader, CardTitle, CardSubtitle, CardBody } from '@/components/ui/card';
 import { SeverityChip, StatusPill } from '@/components/ui/chip';
+import { LiveBadge } from '@/components/ui/LiveBadge';
 import { RecommendedActions } from '@/components/dashboard/RecommendedActions';
 import { AiExplanation } from '@/components/dashboard/AiExplanation';
 import { SituationPanel } from '@/components/dashboard/SituationPanel';
 import { IntelPrecedentPanel } from '@/components/dashboard/IntelPrecedentPanel';
 import { CasePanel } from '@/components/dashboard/CasePanel';
 import { Tier2DecisionPanel } from '@/components/dashboard/Tier2DecisionPanel';
-import { useAoSoc } from '@/store/useAoSoc';
-import { api } from '@/lib/api';
-import type { Incident } from '@/types';
+import { useIncident } from '@/hooks/useIncidents';
+import { useAfraSOC } from '@/store/useAfraSOC';
 import { ArrowLeft, Server, Clock } from 'lucide-react';
 
 export const IncidentDetailsPage: React.FC = () => {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
-  const { selectIncident, caseRevision } = useAoSoc();
-  const [incident, setIncident] = useState<Incident | null>(null);
-  const [loading, setLoading] = useState(false);
+  const setSelectedIncidentId = useAfraSOC(s => s.setSelectedIncidentId);
+  const { data: incident, isLoading } = useIncident(id);
 
   useEffect(() => {
-    let alive = true;
-    if (!id) return;
-    setLoading(true);
-    api<Incident>(`/api/incidents/${id}`)
-      .then(data => { if (alive) { setIncident(data); void selectIncident(data.id); } })
-      .finally(() => { if (alive) setLoading(false); });
-    return () => { alive = false; };
-  }, [id, selectIncident]);
+    if (id) setSelectedIncidentId(id);
+  }, [id, setSelectedIncidentId]);
 
-  // A decision moved (approved, executed, rolled back). This page holds its own
-  // copy of the incident, and a copy read once at load would go on showing a
-  // lifted containment as a standing one — so it is re-read, quietly, without
-  // the skeleton that the first load shows.
-  useEffect(() => {
-    if (!id || caseRevision === 0) return undefined;
-    let alive = true;
-    api<Incident>(`/api/incidents/${id}`)
-      .then(data => { if (alive) setIncident(data); })
-      .catch(() => { /* the next poll or navigation will correct it */ });
-    return () => { alive = false; };
-  }, [id, caseRevision]);
-
-  if (loading || !incident) {
+  if (isLoading || !incident) {
     return (
       <div className="space-y-3">
         <div className="h-10 w-40 bg-surface rounded animate-pulse" />
@@ -66,6 +46,7 @@ export const IncidentDetailsPage: React.FC = () => {
       <div className="flex flex-wrap items-center gap-2">
         <SeverityChip severity={incident.severity} />
         <StatusPill status={incident.status} />
+        <LiveBadge source={incident.source} />
         <h1 className="text-xl font-semibold text-fg ms-1">{incident.title}</h1>
       </div>
 
@@ -111,9 +92,6 @@ export const IncidentDetailsPage: React.FC = () => {
         </div>
 
         <div className="space-y-3">
-          {/* A contained incident is exactly where a containment gets lifted, so
-              the decision - its plan, what can be undone, and what produced it -
-              is reachable here and not only from the live queue. */}
           <Tier2DecisionPanel />
 
           <Card>

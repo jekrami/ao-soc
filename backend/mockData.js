@@ -1,4 +1,4 @@
-// Mock data generators for AO-SOC dashboard
+// Mock data generators for AfraSOC dashboard
 // All data is deterministic at startup; System Health values jitter on poll
 // to simulate live telemetry.
 
@@ -29,24 +29,24 @@ export const incidents = [
     evidence: [
       { id: 'EV-9001', type: 'process', src: 'FIN-WIN-04', signal: 'rundll32.exe -> comsvcs.dll miniDump', weight: 0.91 },
       { id: 'EV-9002', type: 'network', src: 'FIN-WIN-04', signal: 'TLS to known C2 ASN AS9009', weight: 0.88 },
-      { id: 'EV-9003', type: 'auth',   src: 'jdoe@corp',  signal: 'Token impersonation of DOMAIN ADMIN', weight: 0.95 },
-      { id: 'EV-9004', type: 'file',   src: 'FIN-FS-01',  signal: 'vssadmin delete shadows /all', weight: 0.93 }
+      { id: 'EV-9003', type: 'auth', src: 'jdoe@corp', signal: 'Token impersonation of DOMAIN ADMIN', weight: 0.95 },
+      { id: 'EV-9004', type: 'file', src: 'FIN-FS-01', signal: 'vssadmin delete shadows /all', weight: 0.93 }
     ],
     mitre_techniques: [
-      { id: 'T1078',     tactic: 'Initial Access',       name: 'Valid Accounts' },
-      { id: 'T1059.001', tactic: 'Execution',            name: 'PowerShell' },
-      { id: 'T1003.001', tactic: 'Credential Access',    name: 'LSASS Memory' },
-      { id: 'T1021.002', tactic: 'Lateral Movement',     name: 'SMB/Windows Admin Shares' },
-      { id: 'T1071.001', tactic: 'Command and Control',  name: 'Application Layer Protocol' },
-      { id: 'T1567',     tactic: 'Exfiltration',         name: 'Exfiltration to Cloud Storage' },
-      { id: 'T1490',     tactic: 'Impact',               name: 'Inhibit System Recovery' }
+      { id: 'T1078', tactic: 'Initial Access', name: 'Valid Accounts' },
+      { id: 'T1059.001', tactic: 'Execution', name: 'PowerShell' },
+      { id: 'T1003.001', tactic: 'Credential Access', name: 'LSASS Memory' },
+      { id: 'T1021.002', tactic: 'Lateral Movement', name: 'SMB/Windows Admin Shares' },
+      { id: 'T1071.001', tactic: 'Command and Control', name: 'Application Layer Protocol' },
+      { id: 'T1567', tactic: 'Exfiltration', name: 'Exfiltration to Cloud Storage' },
+      { id: 'T1490', tactic: 'Impact', name: 'Inhibit System Recovery' }
     ],
     recommended_actions: [
-      { id: 'A1', action: 'Isolate Host',           target: 'FIN-WIN-04', reason: 'Active C2 + credential theft observed', confidence: 96, impact: 'Stops ongoing exfil & lateral spread' },
-      { id: 'A2', action: 'Disable Account',        target: 'jdoe@corp',  reason: 'Compromised credentials',                   confidence: 92, impact: 'Removes attacker foothold' },
-      { id: 'A3', action: 'Block IP',               target: '185.220.101.7', reason: 'Known malicious C2',                    confidence: 99, impact: 'Egress cut for affected segment' },
-      { id: 'A4', action: 'Open Ticket',            target: 'IR-2026-0611', reason: 'Critical incident workflow',           confidence: 100, impact: 'Triggers IR runbook' },
-      { id: 'A5', action: 'Escalate Tier-2',        target: 'IR Lead',     reason: 'Active ransomware indicator',             confidence: 95, impact: 'Human-led containment' }
+      { id: 'A1', action: 'Isolate Host', target: 'FIN-WIN-04', reason: 'Active C2 + credential theft observed', confidence: 96, impact: 'Stops ongoing exfil & lateral spread' },
+      { id: 'A2', action: 'Disable Account', target: 'jdoe@corp', reason: 'Compromised credentials', confidence: 92, impact: 'Removes attacker foothold' },
+      { id: 'A3', action: 'Block IP', target: '185.220.101.7', reason: 'Known malicious C2', confidence: 99, impact: 'Egress cut for affected segment' },
+      { id: 'A4', action: 'Open Ticket', target: 'IR-2026-0611', reason: 'Critical incident workflow', confidence: 100, impact: 'Triggers IR runbook' },
+      { id: 'A5', action: 'Escalate Tier-2', target: 'IR Lead', reason: 'Active ransomware indicator', confidence: 95, impact: 'Human-led containment' }
     ],
     ai_explanation: {
       summary: 'High-confidence credential theft activity observed on FIN-WIN-04, consistent with pre-ransomware staging.',
@@ -80,19 +80,19 @@ export const incidents = [
       { time: '08:12', label: 'Persistence', detail: 'MFA fatigue push spam', mitre: 'T1621' }
     ],
     evidence: [
-      { id: 'EV-8810', type: 'auth',    src: 'vpn-edge-01', signal: 'Geo-impossible travel: RU -> US in 2s', weight: 0.82 },
+      { id: 'EV-8810', type: 'auth', src: 'vpn-edge-01', signal: 'Geo-impossible travel: RU -> US in 2s', weight: 0.82 },
       { id: 'EV-8811', type: 'network', src: 'vpn-edge-01', signal: 'Distributed source IPs (botnet signature)', weight: 0.78 },
-      { id: 'EV-8812', type: 'auth',    src: 'asmith',      signal: 'MFA push accepted after 11 denials', weight: 0.86 }
+      { id: 'EV-8812', type: 'auth', src: 'asmith', signal: 'MFA push accepted after 11 denials', weight: 0.86 }
     ],
     mitre_techniques: [
-      { id: 'T1110',     tactic: 'Credential Access',  name: 'Brute Force' },
-      { id: 'T1110.003', tactic: 'Credential Access',  name: 'Password Spraying' },
-      { id: 'T1078',     tactic: 'Initial Access',     name: 'Valid Accounts' },
-      { id: 'T1621',     tactic: 'Credential Access',  name: 'Multi-Factor Authentication Request Generation' }
+      { id: 'T1110', tactic: 'Credential Access', name: 'Brute Force' },
+      { id: 'T1110.003', tactic: 'Credential Access', name: 'Password Spraying' },
+      { id: 'T1078', tactic: 'Initial Access', name: 'Valid Accounts' },
+      { id: 'T1621', tactic: 'Credential Access', name: 'Multi-Factor Authentication Request Generation' }
     ],
     recommended_actions: [
       { id: 'A1', action: 'Disable Account', target: 'asmith', reason: 'MFA fatigue accepted', confidence: 90, impact: 'Stops active session' },
-      { id: 'A2', action: 'Block IP',        target: '47 IPs (CIDR list)', reason: 'Distributed brute force', confidence: 88, impact: 'Cuts attack surface' },
+      { id: 'A2', action: 'Block IP', target: '47 IPs (CIDR list)', reason: 'Distributed brute force', confidence: 88, impact: 'Cuts attack surface' },
       { id: 'A3', action: 'Force MFA Reset', target: 'asmith', reason: 'Possible session theft', confidence: 85, impact: 'Restores trust' }
     ],
     ai_explanation: {
@@ -119,9 +119,9 @@ export const incidents = [
     first_seen: '06:14:22',
     last_seen: '07:50:11',
     timeline: [
-      { time: '06:14', label: 'AssumeRole',  detail: 'DevOps role from new IP',  mitre: 'T1078.004' },
-      { time: '06:18', label: 'S3 Enumerate',detail: 'ListBuckets on prod-data', mitre: 'T1538' },
-      { time: '06:42', label: 'S3 Get',      detail: 'Download 12 objects',       mitre: 'T1530' }
+      { time: '06:14', label: 'AssumeRole', detail: 'DevOps role from new IP', mitre: 'T1078.004' },
+      { time: '06:18', label: 'S3 Enumerate', detail: 'ListBuckets on prod-data', mitre: 'T1538' },
+      { time: '06:42', label: 'S3 Get', detail: 'Download 12 objects', mitre: 'T1530' }
     ],
     evidence: [
       { id: 'EV-7701', type: 'cloud', src: 'aws-prod', signal: 'AssumeRole from new geolocation (BR)', weight: 0.74 },
@@ -129,12 +129,12 @@ export const incidents = [
     ],
     mitre_techniques: [
       { id: 'T1078.004', tactic: 'Initial Access', name: 'Cloud Accounts' },
-      { id: 'T1538',     tactic: 'Discovery',      name: 'Cloud Service Dashboard' },
-      { id: 'T1530',     tactic: 'Collection',     name: 'Data from Cloud Storage' }
+      { id: 'T1538', tactic: 'Discovery', name: 'Cloud Service Dashboard' },
+      { id: 'T1530', tactic: 'Collection', name: 'Data from Cloud Storage' }
     ],
     recommended_actions: [
-      { id: 'A1', action: 'Revoke Role',         target: 'DevOps-Role', reason: 'Anomalous geo',     confidence: 80, impact: 'Stops access' },
-      { id: 'A2', action: 'Open Ticket',         target: 'Cloud IR',    reason: 'Possible data exposure', confidence: 75, impact: 'Triggers review' }
+      { id: 'A1', action: 'Revoke Role', target: 'DevOps-Role', reason: 'Anomalous geo', confidence: 80, impact: 'Stops access' },
+      { id: 'A2', action: 'Open Ticket', target: 'Cloud IR', reason: 'Possible data exposure', confidence: 75, impact: 'Triggers review' }
     ],
     ai_explanation: {
       summary: 'Service role assumed from atypical geography, with subsequent data access patterns that suggest reconnaissance and exfiltration.',
@@ -185,27 +185,27 @@ export const incidents = [
 // ---------- ENTITIES ----------
 
 export const highRiskUsers = [
-  { id: 'U1', type: 'user', name: 'jdoe@corp',  risk_score: 97, confidence: 94, reason: 'Token impersonation + LSASS dump', last_seen: '08:17' },
-  { id: 'U2', type: 'user', name: 'asmith@corp',risk_score: 88, confidence: 86, reason: 'MFA fatigue accepted',             last_seen: '08:12' },
-  { id: 'U3', type: 'user', name: 'klee@corp',  risk_score: 71, confidence: 70, reason: 'After-hours admin activity',       last_seen: '02:41' },
-  { id: 'U4', type: 'user', name: 'svc_bak@corp',risk_score: 64, confidence: 68, reason: 'Unusual data volume access',      last_seen: '04:08' },
-  { id: 'U5', type: 'user', name: 'rmohan@corp', risk_score: 58, confidence: 62, reason: 'Geo anomaly from new device',     last_seen: '07:55' }
+  { id: 'U1', type: 'user', name: 'jdoe@corp', risk_score: 97, confidence: 94, reason: 'Token impersonation + LSASS dump', last_seen: '08:17' },
+  { id: 'U2', type: 'user', name: 'asmith@corp', risk_score: 88, confidence: 86, reason: 'MFA fatigue accepted', last_seen: '08:12' },
+  { id: 'U3', type: 'user', name: 'klee@corp', risk_score: 71, confidence: 70, reason: 'After-hours admin activity', last_seen: '02:41' },
+  { id: 'U4', type: 'user', name: 'svc_bak@corp', risk_score: 64, confidence: 68, reason: 'Unusual data volume access', last_seen: '04:08' },
+  { id: 'U5', type: 'user', name: 'rmohan@corp', risk_score: 58, confidence: 62, reason: 'Geo anomaly from new device', last_seen: '07:55' }
 ];
 
 export const highRiskHosts = [
-  { id: 'H1', type: 'host', name: 'FIN-WIN-04',     risk_score: 97, confidence: 94, reason: 'Active C2 + credential theft', last_seen: '08:17' },
-  { id: 'H2', type: 'host', name: 'FIN-WIN-05',     risk_score: 81, confidence: 83, reason: 'Lateral movement target',     last_seen: '08:11' },
-  { id: 'H3', type: 'host', name: 'vpn-edge-01',    risk_score: 78, confidence: 88, reason: 'Brute force ingress',         last_seen: '08:13' },
-  { id: 'H4', type: 'host', name: 'dev-laptop-219', risk_score: 66, confidence: 71, reason: 'Unsigned driver loaded',      last_seen: '07:02' },
-  { id: 'H5', type: 'host', name: 'mail-relay-02',  risk_score: 52, confidence: 65, reason: 'Spam outbound burst',          last_seen: '06:48' }
+  { id: 'H1', type: 'host', name: 'FIN-WIN-04', risk_score: 97, confidence: 94, reason: 'Active C2 + credential theft', last_seen: '08:17' },
+  { id: 'H2', type: 'host', name: 'FIN-WIN-05', risk_score: 81, confidence: 83, reason: 'Lateral movement target', last_seen: '08:11' },
+  { id: 'H3', type: 'host', name: 'vpn-edge-01', risk_score: 78, confidence: 88, reason: 'Brute force ingress', last_seen: '08:13' },
+  { id: 'H4', type: 'host', name: 'dev-laptop-219', risk_score: 66, confidence: 71, reason: 'Unsigned driver loaded', last_seen: '07:02' },
+  { id: 'H5', type: 'host', name: 'mail-relay-02', risk_score: 52, confidence: 65, reason: 'Spam outbound burst', last_seen: '06:48' }
 ];
 
 export const highRiskIps = [
-  { id: 'I1', type: 'ip', name: '185.220.101.7', risk_score: 99, confidence: 99, reason: 'Known C2 ASN AS9009',          last_seen: '08:13' },
-  { id: 'I2', type: 'ip', name: '45.155.205.211',risk_score: 92, confidence: 94, reason: 'Brute force source',           last_seen: '08:11' },
-  { id: 'I3', type: 'ip', name: '193.142.146.4', risk_score: 84, confidence: 81, reason: 'Credential stuffing pool',     last_seen: '08:09' },
-  { id: 'I4', type: 'ip', name: '91.204.44.12',  risk_score: 72, confidence: 70, reason: 'Tor exit node',                last_seen: '07:58' },
-  { id: 'I5', type: 'ip', name: '177.105.83.40', risk_score: 66, confidence: 67, reason: 'Atypical geo for service role',last_seen: '06:14' }
+  { id: 'I1', type: 'ip', name: '185.220.101.7', risk_score: 99, confidence: 99, reason: 'Known C2 ASN AS9009', last_seen: '08:13' },
+  { id: 'I2', type: 'ip', name: '45.155.205.211', risk_score: 92, confidence: 94, reason: 'Brute force source', last_seen: '08:11' },
+  { id: 'I3', type: 'ip', name: '193.142.146.4', risk_score: 84, confidence: 81, reason: 'Credential stuffing pool', last_seen: '08:09' },
+  { id: 'I4', type: 'ip', name: '91.204.44.12', risk_score: 72, confidence: 70, reason: 'Tor exit node', last_seen: '07:58' },
+  { id: 'I5', type: 'ip', name: '177.105.83.40', risk_score: 66, confidence: 67, reason: 'Atypical geo for service role', last_seen: '06:14' }
 ];
 
 // ---------- MITRE TACTICS ----------
@@ -241,8 +241,8 @@ export const mitreHeatmap = (() => {
     tactic,
     intensity: counts[tactic] / max,
     techniques: incidents.flatMap(i => (i.mitre_techniques || []).filter(t => t.tactic === tactic))
-                          .map(t => t.id)
-                          .filter((v, i, a) => a.indexOf(v) === i)
+      .map(t => t.id)
+      .filter((v, i, a) => a.indexOf(v) === i)
   }));
 })();
 
@@ -267,32 +267,42 @@ export const summary = {
 
 export const baseHealth = {
   splunk: { status: 'ONLINE', events_per_sec: 12450, correlations_per_min: 38, queue_depth: 12 },
-  broker: { status: 'ONLINE', queue_depth: 4,    correlations_per_min: 41, uptime_hours: 312 },
-  llm:    { status: 'ONLINE', model: 'qwen2.5:14b-instruct-q5_K_M', inference_latency_ms: 240, tokens_per_sec: 38 },
-  gpu:    { status: 'ONLINE', utilization_pct: 62, vram_used_gb: 9.4, vram_total_gb: 16, temperature_c: 68 },
-  soar:   { status: 'ONLINE', playbooks_running: 3, playbooks_queued: 1, success_rate: 91 }
+  broker: { status: 'ONLINE', queue_depth: 4, correlations_per_min: 41, uptime_hours: 312 },
+  llm: { status: 'ONLINE', model: 'qwen2.5:14b-instruct-q5_K_M', inference_latency_ms: 240, tokens_per_sec: 38 },
+  gpu: { status: 'ONLINE', utilization_pct: 62, vram_used_gb: 9.4, vram_total_gb: 16, temperature_c: 68 },
+  soar: { status: 'ONLINE', playbooks_running: 3, playbooks_queued: 1, success_rate: 91 }
 };
 
 export function jitterHealth() {
   const j = (v, pct) => Math.max(0, v + (Math.random() * 2 - 1) * v * pct);
   return {
-    splunk: { ...baseHealth.splunk,
-              events_per_sec: Math.round(j(baseHealth.splunk.events_per_sec, 0.05)),
-              correlations_per_min: Math.round(j(baseHealth.splunk.correlations_per_min, 0.10)),
-              queue_depth: Math.max(0, Math.round(j(baseHealth.splunk.queue_depth, 0.30))) },
-    broker: { ...baseHealth.broker,
-              queue_depth: Math.max(0, Math.round(j(baseHealth.broker.queue_depth, 0.30))),
-              correlations_per_min: Math.round(j(baseHealth.broker.correlations_per_min, 0.10)) },
-    llm:    { ...baseHealth.llm,
-              inference_latency_ms: Math.round(j(baseHealth.llm.inference_latency_ms, 0.15)),
-              tokens_per_sec: Math.round(j(baseHealth.llm.tokens_per_sec, 0.10)) },
-    gpu:    { ...baseHealth.gpu,
-              utilization_pct: Math.min(100, Math.round(j(baseHealth.gpu.utilization_pct, 0.10))),
-              vram_used_gb:    Number(j(baseHealth.gpu.vram_used_gb, 0.05).toFixed(2)),
-              temperature_c:   Math.round(j(baseHealth.gpu.temperature_c, 0.04)) },
-    soar:   { ...baseHealth.soar,
-              playbooks_running: Math.max(0, Math.round(j(baseHealth.soar.playbooks_running, 0.20))),
-              playbooks_queued:  Math.max(0, Math.round(j(baseHealth.soar.playbooks_queued, 0.40))) },
+    splunk: {
+      ...baseHealth.splunk,
+      events_per_sec: Math.round(j(baseHealth.splunk.events_per_sec, 0.05)),
+      correlations_per_min: Math.round(j(baseHealth.splunk.correlations_per_min, 0.10)),
+      queue_depth: Math.max(0, Math.round(j(baseHealth.splunk.queue_depth, 0.30)))
+    },
+    broker: {
+      ...baseHealth.broker,
+      queue_depth: Math.max(0, Math.round(j(baseHealth.broker.queue_depth, 0.30))),
+      correlations_per_min: Math.round(j(baseHealth.broker.correlations_per_min, 0.10))
+    },
+    llm: {
+      ...baseHealth.llm,
+      inference_latency_ms: Math.round(j(baseHealth.llm.inference_latency_ms, 0.15)),
+      tokens_per_sec: Math.round(j(baseHealth.llm.tokens_per_sec, 0.10))
+    },
+    gpu: {
+      ...baseHealth.gpu,
+      utilization_pct: Math.min(100, Math.round(j(baseHealth.gpu.utilization_pct, 0.10))),
+      vram_used_gb: Number(j(baseHealth.gpu.vram_used_gb, 0.05).toFixed(2)),
+      temperature_c: Math.round(j(baseHealth.gpu.temperature_c, 0.04))
+    },
+    soar: {
+      ...baseHealth.soar,
+      playbooks_running: Math.max(0, Math.round(j(baseHealth.soar.playbooks_running, 0.20))),
+      playbooks_queued: Math.max(0, Math.round(j(baseHealth.soar.playbooks_queued, 0.40)))
+    },
     generated_at: NOW().toISOString()
   };
 }

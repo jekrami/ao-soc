@@ -185,6 +185,8 @@ export function mapAlertToIncident(alert) {
       checked_at: intelReport.checked_at ?? null,
     },
     precedent: alert.enrichment?.precedent ?? null,
+    // Document knowledge (M09) — cited SOPs beside precedent, never an autopilot input.
+    knowledge: alert.enrichment?.knowledge ?? null,
     affected_assets: [alert.source_ip, alert.dest_ip].filter(ip => ip && ip !== 'unknown'),
     owner: 'aegis-link-broker',
     first_seen: formatTime(alert.created_at || alert.timestamp),

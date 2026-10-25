@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-  Prepare and launch the full AO-SOC demo stack on Windows.
+  Prepare and launch the full AfraSOC demo stack on Windows.
 
 .DESCRIPTION
   One-shot demo bootstrap for local recordings and smoke tests (no Ollama, no Splunk).
@@ -84,15 +84,15 @@ $DashboardUrl = 'http://localhost:5173'
 # Nothing in the stack runs unauthenticated any more, so the launcher mints the
 # keys and wires them through: the UI API holds a service key for the broker,
 # and the operator signs in to the dashboard with the analyst key printed at
-# the end. Set AOSOC_DEMO_KEY / AOSOC_DEMO_SERVICE_KEY to pin them across runs.
+# the end. Set AfraSOC_DEMO_KEY / AfraSOC_DEMO_SERVICE_KEY to pin them across runs.
 function New-DemoKey {
     $bytes = New-Object 'System.Byte[]' 24
     [System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
     return ([System.Convert]::ToBase64String($bytes) -replace '\+', '-' -replace '/', '_' -replace '=', '')
 }
 
-$OperatorKey = if ($env:AOSOC_DEMO_KEY) { $env:AOSOC_DEMO_KEY } else { New-DemoKey }
-$ServiceKey = if ($env:AOSOC_DEMO_SERVICE_KEY) { $env:AOSOC_DEMO_SERVICE_KEY } else { New-DemoKey }
+$OperatorKey = if ($env:AfraSOC_DEMO_KEY) { $env:AfraSOC_DEMO_KEY } else { New-DemoKey }
+$ServiceKey = if ($env:AfraSOC_DEMO_SERVICE_KEY) { $env:AfraSOC_DEMO_SERVICE_KEY } else { New-DemoKey }
 
 # Broker principals: the UI API (service — may name the operator it acts for)
 # and the AI runner / seeder (analyst).
@@ -202,7 +202,7 @@ if ($Ai) {
     $brokerEnv += "`$env:TIER2_AUTOPILOT='1'; `$env:TIER2_AUTOPILOT_MIN_CONFIDENCE='$Threshold'; "
 }
 $brokerCmd = $brokerEnv + "python -m uvicorn soc_orchestrator:app --host 0.0.0.0 --port 8500"
-$brokerPid = Start-DemoWindow -Title 'AO-SOC Broker' -WorkingDirectory $OrchestratorDir -Command $brokerCmd
+$brokerPid = Start-DemoWindow -Title 'AfraSOC Broker' -WorkingDirectory $OrchestratorDir -Command $brokerCmd
 
 Start-Sleep -Seconds 3
 Wait-HttpOk -Url "$BrokerUrl/health" -Label 'Broker /health'
@@ -211,8 +211,8 @@ Wait-HttpOk -Url "$BrokerUrl/health" -Label 'Broker /health'
 
 Write-Step 'Starting Express UI API on port 4317'
 
-$apiCmd = "`$env:BROKER_URL='$BrokerUrl'; `$env:BROKER_API_KEY='$ServiceKey'; `$env:AOSOC_API_KEYS='$ApiKeys'; npm start"
-$apiPid = Start-DemoWindow -Title 'AO-SOC API' -WorkingDirectory $BackendDir -Command $apiCmd
+$apiCmd = "`$env:BROKER_URL='$BrokerUrl'; `$env:BROKER_API_KEY='$ServiceKey'; `$env:AfraSOC_API_KEYS='$ApiKeys'; npm start"
+$apiPid = Start-DemoWindow -Title 'AfraSOC API' -WorkingDirectory $BackendDir -Command $apiCmd
 
 Start-Sleep -Seconds 2
 Wait-HttpOk -Url "$ApiUrl/api/health" -Label 'UI API /api/health'
@@ -221,7 +221,7 @@ Wait-HttpOk -Url "$ApiUrl/api/health" -Label 'UI API /api/health'
 
 Write-Step 'Starting Vite dashboard on port 5173'
 
-$fePid = Start-DemoWindow -Title 'AO-SOC Dashboard' -WorkingDirectory $FrontendDir -Command 'npm run dev'
+$fePid = Start-DemoWindow -Title 'AfraSOC Dashboard' -WorkingDirectory $FrontendDir -Command 'npm run dev'
 
 Start-Sleep -Seconds 4
 
@@ -234,7 +234,7 @@ if ($Ai) {
 
     $aiArgs = @('run_ai_demo.py', '--count', $Count, '--interval', $SimInterval, '--seed', $Seed)
     $aiCmdLine = "`$env:BROKER_API_KEY='$OperatorKey'; python $($aiArgs -join ' ')"
-    $simPid = Start-DemoWindow -Title 'AO-SOC AI Runner' -WorkingDirectory $OrchestratorDir -Command $aiCmdLine
+    $simPid = Start-DemoWindow -Title 'AfraSOC AI Runner' -WorkingDirectory $OrchestratorDir -Command $aiCmdLine
 } elseif ($Live) {
     Write-Step "Starting live alert simulation (${SimInterval}s interval, ${SimDuration}s duration)"
 
@@ -245,7 +245,7 @@ if ($Ai) {
         '--seed', $Seed
     )
     $simCmdLine = "python $($simArgs -join ' ')"
-    $simPid = Start-DemoWindow -Title 'AO-SOC Simulator' -WorkingDirectory $OrchestratorDir -Command $simCmdLine
+    $simPid = Start-DemoWindow -Title 'AfraSOC Simulator' -WorkingDirectory $OrchestratorDir -Command $simCmdLine
 } else {
     Write-Step "Seeding $Count demo alerts (batch mode, resets prior demo data)"
 
@@ -273,7 +273,7 @@ $meta | ConvertTo-Json | Set-Content -Path $PidFile -Encoding UTF8
 
 Write-Host ''
 Write-Host '========================================' -ForegroundColor Green
-Write-Host ' AO-SOC demo stack is running' -ForegroundColor Green
+Write-Host ' AfraSOC demo stack is running' -ForegroundColor Green
 Write-Host '========================================' -ForegroundColor Green
 Write-Host ''
 Write-Host "  Dashboard:     $DashboardUrl"

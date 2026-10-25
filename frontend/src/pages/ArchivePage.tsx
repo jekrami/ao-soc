@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { Archive, Bot, CheckCircle2, ChevronDown, User, XCircle } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardSubtitle, CardBody } from '@/components/ui/card';
 import { SeverityChip, StatusPill } from '@/components/ui/chip';
-import { useAoSoc } from '@/store/useAoSoc';
+import { useArchive } from '@/hooks/useIncidents';
 import { ActionGuardBadges, RollbackNote } from '@/components/dashboard/ActionSafety';
 import { cn } from '@/lib/utils';
 import type { ArchivedIncident } from '@/types';
@@ -21,11 +21,9 @@ const fmtWhen = (value: string | null, locale: string) => {
 
 export const ArchivePage: React.FC = () => {
   const { t, i18n } = useTranslation();
-  const { archive, loadArchive, loading } = useAoSoc();
+  const { data: archive = [], isLoading } = useArchive();
   const [expanded, setExpanded] = useState<string | null>(null);
   const locale = i18n.language === 'fa' ? 'fa-IR' : 'en-US';
-
-  useEffect(() => { void loadArchive(); }, [loadArchive]);
 
   const autoCount = useMemo(
     () => archive.filter(i => i.tier2_decision?.approved_by && i.tier2_decision.approved_by !== 'analyst').length,
@@ -53,7 +51,7 @@ export const ArchivePage: React.FC = () => {
         <CardBody className="p-0">
           {archive.length === 0 && (
             <div className="text-center text-muted text-sm py-12">
-              {loading.archive ? t('archive.loading') : t('archive.empty')}
+              {isLoading ? t('archive.loading') : t('archive.empty')}
             </div>
           )}
 

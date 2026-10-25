@@ -31,11 +31,12 @@ another note, the way a paper case file works.
 """
 from __future__ import annotations
 
+from timeutil import utcnow as _utcnow
+
 import json
 import logging
 import os
 import uuid
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import func, select, update
@@ -104,8 +105,6 @@ class CaseError(RuntimeError):
         self.code = code
 
 
-def _utcnow() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def _new_case_id() -> str:
@@ -336,7 +335,7 @@ async def ensure_case(
         ))
         await _append_event(
             session, case_id,
-            kind='created', actor='ao-soc', origin='system',
+            kind='created', actor='AfraSOC', origin='system',
             body=f'Case opened for situation {situation_id}',
             data={'situation_id': situation_id, 'alert_id': alert_id, 'severity': severity},
         )

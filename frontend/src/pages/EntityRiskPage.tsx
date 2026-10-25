@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card, CardHeader, CardTitle, CardSubtitle, CardBody } from '@/components/ui/card';
-import { useAoSoc } from '@/store/useAoSoc';
+import { useEntities } from '@/hooks/useHealth';
 import { Progress } from '@/components/ui/progress';
 import { RiskBadge } from '@/components/ui/chip';
 import { cn, riskColor } from '@/lib/utils';
@@ -10,7 +10,10 @@ import type { Entity, EntityType } from '@/types';
 
 export const EntityRiskPage: React.FC = () => {
   const { t } = useTranslation();
-  const { highRiskUsers, highRiskHosts, highRiskIps, loadAll } = useAoSoc();
+  const { data: entities } = useEntities();
+  const highRiskUsers = entities?.users ?? [];
+  const highRiskHosts = entities?.hosts ?? [];
+  const highRiskIps = entities?.ips ?? [];
   const [tab, setTab] = useState<EntityType>('user');
   const [q, setQ] = useState('');
 
@@ -19,8 +22,6 @@ export const EntityRiskPage: React.FC = () => {
     { key: 'host', label: t('entities.hosts'), icon: Server },
     { key: 'ip',   label: t('entities.ips'),   icon: Globe },
   ];
-
-  useEffect(() => { void loadAll(); }, [loadAll]);
 
   const items =
     tab === 'user' ? highRiskUsers :

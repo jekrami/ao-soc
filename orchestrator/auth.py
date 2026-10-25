@@ -35,7 +35,7 @@ import logging
 import os
 import secrets
 from dataclasses import dataclass, replace
-from typing import Dict, FrozenSet, Iterable, List, Optional
+from typing import Dict, FrozenSet, List, Optional
 
 from fastapi import Header, HTTPException, status
 
@@ -117,13 +117,6 @@ def _bootstrap() -> List[_Credential]:
 
 
 _CREDENTIALS: List[_Credential] = _parse_keys(os.getenv('BROKER_API_KEYS') or '') or _bootstrap()
-
-
-def reload_credentials(raw: Optional[str] = None) -> None:
-    """Re-read key configuration (tests, and a future config hot-reload)."""
-    global _CREDENTIALS
-    source = raw if raw is not None else (os.getenv('BROKER_API_KEYS') or '')
-    _CREDENTIALS = _parse_keys(source) or _bootstrap()
 
 
 def authenticate(presented: Optional[str]) -> Optional[Principal]:
@@ -226,7 +219,3 @@ def configured_origins(raw: Optional[str] = None) -> List[str]:
         )
         return ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:4317']
     return origins
-
-
-def scopes_for(role: str) -> Iterable[str]:
-    return sorted(ROLE_SCOPES.get(role, frozenset()))

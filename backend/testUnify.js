@@ -8,9 +8,6 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { brokerFetch } from './brokerClient.js';
-import {
-  getBrokerDecision, getBrokerEnvelope, getBrokerSituation, rollbackBrokerAction,
-} from './decisions.js';
 import { mapAlertToIncident } from './alertStore.js';
 import { buildSummary, getIncident, listArchive, listIncidents } from './incidents.js';
 
@@ -69,14 +66,25 @@ async function main() {
     signature: '', threat_severity: 'LOW', incident_analysis: '',
     mitigation_status: 'PENDING', recommended_containment_steps: [],
   });
-  const situation = correlated ? await getBrokerSituation(correlated.id) : null;
+  const situation = correlated
+    ? await brokerFetch(`/api/alerts/${encodeURIComponent(correlated.id)}/situation`)
+    : null;
 
   // Phase F: the proxy carries the pre-action facts and the audit export. Only
   // reads and a refusal are exercised - a real rollback would mutate the corpus.
-  const decision = await getBrokerDecision(alert.id);
-  const envelope = await getBrokerEnvelope(alert.id);
+  const decision = await brokerFetch(`/api/alerts/${encodeURIComponent(alert.id)}/decision`);
+  const envelope = await brokerFetch(
+    `/api/alerts/${encodeURIComponent(alert.id)}/decision/envelope`,
+  );
   const statusOf = async fn => { try { await fn(); return null; } catch (err) { return err.status ?? -1; } };
-  const unknownActionStatus = await statusOf(() => rollbackBrokerAction(alert.id, 'NO-SUCH-ACTION', 'tester'));
+  const unknownActionStatus = await statusOf(() => brokerFetch(
+    `/api/alerts/${encodeURIComponent(alert.id)}/actions/${encodeURIComponent('NO-SUCH-ACTION')}/rollback`,
+    {
+      method: 'POST',
+      actor: 'tester',
+      body: JSON.stringify({ requested_by: 'tester' }),
+    },
+  ));
 
   const checks = [
     ['source broker', incident.source === 'broker'],
@@ -119,7 +127,7 @@ async function main() {
     ['actions carry the pre-action facts',
       (decision.required_actions ?? []).length > 0 &&
       decision.required_actions.every(a => 'asset_criticality' in a && 'identity_role' in a && 'reversibility' in a)],
-    ['envelope has its schema', envelope.schema === 'ao-soc.decision-envelope/1'],
+    ['envelope has its schema', envelope.schema === 'AfraSOC.decision-envelope/1'],
     ['envelope has its four parts',
       ['situation', 'decision', 'execution_payload', 'audit_trail'].every(k => k in envelope)],
     ['envelope labels confidence uncalibrated',

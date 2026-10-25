@@ -22,9 +22,11 @@ nobody is watching (plan §7 — autonomy ramps on precedent, in daylight).
 """
 from __future__ import annotations
 
+from timeutil import utcnow as _utcnow
+
 import logging
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import func, select, update
@@ -48,8 +50,6 @@ except ValueError:
     SOURCE_STALE_HOURS = 24
 
 
-def _utcnow() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def _clamp_trust(value: Any, default: float = DEFAULT_TRUST) -> float:

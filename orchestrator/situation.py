@@ -31,12 +31,14 @@ correlating on 'unknown' would collapse an entire shift into one situation.
 """
 from __future__ import annotations
 
+from timeutil import utcnow as _utcnow
+
 import json
 import logging
 import os
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from sqlalchemy import and_, func, select, update
@@ -72,7 +74,6 @@ except ValueError:
     SITUATION_MAX_MEMBERS = 25
 
 STATUS_OPEN = 'OPEN'
-STATUS_CLOSED = 'CLOSED'
 STATUS_MERGED = 'MERGED'
 
 #: What an absorbed situation's decision and analysed record become. Not
@@ -107,8 +108,6 @@ SEVERITY_FROM_SCORE: Tuple[Tuple[int, str], ...] = (
 )
 
 
-def _utcnow() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def new_situation_id() -> str:
@@ -859,18 +858,6 @@ async def attach_alert(situation_id: str, alert_id: str) -> None:
             .values(alert_id=alert_id, updated_at=_utcnow())
         )
         await session.commit()
-
-
-async def close_situation(situation_id: str, reason: str = '') -> None:
-    """Stop a situation absorbing further detections."""
-    async with async_session() as session:
-        await session.execute(
-            update(situations)
-            .where(situations.c.situation_id == situation_id)
-            .values(status=STATUS_CLOSED, updated_at=_utcnow())
-        )
-        await session.commit()
-    logger.info('Situation %s closed%s', situation_id, f' — {reason}' if reason else '')
 
 
 async def get_situation(situation_id: str) -> Optional[Situation]:

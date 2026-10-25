@@ -11,3 +11,13 @@ sqlalchemy==2.0.52
 aiosqlite==0.22.1
 pydantic==2.13.4
 httpx==0.28.1
+# Document knowledge (M09) — optional at runtime when KNOWLEDGE_ENABLED=false.
+# Pinned to the release whose Core API (ainsert ids/file_paths, QueryParam
+# only_need_context, initialize/finalize_storages) this package was written against.
+lightrag-hku==1.4.10
+# Human operator login. argon2id passwords, RS256 access tokens (PyJWT needs
+# cryptography for that algorithm), and self-hosted ALTCHA verification.
+argon2-cffi==25.1.0
+PyJWT==2.15.1
+cryptography==50.0.2
+altcha==2.3.0

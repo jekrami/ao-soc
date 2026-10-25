@@ -4,7 +4,7 @@ import {
   Network, ChevronDown, ChevronRight, ExternalLink, Layers, Link2, Users,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardSubtitle, CardBody } from '@/components/ui/card';
-import { useAoSoc } from '@/store/useAoSoc';
+import { useSelectedIncident } from '@/hooks/useSelectedIncident';
 import type { Severity, SituationDetection } from '@/types';
 
 /**
@@ -126,7 +126,7 @@ const DetectionRow: React.FC<{ detection: SituationDetection }> = ({ detection }
 
 export const SituationPanel: React.FC = () => {
   const { t } = useTranslation();
-  const { selectedIncident, selectedSituation } = useAoSoc();
+  const { selectedIncident, selectedSituation } = useSelectedIncident();
 
   if (selectedIncident?.source !== 'broker') return null;
 

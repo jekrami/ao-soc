@@ -1,4 +1,4 @@
-"""Response delivery — where an approved action leaves AO-SOC (E1, M12).
+"""Response delivery — where an approved action leaves AfraSOC (E1, M12).
 
 Copyright (c) 2026 Ekrami-Labs. All rights reserved.
 
@@ -22,7 +22,7 @@ incident rather than a bug:
 2. **Capability preflight.** A connector declares which rules it accepts. An
    action routed to an executor that cannot perform it is ``BLOCKED`` before a
    packet is sent, with the reason recorded. Asking a firewall to disable an
-   account should fail at AO-SOC, not at the firewall.
+   account should fail at AfraSOC, not at the firewall.
 
 3. **Idempotency.** Every action carries a key derived from the decision and
    the action, stable across retries. A containment that times out and is
@@ -83,9 +83,9 @@ def _number(name: str, default: float, minimum: float = 0.0) -> float:
 
 
 #: Identifies this deployment inside an executor's idempotency namespace. Two
-#: AO-SOC installations feeding one SOAR platform must not collide on
+#: AfraSOC installations feeding one SOAR platform must not collide on
 #: ``decision 41, action a1``.
-SITE_ID = (os.getenv('RESPONSE_SITE_ID') or 'ao-soc').strip() or 'ao-soc'
+SITE_ID = (os.getenv('RESPONSE_SITE_ID') or 'AfraSOC').strip() or 'AfraSOC'
 
 #: ``rule=connector`` pairs; ``*`` is the fallback. The default sends everything
 #: to a connector named ``soar``, which with no further configuration is the

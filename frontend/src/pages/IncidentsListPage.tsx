@@ -1,16 +1,16 @@
-import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useAoSoc } from '@/store/useAoSoc';
+import { useIncidents } from '@/hooks/useIncidents';
+import { useSummary } from '@/hooks/useHealth';
 import { Card, CardHeader, CardTitle, CardSubtitle, CardBody } from '@/components/ui/card';
 import { SeverityChip, StatusPill, RiskBadge } from '@/components/ui/chip';
+import { LiveBadge } from '@/components/ui/LiveBadge';
 import { Link } from 'react-router-dom';
 import { ArrowRight, AlertOctagon } from 'lucide-react';
 
 export const IncidentsListPage: React.FC = () => {
   const { t } = useTranslation();
-  const { incidents, loadIncidents, summary } = useAoSoc();
-
-  useEffect(() => { void loadIncidents(true); }, [loadIncidents]);
+  const { data: incidents = [] } = useIncidents(true);
+  const { data: summary } = useSummary();
 
   return (
     <div className="space-y-3">
@@ -46,15 +46,9 @@ export const IncidentsListPage: React.FC = () => {
                   to={`/incidents/${inc.id}`}
                   className="flex flex-col gap-2 px-4 py-3 hover:bg-surface2/50 transition-colors md:grid md:grid-cols-12 md:items-center md:gap-3"
                 >
-                  {/* Mobile: stacked card */}
                   <div className="flex flex-wrap items-center gap-2 md:hidden">
                     <SeverityChip severity={inc.severity} />
-                    {inc.source === 'broker' && (
-                      <span className="rounded px-1 py-0.5 text-[9px] font-semibold bg-info/15 text-info border border-info/30">{t('common.live')}</span>
-                    )}
-                    {inc.source === 'mock' && (
-                      <span className="rounded px-1 py-0.5 text-[9px] font-semibold bg-muted/15 text-muted border border-border">{t('common.demo')}</span>
-                    )}
+                    <LiveBadge source={inc.source} />
                     <StatusPill status={inc.status} />
                     <span className="ms-auto"><RiskBadge score={inc.risk_score} /></span>
                   </div>
@@ -67,15 +61,9 @@ export const IncidentsListPage: React.FC = () => {
                     <ArrowRight className="h-3.5 w-3.5 text-muted rtl:rotate-180" />
                   </div>
 
-                  {/* Desktop: table columns */}
                   <div className="hidden md:flex col-span-2 items-center gap-1.5">
                     <SeverityChip severity={inc.severity} />
-                    {inc.source === 'broker' && (
-                      <span className="rounded px-1 py-0.5 text-[9px] font-semibold bg-info/15 text-info border border-info/30">{t('common.live')}</span>
-                    )}
-                    {inc.source === 'mock' && (
-                      <span className="rounded px-1 py-0.5 text-[9px] font-semibold bg-muted/15 text-muted border border-border">{t('common.demo')}</span>
-                    )}
+                    <LiveBadge source={inc.source} />
                   </div>
                   <div className="hidden md:block col-span-2"><StatusPill status={inc.status} /></div>
                   <div className="hidden md:block col-span-5 text-sm text-fg truncate">

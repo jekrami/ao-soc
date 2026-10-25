@@ -1,5 +1,5 @@
 /**
- * Builds the PDF and Word editions of the AO-SOC user manuals.
+ * Builds the PDF and Word editions of the AfraSOC user manuals.
  *
  * Copyright (c) 2026 Ekrami-Labs. All rights reserved.
  * Written by J.Ekrami, co-written with Claude (Opus 5).
@@ -212,7 +212,7 @@ class DocxBuilder {
       size: style.size || (mono ? 18 : undefined),
       rightToLeft: isRtl,
       font: mono ? { ascii: 'Consolas', hAnsi: 'Consolas', cs: this.csFont }
-                 : { ascii: this.font, hAnsi: this.font, cs: this.csFont, hint: 'cs' },
+        : { ascii: this.font, hAnsi: this.font, cs: this.csFont, hint: 'cs' },
       shading: mono ? { type: ShadingType.CLEAR, fill: 'F1F3F6', color: 'auto' } : undefined,
     });
   }
@@ -267,8 +267,10 @@ class DocxBuilder {
         alignment: AlignmentType.CENTER,
         keepNext: true,
         spacing: { before: 120, after: 40 },
-        children: [new ImageRun({ type: 'png', data: buf, transformation: fitImage(width, height),
-                                  altText: { title: alt, description: alt, name: alt } })],
+        children: [new ImageRun({
+          type: 'png', data: buf, transformation: fitImage(width, height),
+          altText: { title: alt, description: alt, name: alt }
+        })],
       }));
       if (alt) {
         out.push(this.para([this.run(alt, { italic: true, size: 17, color: '5B6573' })],
@@ -280,7 +282,7 @@ class DocxBuilder {
 
   heading(t) {
     const level = [null, HeadingLevel.TITLE, HeadingLevel.HEADING_1, HeadingLevel.HEADING_2,
-                   HeadingLevel.HEADING_3, HeadingLevel.HEADING_4][t.depth] || HeadingLevel.HEADING_4;
+      HeadingLevel.HEADING_3, HeadingLevel.HEADING_4][t.depth] || HeadingLevel.HEADING_4;
     return new Paragraph({
       heading: level,
       bidirectional: this.rtl,
@@ -300,8 +302,10 @@ class DocxBuilder {
       shading: { type: ShadingType.CLEAR, fill: 'F1F3F6', color: 'auto' },
       keepLines: true,
       keepNext: i < all.length - 1,
-      children: [new TextRun({ text: line || ' ', size: 18,
-                               font: { ascii: 'Consolas', hAnsi: 'Consolas', cs: this.csFont } })],
+      children: [new TextRun({
+        text: line || ' ', size: 18,
+        font: { ascii: 'Consolas', hAnsi: 'Consolas', cs: this.csFont }
+      })],
     }));
   }
 
@@ -362,7 +366,7 @@ class DocxBuilder {
             spacing: { after: 60, line: this.rtl ? 330 : 300 },
             numbering: !this.rtl && first ? { reference, level, instance } : undefined,
             indent: this.rtl ? { start: 360 * (level + 1), hanging: first ? 360 : 0 }
-                             : (first ? undefined : { start: 720 * (level + 1) }),
+              : (first ? undefined : { start: 720 * (level + 1) }),
           }));
           first = false;
         }
@@ -419,8 +423,10 @@ class DocxBuilder {
       : `${this.m.title} · v${this.m.version} · © J.Ekrami-Labs`;
     const headingStyle = (id, size, color, before, after) => ({
       id, name: id, basedOn: 'Normal', next: 'Normal', quickFormat: true,
-      run: { size, bold: true, color, font: { ascii: this.font, hAnsi: this.font, cs: this.csFont, hint: 'cs' },
-             sizeComplexScript: size, boldComplexScript: true },
+      run: {
+        size, bold: true, color, font: { ascii: this.font, hAnsi: this.font, cs: this.csFont, hint: 'cs' },
+        sizeComplexScript: size, boldComplexScript: true
+      },
       paragraph: { spacing: { before, after } },
     });
     return new Document({
@@ -430,8 +436,10 @@ class DocxBuilder {
       styles: {
         default: {
           document: {
-            run: { size: 21, font: { ascii: this.font, hAnsi: this.font, cs: this.csFont, hint: 'cs' },
-                   sizeComplexScript: 21, rightToLeft: this.rtl },
+            run: {
+              size: 21, font: { ascii: this.font, hAnsi: this.font, cs: this.csFont, hint: 'cs' },
+              sizeComplexScript: 21, rightToLeft: this.rtl
+            },
             paragraph: { bidirectional: this.rtl, alignment: this.rtl ? AlignmentType.START : undefined },
           },
         },
@@ -445,19 +453,27 @@ class DocxBuilder {
       },
       numbering: {
         config: [
-          { reference: 'bullet', levels: [0, 1, 2].map(level => ({
+          {
+            reference: 'bullet', levels: [0, 1, 2].map(level => ({
               level, format: LevelFormat.BULLET, text: ['•', '◦', '▪'][level], alignment: AlignmentType.START,
-              style: { paragraph: { indent: { start: 360 * (level + 1) + 360, hanging: 360 } } } })) },
-          { reference: 'ordered', levels: [0, 1, 2].map(level => ({
+              style: { paragraph: { indent: { start: 360 * (level + 1) + 360, hanging: 360 } } }
+            }))
+          },
+          {
+            reference: 'ordered', levels: [0, 1, 2].map(level => ({
               level, format: LevelFormat.DECIMAL,
               text: `%${level + 1}.`, alignment: AlignmentType.START,
-              style: { paragraph: { indent: { start: 360 * (level + 1) + 360, hanging: 360 } } } })) },
+              style: { paragraph: { indent: { start: 360 * (level + 1) + 360, hanging: 360 } } }
+            }))
+          },
         ],
       },
       sections: [{
         properties: {
-          page: { size: { width: PAGE.width, height: PAGE.height },
-                  margin: { top: PAGE.margin, bottom: PAGE.margin, left: PAGE.margin, right: PAGE.margin } },
+          page: {
+            size: { width: PAGE.width, height: PAGE.height },
+            margin: { top: PAGE.margin, bottom: PAGE.margin, left: PAGE.margin, right: PAGE.margin }
+          },
         },
         footers: {
           default: new Footer({
